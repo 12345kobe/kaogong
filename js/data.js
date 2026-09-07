@@ -210,15 +210,33 @@
     },
     _userPath() { return "data/" + (this.currentUser() || "user") + ".json"; },
 
+    _hasMeaningfulData(s) {
+      s = s || state;
+      return !!(Object.keys(s.learnedLog || {}).length ||
+        (s.checkin && s.checkin.dates && s.checkin.dates.length) ||
+        (s.wrongwords && s.wrongwords.length) ||
+        (s.commonHistory && Object.keys(s.commonHistory).length) ||
+        (s.mutiHistory && s.mutiHistory.length) ||
+        (s.wrongbook && Object.keys(s.wrongbook).length) ||
+        (s.todos && Object.keys(s.todos).length));
+    },
     async login(username, token) {
       const u = (username || "").trim(), t = (token || "").trim();
       if (!u || !t) throw new Error("请填写用户名和令牌");
       await this._gh("/user", { token: t });                                   // 校验令牌是否有效
       const safe = u.replace(/[^A-Za-z0-9_一-龥\-]/g, "_").slice(0, 40);
+      const localSnapshot = JSON.parse(JSON.stringify(state));                 // 登录前先备份本机数据
+      const localHasData = this._hasMeaningfulData(localSnapshot);
       localStorage.setItem(LS_TOKEN, t);
       localStorage.setItem(LS_USER, safe);
       DB._token = t;
-      try { await this.pull(); } catch (e) { console.warn("首次拉取云端失败（将创建新存档）", e); }
+      let cloudEmpty = false;
+      try { await this.pull(); } catch (e) { cloudEmpty = !!(e && e.notFound); }
+      if (cloudEmpty && localHasData) {
+        // 云端尚为空：把本机已有学习数据上传，避免首次登录丢数据
+        state = localSnapshot; this._localSave();
+        try { await this.push(); } catch (e) { console.warn("首次上传本机数据失败", e); }
+      }
       this._cloudReady = true;
       return { username: safe };
     },
