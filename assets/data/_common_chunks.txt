@@ -1,0 +1,11 @@
+common_geo_1.js
+common_geo_2.js
+common_law_1.js
+common_law_2.js
+common_law_3.js
+common_eco_1.js
+common_tech_1.js
+common_tech_2.js
+common_tech_3.js
+common_tech_4.js
+common_pol_1.js

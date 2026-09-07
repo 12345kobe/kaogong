@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<title>考公工作台 · 个人备考助手</title>
+<meta name="theme-color" content="#0f1b3d" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="考公工作台" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<link rel="icon" type="image/png" href="icon-192.png" />
+<link rel="stylesheet" href="css/styles.css" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div id="app">
+  <!-- 左侧导航 -->
+  <aside id="sidebar">
+    <div class="brand">
+      <div class="brand-logo">考</div>
+      <div class="brand-text">
+        <div class="brand-title">考公工作台</div>
+        <div class="brand-sub">个人备考助手</div>
+      </div>
+    </div>
+    <nav id="nav"></nav>
+    <div class="sidebar-foot">
+      <button id="syncBtn" class="sync-btn" title="云端同步 / 账号">☁ 未同步</button>
+    </div>
+  </aside>
+
+  <!-- 右侧主区 -->
+  <main id="main">
+    <!-- 顶部常驻栏 -->
+    <header id="topbar">
+      <div class="top-left">
+        <button id="menuToggle" class="icon-btn" title="菜单">☰</button>
+        <div id="clock" class="clock">--:--:--</div>
+        <button id="themeBtn" class="icon-btn" title="切换深/浅色模式（白天自动护眼）">🌓</button>
+        <div id="todayDate" class="today-date"></div>
+      </div>
+      <div class="top-center">
+        <div id="dailyQuote" class="daily-quote"> Loading… </div>
+      </div>
+      <div class="top-right">
+        <button id="checkinBtn" class="checkin-btn">今日打卡</button>
+        <button id="accountBtn" class="icon-btn" title="账号">👤</button>
+      </div>
+    </header>
+
+    <!-- 内容区 -->
+    <section id="content">
+      <div id="pageTitle" class="page-title"></div>
+      <div id="pageBody" class="page-body"></div>
+    </section>
+  </main>
+</div>
+
+<!-- 全局弹层 -->
+<div id="modalRoot"></div>
+<div id="toastRoot"></div>
+
+<!-- 数据层 / 图标 / 组件 / 模块 -->
+<script src="assets/data/idioms.js?v=20260907a"></script>
+<script src="assets/data/verbal_book.js?v=20260907a"></script>
+<script src="assets/data/muti.js?v=20260907a"></script>
+<script src="assets/data/politics_kp.js?v=20260907a"></script>
+<script src="assets/data/formula_table.js?v=20260907a"></script>
+<script src="assets/data/common_geo_1.js?v=20260907a"></script>
+<script src="assets/data/common_geo_2.js?v=20260907a"></script>
+<script src="assets/data/common_law_1.js?v=20260907a"></script>
+<script src="assets/data/common_law_2.js?v=20260907a"></script>
+<script src="assets/data/common_law_3.js?v=20260907a"></script>
+<script src="assets/data/common_eco_1.js?v=20260907a"></script>
+<script src="assets/data/common_tech_1.js?v=20260907a"></script>
+<script src="assets/data/common_tech_2.js?v=20260907a"></script>
+<script src="assets/data/common_tech_3.js?v=20260907a"></script>
+<script src="assets/data/common_tech_4.js?v=20260907a"></script>
+<script src="assets/data/common_pol_1.js?v=20260907a"></script>
+<script src="assets/data/common_kp.js?v=20260907a"></script>
+<script src="assets/data/essay_quotes.js?v=20260907a"></script>
+<script src="assets/data/essay_normwords.js?v=20260907a"></script>
+<script src="js/config.js?v=20260907a"></script>
+<script src="js/data.js?v=20260907a"></script>
+<script src="js/ebbinghaus.js?v=20260907a"></script>
+<script src="js/icons.js?v=20260907a"></script>
+<script src="js/ui.js?v=20260907a"></script>
+<script src="js/quiz.js?v=20260907a"></script>
+<script src="js/banks.js?v=20260907a"></script>
+<script src="js/pdf.js?v=20260907a"></script>
+<script src="js/flashcard.js?v=20260907a"></script>
+<script src="js/learned-history.js?v=20260907a"></script>
+<script src="js/mod-countdown.js?v=20260907a"></script>
+<script src="js/mod-verbal.js?v=20260907a"></script>
+<script src="js/mod-wrongwords.js?v=20260907a"></script>
+<script src="js/mod-formulas.js?v=20260907a"></script>
+<script src="js/mod-logic.js?v=20260907a"></script>
+<script src="js/mod-politics.js?v=20260907a"></script>
+<script src="js/mod-muti.js?v=20260907a"></script>
+<script src="js/mod-common.js?v=20260907a"></script>
+<script src="js/mod-essay.js?v=20260907a"></script>
+<script src="js/mod-calendar.js?v=20260907a"></script>
+<script src="js/mod-wrongbook.js?v=20260907a"></script>
+<script src="js/mod-stats.js?v=20260907a"></script>
+<script src="js/app.js?v=20260907a"></script>
+</body>
+</html>
