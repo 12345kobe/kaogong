@@ -44,6 +44,7 @@
         <div class="row" style="margin-bottom:8px">
           <button class="btn" id="swap">换一批</button>
           <button class="btn" id="pdf">生成PDF</button>
+          <button class="btn" id="jinjuLearned">📅 已学过</button>
         </div>
         <div id="quotes"></div></div>`);
       body.appendChild(quotesCard);
@@ -63,6 +64,7 @@
         quotesCard.querySelector("#quotes").innerHTML = qs.map(q => `<div class="todo" style="flex-direction:column;align-items:flex-start">
           <div style="font-size:15px">“${UI.esc(q.t)}”</div>
           <span class="chip">适用主题：${UI.esc(q.theme)}</span></div>`).join("");
+        window.LearnedHistory.record("essay_jinju", qs.map(q => q.t)); // 记录当天看过的金句（按先后、去重）
         return qs;
       }
       let curSeed = daySeed();
@@ -71,6 +73,15 @@
       quotesCard.querySelector("#pdf").onclick = () => {
         const html = curQuotes.map(q => `<div class="item">“${UI.esc(q.t)}” <span class="chip">${UI.esc(q.theme)}</span></div>`).join("");
         window.PDF.exportHtml("申论 · 每日金句", html);
+      };
+      const jjMap = {};
+      window.BANKS.ESSAY_QUOTES.forEach(q => { jjMap[q.t] = q; });
+      quotesCard.querySelector("#jinjuLearned").onclick = () => {
+        window.LearnedHistory.record("essay_jinju", curQuotes.map(q => q.t));
+        window.LearnedHistory.open("essay_jinju", "申论 · 每日金句", (id) => {
+          const q = jjMap[id]; if (!q) return null;
+          return { primary: "“" + q.t + "”", secondary: "适用主题：" + q.theme };
+        });
       };
 
       function shuffleArr(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[a[i], a[j]] = [a[j], a[i]]; } return a; }

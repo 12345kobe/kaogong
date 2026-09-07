@@ -1,11 +1,12 @@
 /* 前端运行配置
-   部署云端后端后，把 SYNC_API_URL 改为你的后端地址即可启用：
-   - 账号注册/登录 + 多设备数据同步
-   - 政治理论「🤖 大模型智能出题」（后端需配置 LLM_API_KEY 等环境变量）
-   例如： window.APP_CONFIG = { SYNC_API_URL: "https://kaogong-sync.onrender.com" };
+   云端同步默认基于 GitHub（无需自建后端）：
+   - 账号 = 自定义用户名 + GitHub 个人访问令牌(PAT，需 repo 或 public_repo 权限)
+   - 用户数据存于仓库的 userdata 分支（data/<用户名>.json），与部署的 main 分支隔离，部署不会清空
+   - 换设备 / 换链接都不丢、自动累积；登录一次后令牌存本机浏览器，一直保持登录
 
-   大模型密钥（LLM_API_KEY / LLM_API_URL / LLM_MODEL）只配置在后端环境变量，
-   不要写在前端，避免泄露。 */
+   如需改用自建后端（含大模型智能出题），把 SYNC_API_URL 改成你的后端地址，
+   并参考旧版后端协议实现 /api/register、/api/login、/api/data 接口即可。 */
 window.APP_CONFIG = {
-  SYNC_API_URL: ""
+  SYNC_API_URL: "",
+  GH: { owner: "12345kobe", repo: "kaogong", dataBranch: "userdata" }
 };

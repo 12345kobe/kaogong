@@ -7,6 +7,8 @@
 
   // ★ 云端同步后端地址：优先读取 js/config.js 的 APP_CONFIG.SYNC_API_URL
   const SYNC_API_URL = (window.APP_CONFIG && window.APP_CONFIG.SYNC_API_URL) || "";
+  // ★ GitHub 云端同步配置（数据存仓库 userdata 分支，与部署的 main 分支隔离，部署不会清空）
+  const GH = (window.APP_CONFIG && window.APP_CONFIG.GH) || { owner: "12345kobe", repo: "kaogong", dataBranch: "userdata" };
 
   const LS_KEY = "kg_desk_state_v1";
   const LS_TOKEN = "kg_sync_token";
@@ -106,10 +108,11 @@
       return state;
     },
 
+    _localSave() { try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {} },
     save(immediate) {
       if (immediate) {
-        try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {}
-        if (this.syncEnabled() && DB._token) this.push();
+        this._localSave();
+        if (this.isLoggedIn() && this._cloudReady) this._schedulePush();
       } else {
         clearTimeout(saveTimer);
         saveTimer = setTimeout(() => this.save(true), 400);
@@ -176,49 +179,87 @@
       return (state.timer.subjectSessions[t] && state.timer.subjectSessions[t][subject]) || 0;
     },
 
-    /* ===== 云端同步（配置 SYNC_API_URL 后生效） ===== */
-    syncEnabled() { return !!(SYNC_API_URL && SYNC_API_URL.trim()); },
+    /* ===== 云端同步（基于 GitHub：账号 = 用户名 + 个人访问令牌，数据存仓库 userdata 分支） =====
+       这样无需自建后端：换设备 / 换链接都不丢、数据持续累积；登录一次后令牌存本机，一直保持登录。 */
+    syncEnabled() { return this.isLoggedIn(); },
     isLoggedIn() { return !!(localStorage.getItem(LS_TOKEN)); },
     currentUser() { return localStorage.getItem(LS_USER) || ""; },
 
-    async _req(path, opts) {
-      const url = SYNC_API_URL.replace(/\/$/, "") + path;
-      const res = await fetch(url, Object.assign({ headers: { "Content-Type": "application/json" } }, opts));
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
-      return data;
+    _b64enc(str) {
+      const bytes = new TextEncoder().encode(str);
+      let bin = ""; const CH = 0x8000;
+      for (let i = 0; i < bytes.length; i += CH) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
+      return btoa(bin);
     },
+    _b64dec(b64) {
+      const bin = atob((b64 || "").replace(/\s/g, ""));
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return new TextDecoder().decode(bytes);
+    },
+    async _gh(path, opts) {
+      const token = (opts && opts.token) || localStorage.getItem(LS_TOKEN);
+      const headers = { "Accept": "application/vnd.github+json" };
+      if (token) headers["Authorization"] = "Bearer " + token;
+      if (opts && opts.body) headers["Content-Type"] = "application/json";
+      const res = await fetch("https://api.github.com" + path, { method: (opts && opts.method) || "GET", headers, body: opts && opts.body });
+      if (res.status === 404) { const e = new Error("404"); e.notFound = true; throw e; }
+      if (!res.ok) { let m = "HTTP " + res.status; try { const d = await res.json(); m = d.message || m; } catch (_) {} throw new Error(m); }
+      if (res.status === 204) return null;
+      return res.json();
+    },
+    _userPath() { return "data/" + (this.currentUser() || "user") + ".json"; },
 
-    async register(username, password) {
-      const d = await this._req("/api/register", { method: "POST", body: JSON.stringify({ username, password }) });
-      this._afterAuth(d); return d;
-    },
-    async login(username, password) {
-      const d = await this._req("/api/login", { method: "POST", body: JSON.stringify({ username, password }) });
-      this._afterAuth(d); return d;
-    },
-    _afterAuth(d) {
-      localStorage.setItem(LS_TOKEN, d.token);
-      localStorage.setItem(LS_USER, d.username);
-      DB._token = d.token;
+    async login(username, token) {
+      const u = (username || "").trim(), t = (token || "").trim();
+      if (!u || !t) throw new Error("请填写用户名和令牌");
+      await this._gh("/user", { token: t });                                   // 校验令牌是否有效
+      const safe = u.replace(/[^A-Za-z0-9_一-龥\-]/g, "_").slice(0, 40);
+      localStorage.setItem(LS_TOKEN, t);
+      localStorage.setItem(LS_USER, safe);
+      DB._token = t;
+      try { await this.pull(); } catch (e) { console.warn("首次拉取云端失败（将创建新存档）", e); }
+      this._cloudReady = true;
+      return { username: safe };
     },
     logout() {
-      localStorage.removeItem(LS_TOKEN); localStorage.removeItem(LS_USER); DB._token = null;
+      localStorage.removeItem(LS_TOKEN); localStorage.removeItem(LS_USER); DB._token = null; this._cloudReady = false;
     },
     async pull() {
       if (!this.isLoggedIn()) return;
-      const d = await this._req("/api/data?token=" + encodeURIComponent(localStorage.getItem(LS_TOKEN)));
-      if (d && d.data) { state = mergeDefault(d.data, DEFAULT_STATE); this.state = state; this.save(true); }
+      try {
+        const r = await this._gh(`/repos/${GH.owner}/${GH.repo}/contents/${this._userPath()}?ref=${GH.dataBranch}`);
+        const data = JSON.parse(this._b64dec(r.content));
+        state = mergeDefault(data, DEFAULT_STATE);
+        this.state = state;
+        this._localSave();
+      } catch (e) { if (!e.notFound) console.warn("云端拉取失败", e); }
     },
     async push() {
       if (!this.isLoggedIn()) return;
-      await this._req("/api/data", {
-        method: "POST",
-        body: JSON.stringify({ token: localStorage.getItem(LS_TOKEN), data: state })
+      const path = this._userPath();
+      const content = this._b64enc(JSON.stringify(state));
+      let sha = null;
+      try { const r = await this._gh(`/repos/${GH.owner}/${GH.repo}/contents/${path}?ref=${GH.dataBranch}`); sha = r.sha; } catch (e) {}
+      await this._gh(`/repos/${GH.owner}/${GH.repo}/contents/${path}`, {
+        method: "PUT",
+        body: JSON.stringify({ message: "sync " + this.today(), content, branch: GH.dataBranch, sha: sha || undefined })
+      });
+    },
+    _schedulePush() {
+      if (!this.isLoggedIn() || !this._cloudReady) return;
+      if (this._syncing) { this._syncPending = true; return; }
+      this._syncing = true;
+      this.push().catch(e => console.warn("云端同步失败", e)).then(() => {
+        this._syncing = false;
+        if (this._syncPending) { this._syncPending = false; this._schedulePush(); }
       });
     }
   };
   DB._token = localStorage.getItem(LS_TOKEN) || null;
+  DB._cloudReady = false;
+  DB._syncing = false;
+  DB._syncPending = false;
 
   window.DB = DB;
 })();

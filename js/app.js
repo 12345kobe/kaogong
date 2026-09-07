@@ -4,6 +4,7 @@
   const DB = window.DB, UI = window.UI, ICONS = window.ICONS, MODULES = window.MODULES;
 
   const NAV = ["countdown", "verbal", "wrongwords", "data", "logic", "politics", "quantity", "common", "essay", "calendar", "wrongbook", "stats"];
+  const GH_LABEL = "12345kobe/kaogong";
 
   /* ===== 深浅色主题：按时间自动切换 + 手动覆盖（到点仍按时间表切回） ===== */
   const Theme = (function () {
@@ -100,55 +101,54 @@
     refreshTop(); UI.toast("打卡成功，继续加油！💪");
   }
 
-  /* ===== 账号 / 同步面板 ===== */
+  /* ===== 账号 / 同步面板（GitHub 云端） ===== */
   function openAccount() {
-    const syncOn = DB.syncEnabled();
     const logged = DB.isLoggedIn();
     const box = el(`<div></div>`);
-    if (!syncOn) {
-      box.innerHTML = `<div class="muted small" style="margin-bottom:10px">当前为「本地模式」：数据仅存本机浏览器。
-        跨设备同步需部署后端（详见部署说明）。你也可通过「导出/导入数据」在设备间迁移备份。</div>
-        <div class="row">
-          <button class="btn primary" id="exp">导出数据(JSON)</button>
-          <button class="btn" id="imp">导入数据(JSON)</button>
-        </div>`;
-    } else if (logged) {
-      box.innerHTML = `<div class="muted small">已登录：<b>${UI.esc(DB.currentUser())}</b></div>
+    if (!logged) {
+      box.innerHTML = `<div class="muted small" style="margin-bottom:10px">
+        开启「云端同步」后，全部学习数据会自动存到 GitHub 仓库 <b>${UI.esc(GH_LABEL)}</b> 的 <b>userdata</b> 分支，
+        <b>换设备 / 换链接都不丢、自动累积</b>。只需登录一次，之后一直保持登录。<br><br>
+        获取令牌：GitHub → Settings → Developer settings → <b>Personal access tokens</b> →
+        生成一个拥有 <b>repo</b>（或 public_repo）权限的令牌，粘贴到下面即可。
+      </div>
+      <label class="fld">云端账号名（自定义，例如 mykaogong）</label><input id="u" placeholder="mykaogong"/>
+      <label class="fld">GitHub 个人访问令牌 (PAT)</label><input id="p" type="password" placeholder="ghp_..."/>
+      <div class="muted small" style="margin-top:6px">⚠️ 数据文件位于公开仓库，建议仅存放学习进度；令牌仅保存在本机浏览器。</div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn primary" id="login">连接并登录</button>
+        <button class="btn" id="exp">仅导出备份</button>
+        <button class="btn" id="imp">导入备份</button>
+      </div>`;
+    } else {
+      box.innerHTML = `<div class="muted small">已登录云端：<b>${UI.esc(DB.currentUser())}</b><br>
+        数据会自动同步到仓库 <b>${UI.esc(GH_LABEL)}</b> 的 <b>userdata</b> 分支，换设备用同一账号名 + 令牌即可恢复。</div>
         <div class="row" style="margin-top:10px">
-          <button class="btn primary" id="push">上传到云端</button>
+          <button class="btn primary" id="push">立即上传</button>
           <button class="btn" id="pull">拉取云端</button>
           <button class="btn danger" id="logout">退出登录</button>
-        </div>`;
-    } else {
-      box.innerHTML = `<div class="muted small" style="margin-bottom:10px">登录后可在多设备同步数据。</div>
-        <label class="fld">用户名</label><input id="u"/>
-        <label class="fld">密码</label><input id="p" type="password"/>
-        <div class="row" style="margin-top:12px">
-          <button class="btn primary" id="login">登录</button>
-          <button class="btn" id="reg">注册</button>
-        </div>`;
+        </div>
+        <div class="muted small" style="margin-top:8px">退出仅清除本机令牌，云端数据保留。</div>`;
     }
-    UI.modal({ title: syncOn ? (logged ? "云端同步" : "账号登录") : "数据同步", body: box, width: "460px",
+
+    UI.modal({ title: logged ? "云端同步" : "开启云端同步", body: box, width: "480px",
       actions: [{ label: "关闭", cls: "ghost", onClick: (m, c) => c() }] });
 
-    if (!syncOn) {
+    if (!logged) {
       box.querySelector("#exp").onclick = exportData;
       box.querySelector("#imp").onclick = importData;
-    } else if (logged) {
-      box.querySelector("#push").onclick = () => { DB.push().then(() => UI.toast("已上传到云端")).catch(e => UI.toast("上传失败：" + e.message)); };
-      box.querySelector("#pull").onclick = () => { DB.pull().then(() => { UI.toast("已拉取云端数据"); renderRoute(); refreshTop(); }).catch(e => UI.toast("拉取失败：" + e.message)); };
-      box.querySelector("#logout").onclick = () => { DB.logout(); refreshTop(); UI.toast("已退出"); document.querySelector(".modal-mask") && document.querySelector(".modal-mask").remove(); };
-    } else {
       box.querySelector("#login").onclick = () => {
-        DB.login(box.querySelector("#u").value.trim(), box.querySelector("#p").value).then(() => {
-          UI.toast("登录成功"); refreshTop(); DB.pull().then(() => renderRoute()); document.querySelector(".modal-mask").remove();
-        }).catch(e => UI.toast("登录失败：" + e.message));
+        const u = box.querySelector("#u").value.trim(), p = box.querySelector("#p").value.trim();
+        if (!u || !p) { UI.toast("请填写账号名和令牌"); return; }
+        DB.login(u, p).then(() => {
+          UI.toast("登录成功，正在同步…"); refreshTop(); renderRoute();
+          document.querySelector(".modal-mask") && document.querySelector(".modal-mask").remove();
+        }).catch(e => UI.toast("连接失败：" + e.message));
       };
-      box.querySelector("#reg").onclick = () => {
-        DB.register(box.querySelector("#u").value.trim(), box.querySelector("#p").value).then(() => {
-          UI.toast("注册成功并已登录"); refreshTop(); document.querySelector(".modal-mask").remove();
-        }).catch(e => UI.toast("注册失败：" + e.message));
-      };
+    } else {
+      box.querySelector("#push").onclick = () => { DB.save(true); UI.toast("已触发上传"); };
+      box.querySelector("#pull").onclick = () => { DB.pull().then(() => { UI.toast("已拉取云端数据"); renderRoute(); refreshTop(); }).catch(e => UI.toast("拉取失败：" + e.message)); };
+      box.querySelector("#logout").onclick = () => { DB.logout(); refreshTop(); UI.toast("已退出登录"); document.querySelector(".modal-mask") && document.querySelector(".modal-mask").remove(); };
     }
   }
 
@@ -171,7 +171,7 @@
   function closeSidebar() { document.getElementById("sidebar").classList.remove("open"); }
 
   /* ===== 启动 ===== */
-  function boot() {
+  async function boot() {
     DB.load();
     loadNav();
     Theme.init();
@@ -186,7 +186,14 @@
     window.__refreshTop = refreshTop;
     window.addEventListener("hashchange", renderRoute);
     if (!location.hash) location.hash = "#/countdown";
-    renderRoute();
+    if (DB.isLoggedIn()) {
+      UI.toast("正在从云端拉取数据…");
+      DB.pull().then(() => { DB._cloudReady = true; renderRoute(); refreshTop(); })
+              .catch(() => { DB._cloudReady = true; renderRoute(); });
+    } else {
+      DB._cloudReady = true;
+      renderRoute();
+    }
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);

@@ -1,4 +1,6 @@
 :root{
+  --font-head:"SimHei","黑体","STHeiti","Microsoft YaHei",sans-serif;
+  --font-body:"KaiTi","楷体","STKaiti","Kaiti SC",serif;
   --bg:#0b1020;
   --bg2:#0f1730;
   --panel:#141d3b;
@@ -18,12 +20,17 @@
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%}
 body{
-  font-family:"PingFang SC","Microsoft YaHei","Segoe UI",system-ui,sans-serif;
+  font-family:var(--font-body);
   background:radial-gradient(1200px 600px at 80% -10%,#1a2350 0%,var(--bg) 55%) fixed;
   color:var(--txt);
   font-size:15px;
   line-height:1.5;
 }
+/* 标题 / UI 控件统一用黑体；大标题黑体加粗；正文（body）用楷体 */
+h1,h2,h3,h4,.page-title,#pageTitle,.card>h3,.nav-item,.btn,.chip,.badge,.tag,.todo b,.eb-stat .n,.pct,.modal-title,.qd-chk,.fc-big,.countdown-num,.brand-logo span{
+  font-family:var(--font-head);
+}
+h1,#pageTitle,.page-title,.fc-big,.countdown-num{ font-weight:700; }
 #app{display:flex;height:100vh;overflow:hidden}
 
 /* ===== Sidebar ===== */
@@ -362,22 +369,22 @@ label.fld{display:block;font-size:12px;color:var(--txt-dim);margin:8px 0 4px}
   --txt2:var(--txt);
 }
 body.light{
-  --bg:#e9edf5;
+  --bg:#ffffff;
   --bg2:#ffffff;
   --panel:#ffffff;
-  --panel2:#eef2f9;
-  --line:#d3dbea;
-  --txt:#16203a;
-  --txt-dim:#5d6c8c;
+  --panel2:#f4f6fb;
+  --line:#e3e8f0;
+  --txt:#0f1828;
+  --txt-dim:#5a6b86;
   --cyan:#0fb3b0;
   --magenta:#d633a8;
   --purple:#7a4ddb;
   --yellow:#b8860b;
   --green:#1f9e6b;
   --red:#e23b54;
-  --shadow:0 8px 28px rgba(30,50,90,.14);
+  --shadow:0 8px 28px rgba(30,50,90,.10);
 }
-body.light{ background: radial-gradient(1200px 600px at 80% -10%, #dbe4f5 0%, #eef1f7 55%) fixed; }
+body.light{ background:#ffffff; }
 body{ transition: background .35s ease, color .35s ease; }
 body.light .modal-mask{ background: rgba(20,32,60,.45); }
 body.light .brand-logo{ color:#fff; }
