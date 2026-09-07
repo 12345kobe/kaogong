@@ -241,10 +241,26 @@
       const content = this._b64enc(JSON.stringify(state));
       let sha = null;
       try { const r = await this._gh(`/repos/${GH.owner}/${GH.repo}/contents/${path}?ref=${GH.dataBranch}`); sha = r.sha; } catch (e) {}
-      await this._gh(`/repos/${GH.owner}/${GH.repo}/contents/${path}`, {
-        method: "PUT",
-        body: JSON.stringify({ message: "sync " + this.today(), content, branch: GH.dataBranch, sha: sha || undefined })
-      });
+      try {
+        await this._gh(`/repos/${GH.owner}/${GH.repo}/contents/${path}`, {
+          method: "PUT",
+          body: JSON.stringify({ message: "sync " + this.today(), content, branch: GH.dataBranch, sha: sha || undefined })
+        });
+      } catch (e) {
+        const msg = (e && e.message) || "";
+        if (/Branch .* not found/i.test(msg) || /Not Found/i.test(msg)) {
+          // userdata 分支尚不存在：基于 main 创建后重试一次
+          try {
+            const mainRef = await this._gh(`/repos/${GH.owner}/${GH.repo}/git/refs/heads/main`);
+            await this._gh(`/repos/${GH.owner}/${GH.repo}/git/refs`, { method: "POST",
+              body: JSON.stringify({ ref: "refs/heads/" + GH.dataBranch, sha: mainRef.object.sha }) });
+          } catch (e2) { console.warn("创建云端分支失败", e2); }
+          await this._gh(`/repos/${GH.owner}/${GH.repo}/contents/${path}`, {
+            method: "PUT",
+            body: JSON.stringify({ message: "sync " + this.today(), content, branch: GH.dataBranch, sha: sha || undefined })
+          });
+        } else throw e;
+      }
     },
     _schedulePush() {
       if (!this.isLoggedIn() || !this._cloudReady) return;
