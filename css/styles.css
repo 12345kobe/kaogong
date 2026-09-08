@@ -334,7 +334,8 @@ label.fld{display:block;font-size:12px;color:var(--txt-dim);margin:8px 0 4px}
   #sidebar{position:fixed;left:0;top:0;bottom:0;z-index:60;transform:translateX(-100%);
     transition:.25s;box-shadow:var(--shadow)}
   #sidebar.open{transform:translateX(0)}
-  #menuToggle{display:block}
+  #menuToggle{display:block;width:42px;height:42px;font-size:18px}
+  #topbar{padding-top:calc(env(safe-area-inset-top, 0px) + 12px);padding-left:14px;padding-right:14px}
   #content{padding:16px 14px 50px}
   .top-center{display:none}
   .clock{font-size:17px}
@@ -372,7 +373,7 @@ body.light{
   --bg:#ffffff;
   --bg2:#ffffff;
   --panel:#ffffff;
-  --panel2:#f4f6fb;
+  --panel2:#fafbfc;          /* 极浅灰，仅用于次级背景的细微区分 */
   --line:#e3e8f0;
   --txt:#0f1828;
   --txt-dim:#5a6b86;
@@ -386,14 +387,46 @@ body.light{
 }
 body.light{ background:#ffffff; }
 body{ transition: background .35s ease, color .35s ease; }
+
+/* —— 浅色模式：所有可见背景纯白 + 黑色文字，去掉深色渐变 —— */
+body.light #sidebar{ background:#ffffff; background-image:none; border-right:1px solid var(--line); }
+body.light .brand{ background:#ffffff; border-bottom-color:var(--line); }
+body.light .nav-item{ color:var(--txt); }
+body.light .nav-item:hover{ background:var(--panel2); }
+body.light .nav-item.active{
+  background:#eef9f9;                    /* 极淡青底标识选中 */
+  color:#0f1828;                         /* 黑字，保证可读 */
+  border-color:rgba(15,179,176,.35);
+  box-shadow:none;
+}
+body.light .sync-btn{ background:#ffffff; }
+
+body.light #topbar{ background:#ffffff; border-bottom:1px solid var(--line); }
+body.light .icon-btn{ background:#fafbfc; }
+
+body.light .card{ background:#ffffff; }
+body.light .btn{ background:#ffffff; }
+body.light .opt{ background:#ffffff; }
+body.light input, body.light select, body.light textarea{ background:#ffffff; }
+body.light .modal{ background:#ffffff; }
+body.light .arc-item{ background:#ffffff; }
+body.light .arc-item-head:hover{ background:#fafbfc; }
+body.light .arc-q{ background:#fafbfc; }
+body.light .cal-cell{ background:#ffffff; }
+body.light .kp-item{ background:#ffffff; }
+body.light .kp-orig, body.light .kp-jiexi, body.light .kp-zhu, body.light .opt-exp{ background:#fafbfc; }
+body.light .eb-stat, body.light .plan-item{ background:#fafbfc; }
+body.light .fc-card{ background:#ffffff; }
+body.light .pen-btn{ background:#ffffff; }
+body.light .hw-modal{ background:#ffffff; }
+
 body.light .modal-mask{ background: rgba(20,32,60,.45); }
 body.light .brand-logo{ color:#fff; }
-body.light .side{ }
 body.light .fc-big{ color:var(--cyan); }
 body.light .opt.correct{ color:#0f7a4d; }
 body.light .opt.wrong{ color:#c01f38; }
 body.light .daily-quote{ color:var(--txt-dim); }
-/* 翻书阅读：浅色下页面纸感 */
+/* 翻书阅读：浅色下页面纸感（刻意保留暖色纸面） */
 body.light .book-page{ background:#fffdf7; color:#1c2433; border-color:#e3dcc6; }
 body.light .book-toc-item{ background:#fff; border-color:var(--line); }
 
