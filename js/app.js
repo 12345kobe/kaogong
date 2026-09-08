@@ -168,17 +168,51 @@
       const f = inp.files[0]; if (!f) return;
       const rd = new FileReader();
       rd.onload = () => {
-        try {
-          // 累积合并：把备份里的数据并进现有进度，绝不覆盖已有历史
-          DB.state = DB.mergeStates(DB.state, JSON.parse(rd.result));
-          DB.save(true);
-          UI.toast("导入成功（已与现有数据合并），正在刷新…");
-          renderRoute(); refreshTop();
-        } catch (e) { UI.toast("文件解析失败"); }
+        let data = null;
+        try { data = JSON.parse(rd.result); } catch (e) { UI.toast("文件解析失败"); return; }
+        askImportMode(data);
       };
       rd.readAsText(f);
     };
     inp.click();
+  }
+
+  /* 导入方式：① 合并（计数取较大值，不累加） ② 以备份为准（把累计答题数重置成备份里的量） */
+  function askImportMode(data) {
+    const box = el(`<div></div>`);
+    box.innerHTML = `
+      <div class="muted small" style="margin-bottom:12px">学习记录一律合并、不会丢失。请选择<b>累计答题数</b>的处理方式：</div>
+      <label class="row" style="gap:8px;align-items:flex-start">
+        <input type="radio" name="imode" value="merge" checked style="width:auto;margin-top:3px"/>
+        <span><b>合并（计数取较大值）</b><br><span class="muted small">累计答题数取两边较大的那个，<b>不会累加</b>。</span></span>
+      </label>
+      <label class="row" style="gap:8px;align-items:flex-start;margin-top:10px">
+        <input type="radio" name="imode" value="replace" style="width:auto;margin-top:3px"/>
+        <span><b>以备份为准（重置计数）</b><br><span class="muted small">累计答题数直接改成备份文件里的数值。想把刷题数恢复成上次备份的数量，选这个。</span></span>
+      </label>`;
+    UI.modal({
+      title: "导入备份", body: box, width: "520px",
+      actions: [
+        { label: "取消", cls: "ghost", onClick: (m, c) => c() },
+        { label: "开始导入", cls: "primary", onClick: (m, c) => {
+          const picked = box.querySelector("input[name=imode]:checked");
+          const mode = picked ? picked.value : "merge";
+          c();
+          doImport(data, mode);
+        } }
+      ]
+    });
+  }
+
+  function doImport(data, mode) {
+    DB.state = DB.mergeStates(DB.state, data);
+    if (mode === "replace" && data.accuracyCumulative) {
+      // 以备份为准：累计答题数 / 正确数直接重置为备份中的数值
+      DB.state.accuracyCumulative = JSON.parse(JSON.stringify(data.accuracyCumulative));
+    }
+    DB.save(true);
+    UI.toast(mode === "replace" ? "已导入，并按备份重置了累计答题数" : "导入成功（已合并，计数取较大值）");
+    renderRoute(); refreshTop();
   }
 
   function closeSidebar() { document.getElementById("sidebar").classList.remove("open"); }

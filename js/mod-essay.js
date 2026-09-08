@@ -246,8 +246,11 @@
           body: box, width: "760px",
           actions: [
             { label: "导出本页PDF", cls: "btn", onClick: () => {
-                const eh = secs.map(s => `<div class="item"><b>${UI.esc(s.section)}</b>` +
-                  s.items.map(it => `<div class="muted small">应用场景：${UI.esc(it.scene)} → 规范词汇：${UI.esc(it.term)}</div>`).join("") + `</div>`).join("");
+                // 表格排版：序号 / 应用场景 / 规范词汇
+                const eh = secs.map(s => `<div class="subhead">${UI.esc(s.section)}（${s.items.length} 条）</div>` +
+                  `<table><thead><tr><th style="width:46px">序号</th><th>应用场景</th><th style="width:210px">规范词汇</th></tr></thead><tbody>` +
+                  s.items.map((it, i) => `<tr><td class="idx">${i + 1}</td><td>${UI.esc(it.scene)}</td><td class="term">${UI.esc(it.term)}</td></tr>`).join("") +
+                  `</tbody></table>`).join("");
                 window.PDF.exportHtml("申论 · 规范词学习" + (sec ? "（" + sec.section + "）" : "（全部）"), eh);
               } },
             { label: "关闭", cls: "ghost", onClick: (m, c) => c() }
@@ -312,10 +315,15 @@
       nwCard.querySelector("#nwAllHard").onclick = () => startAllNorm("hard");
       nwCard.querySelector("#nwNext").onclick = () => { startAllNorm(nwLastMode); UI.toast("已换一组"); };
       nwCard.querySelector("#nwExp").onclick = () => {
+        // 表格排版：序号 / 应用场景 / 规范词汇
         let html = "";
         NW.forEach(s => {
-          html += `<div class="item"><b>${UI.esc(s.section)}（${s.items.length}）</b>` +
-            s.items.map(it => `<div class="muted small">应用场景：${UI.esc(it.scene)} → 规范词汇：${UI.esc(it.term)}</div>`).join("") + `</div>`;
+          html += `<div class="subhead">${UI.esc(s.section)}（${s.items.length} 条）</div>`;
+          html += `<table><thead><tr><th style="width:46px">序号</th><th>应用场景</th><th style="width:210px">规范词汇</th></tr></thead><tbody>`;
+          s.items.forEach((it, i) => {
+            html += `<tr><td class="idx">${i + 1}</td><td>${UI.esc(it.scene)}</td><td class="term">${UI.esc(it.term)}</td></tr>`;
+          });
+          html += `</tbody></table>`;
         });
         window.PDF.exportHtml("申论 · 各领域规范词（全 " + NW.reduce((a, s) => a + s.items.length, 0) + " 条）", html);
       };

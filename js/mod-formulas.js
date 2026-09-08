@@ -157,6 +157,15 @@
       endSession();
     }
 
+    /* 回到上一个（自动跳过本轮已连对2次消除的） */
+    function goPrev() {
+      let i = cur - 1;
+      while (i >= 0 && (seenStreaks[queue[i].prompt] || 0) >= 2) i--;
+      if (i < 0) { UI.toast("已经是第一个了"); return; }
+      cur = i;
+      renderCard(queue[i]);
+    }
+
     function renderCard(it) {
       const cardEl = host.querySelector("#fcCard");
       renderStats();
@@ -180,6 +189,10 @@
           <div class="fc-judge" style="display:none">
             <button class="btn" data-judge="forgot">😵 忘记（错的）</button>
             <button class="btn primary" data-judge="remember">😊 记得（对的）</button>
+          </div>
+          <div class="fc-nav">
+            <button class="btn" id="fcPrev">← 上一个</button>
+            <button class="btn" id="fcNext">下一个 →</button>
           </div>
         `;
         const faceEl = cardEl.querySelector(".fc-face");
@@ -208,6 +221,8 @@
             judgeEl.style.display = "none";
           }
         };
+        cardEl.querySelector("#fcPrev").onclick = () => goPrev();
+        cardEl.querySelector("#fcNext").onclick = () => { cur++; next(); };
         cardEl.querySelectorAll("[data-judge]").forEach(b => b.onclick = () => {
           const ok = b.dataset.judge === "remember";
           recordAnswer(it, ok);

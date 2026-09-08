@@ -251,13 +251,14 @@
         }
       }
 
-      // 累计正确率：求和
+      // 累计正确率 / 累计答题数：取较大值（**不累加**）
+      //   导入的数据更多 → 取导入的；导入的更少 → 维持本机不变
       const ac = b.accuracyCumulative || {};
       out.accuracyCumulative = out.accuracyCumulative || {};
       for (const s in ac) {
         out.accuracyCumulative[s] = out.accuracyCumulative[s] || { correct: 0, total: 0 };
-        out.accuracyCumulative[s].correct += (ac[s] && ac[s].correct) || 0;
-        out.accuracyCumulative[s].total += (ac[s] && ac[s].total) || 0;
+        out.accuracyCumulative[s].correct = Math.max(out.accuracyCumulative[s].correct || 0, (ac[s] && ac[s].correct) || 0);
+        out.accuracyCumulative[s].total = Math.max(out.accuracyCumulative[s].total || 0, (ac[s] && ac[s].total) || 0);
       }
 
       // 错词 / 错题本：按 id 去重追加

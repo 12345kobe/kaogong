@@ -27,6 +27,13 @@
   .subhead{font-weight:800;font-size:15px;background:#f0f6ff;padding:6px 10px;border-left:4px solid #9b6cff;margin:14px 0 8px;page-break-after:avoid}
   .item{border:1px solid #ddd;border-radius:8px;padding:10px 12px;margin-bottom:10px;page-break-inside:avoid}
   .aitem{border:1px dashed #c9b6ff;border-radius:8px;padding:8px 12px;margin-bottom:8px;page-break-inside:avoid}
+  /* 表格（用于规范词等对照表导出） */
+  table{width:100%;border-collapse:collapse;margin:6px 0 16px;font-size:13px}
+  th,td{border:1px solid #b9b9b9;padding:6px 9px;text-align:left;vertical-align:top;line-height:1.6}
+  thead th{background:#eaf1ff;font-weight:800}
+  td.idx{width:44px;text-align:center;color:#666}
+  td.term{font-weight:800;color:#0f7a4c}
+  tbody tr{page-break-inside:avoid}
   .q{font-weight:700;margin-bottom:6px}
   .qnum{color:#9b6cff;font-weight:800;margin-right:4px}
   .kw{color:#c0392b;font-weight:800}

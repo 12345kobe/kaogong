@@ -54,11 +54,55 @@
     if (dirty) DB.save();
   }
 
+  /* 闪卡类错题：没有 ABCD 选项（如申论规范词、常识常用知识点、速算）。
+     这类题不该用选择题界面作答，应当走闪卡复习。 */
+  function isFlashcardItem(w) { return !(w && w.options && w.options.length); }
+  function getQuizWrongs(subject) { return getWrongs(subject).filter(w => !isFlashcardItem(w)); }
+  function getFlashcardWrongs(subject) { return getWrongs(subject).filter(isFlashcardItem); }
+
+  /* ===== 闪卡类错题复习（正面=题目/场景，反面=答案；不用 ABCD） ===== */
+  function startFlashcardWrongReview(subject, items, afterAll) {
+    const UI = window.UI, DB = window.DB;
+    const list = (items || getFlashcardWrongs(subject)).filter(isFlashcardItem);
+    if (!list.length) { UI.toast("暂无闪卡类错题"); return; }
+
+    window.Flashcard.start({
+      title: SUBJECT_LABELS[subject] + "·闪卡错题复习",
+      subtitle: "正面＝题目/场景，反面＝答案。点「记得」累计 2 次即自动移出错题本",
+      group: "wrongbook_fc_" + subject,
+      subject: subject,
+      items: list.map(w => ({ id: w.id, prompt: w.q, answer: w.e || "（原记录无答案）" })),
+      mode: "easy",
+      frontLabel: "题目", backLabel: "答案",
+      shuffle: false,
+      noWrongbook: true,          // 复习错题本身，不再重复写入错题本
+      onJudge: (it, ok) => {      // 按作答结果推进「连续答对次数」
+        const arr = DB.state.wrongbook[subject] || [];
+        const live = arr.find(x => x.id === it.id);
+        if (!live) return;
+        live.reviewCount = (live.reviewCount || 0) + 1;
+        live.correctStreak = ok ? (live.correctStreak || 0) + 1 : 0;
+        if (live.correctStreak >= 2) {
+          DB.state.wrongbook[subject] = arr.filter(x => x.id !== it.id);
+          UI.toast("已自动消除 1 道（连续答对 2 次）");
+        }
+        DB.save();
+      },
+      onExit: () => {
+        DB.save();
+        syncDailyReviewTodos();
+        if (afterAll) afterAll();
+      }
+    });
+  }
+
   /* ===== 错误复习执行 ===== */
   function startWrongReview(subject, body, afterAll, presetItems) {
     const UI = window.UI, DB = window.DB;
     let wrongs = (presetItems && presetItems.length) ? presetItems.slice() : getWrongs(subject);
-    if (!wrongs.length) { UI.toast("该范围内暂无错题"); return; }
+    // 闪卡类（无选项）不参与选择题复习，走「📇 闪卡错题复习」，避免显示成莫名其妙的 ABCD
+    wrongs = wrongs.filter(w => !isFlashcardItem(w));
+    if (!wrongs.length) { UI.toast("该范围内暂无「选择题类」错题，请点「📇 闪卡错题复习」"); return; }
 
     // 顺序或打乱？默认按原顺序
     let shuffleMode = false;
@@ -312,6 +356,32 @@
         });
       }
 
+      // 闪卡类错题复习（无 ABCD 选项的条目：规范词 / 常识知识点 / 速算等）
+      const fcCard = UI.el(`<div class="card"><h3>📇 闪卡类错题复习</h3>
+        <div class="muted small">这里只放<b>没有 ABCD 选项</b>的错题（如申论规范词、常识常用知识点、速算条目）。用闪卡方式复习：<b>正面看题目，翻面看答案</b>，不再显示莫名其妙的 ABCD。<b>连续答对 2 次自动消除。</b></div>
+        <div id="fcList" style="margin-top:10px"></div>
+      </div>`);
+      body.appendChild(fcCard);
+
+      function renderFcCard() {
+        const lst = fcCard.querySelector("#fcList");
+        const rows = SUBJECTS.map(s => ({ s, items: getFlashcardWrongs(s).filter(inRange) })).filter(r => r.items.length);
+        if (!rows.length) { lst.innerHTML = `<div class="empty">暂无闪卡类错题 🎉</div>`; return; }
+        lst.innerHTML = "";
+        rows.forEach(r => {
+          const row = UI.el(`<div class="todo">
+            <div class="todo-text">${UI.esc(SUBJECT_LABELS[r.s])} · 闪卡类 <b>${r.items.length}</b> 条</div>
+            <button class="btn primary" data-fc="${UI.esc(r.s)}">📇 开始复习</button>
+          </div>`);
+          row.querySelector("[data-fc]").onclick = () => {
+            startFlashcardWrongReview(r.s, r.items, () => {
+              renderFcCard(); renderTabs(); renderList(); renderReviewCard();
+            });
+          };
+          lst.appendChild(row);
+        });
+      }
+
       function renderTabs() {
         const tabs = panel.querySelector("#tabs"); tabs.innerHTML = "";
         SUBJECTS.forEach(s => {
@@ -405,6 +475,7 @@
       };
 
       renderReviewCard();
+      renderFcCard();
       renderTabs(); renderList();
     }
   };

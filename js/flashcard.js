@@ -41,7 +41,9 @@
       group = "flash", subject = "通用",
       items = [], mode = "easy",
       frontLabel = "正面", backLabel = "答案",
-      shuffle = false, hardCheck = defaultCheck, onExit = null
+      shuffle = false, hardCheck = defaultCheck, onExit = null,
+      noWrongbook = false,   // true：不把答错的再写回错题本（错题本里复习时用，避免自我重复）
+      onJudge = null         // (item, ok) => void：每次作答后的回调（供外部更新连续答对次数等）
     } = opts;
 
     if (!items.length) { UI.toast("暂无数据"); return; }
@@ -102,6 +104,15 @@
       endSession();
     }
 
+    /* 回到上一个词条（自动跳过本轮已连对2次消除的） */
+    function goPrev() {
+      let i = cur - 1;
+      while (i >= 0 && (seenStreaks[queue[i].id] || 0) >= 2) i--;
+      if (i < 0) { UI.toast("已经是第一个了"); return; }
+      cur = i;
+      renderCard(queue[i]);
+    }
+
     function renderCard(it) {
       const cardEl = host.querySelector("#fcCard");
       renderStats();
@@ -110,35 +121,41 @@
           <div class="fc-face fc-front">
             <div class="muted small">第 ${cur + 1} / ${queue.length} 题 · ${UI.esc(frontLabel)}</div>
             <div class="fc-big">${UI.esc(it.prompt)}</div>
-            <div class="muted small">点击卡片看${UI.esc(backLabel)}</div>
+            <div class="muted small">点下方按钮看${UI.esc(backLabel)}</div>
           </div>
           <div class="fc-actions"><button class="btn" id="flip">🔄 翻转看${UI.esc(backLabel)}</button></div>
           <div class="fc-judge" style="display:none">
-            <button class="btn" id="flipBack">↩ 翻转回去</button>
             <button class="btn" data-judge="forgot">😵 忘记（错的）</button>
             <button class="btn primary" data-judge="remember">😊 记得（对的）</button>
+          </div>
+          <div class="fc-nav">
+            <button class="btn" id="fcPrev">← 上一个</button>
+            <button class="btn" id="fcNext">下一个 →</button>
           </div>`;
         let flipped = false;
-        cardEl.querySelector("#flip").onclick = () => {
+        const face = cardEl.querySelector(".fc-face");
+        const flipBtn = cardEl.querySelector("#flip");
+        const judgeEl = cardEl.querySelector(".fc-judge");
+        flipBtn.onclick = () => {
           flipped = !flipped;
-          const face = cardEl.querySelector(".fc-face");
           if (flipped) {
             face.classList.add("flipped");
             face.innerHTML = `<div class="muted small">第 ${cur + 1} / ${queue.length} 题 · ${UI.esc(backLabel)}</div>
               <div class="fc-big fc-ans">${UI.esc(it.answer)}</div>
-              <div class="muted small">可「翻转回去」再核对题目，确认后点「记得 / 忘记」</div>`;
-            cardEl.querySelector("#flip").textContent = "↩ 翻转回去";
-            cardEl.querySelector(".fc-judge").style.display = "flex";
+              <div class="muted small">再点上方按钮可翻回正面核对，确认后点「记得 / 忘记」</div>`;
+            flipBtn.textContent = "↩ 翻转回去";
+            judgeEl.style.display = "flex";
           } else {
             face.classList.remove("flipped");
             face.innerHTML = `<div class="muted small">第 ${cur + 1} / ${queue.length} 题 · ${UI.esc(frontLabel)}</div>
               <div class="fc-big">${UI.esc(it.prompt)}</div>
-              <div class="muted small">点击卡片看${UI.esc(backLabel)}</div>`;
-            cardEl.querySelector("#flip").textContent = "🔄 翻转看" + UI.esc(backLabel);
-            cardEl.querySelector(".fc-judge").style.display = "none";
+              <div class="muted small">点下方按钮看${UI.esc(backLabel)}</div>`;
+            flipBtn.textContent = "🔄 翻转看" + UI.esc(backLabel);
+            judgeEl.style.display = "none";
           }
         };
-        cardEl.querySelector("#flipBack").onclick = () => { if (flipped) cardEl.querySelector("#flip").click(); };
+        cardEl.querySelector("#fcPrev").onclick = () => goPrev();
+        cardEl.querySelector("#fcNext").onclick = () => { cur++; next(); };
         cardEl.querySelectorAll("[data-judge]").forEach(b => b.onclick = () => {
           recordAnswer(it, b.dataset.judge === "remember");
           cur++; next();
@@ -185,7 +202,8 @@
       if (ok) { correctN++; seenStreaks[it.id] = (seenStreaks[it.id] || 0) + 1; }
       else { seenStreaks[it.id] = 0; wrongIndices.push(cur); }
       EB.updateAfterReview(group, it.id, ok);
-      if (!ok) {
+      if (onJudge) { try { onJudge(it, ok); } catch (e) { console.warn("onJudge 回调出错", e); } }
+      if (!ok && !noWrongbook) {
         const arr = DB.state.wrongbook[subject] = DB.state.wrongbook[subject] || [];
         arr.push({ id: DB.uid(), q: it.prompt, e: it.answer, date: DB.today(), note: "", img: "" });
         DB.save();
