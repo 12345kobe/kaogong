@@ -122,13 +122,15 @@
       </div>`;
     } else {
       box.innerHTML = `<div class="muted small">已登录云端：<b>${UI.esc(DB.currentUser())}</b><br>
-        数据会自动同步到仓库 <b>${UI.esc(GH_LABEL)}</b> 的 <b>userdata</b> 分支，换设备用同一账号名 + 令牌即可恢复。</div>
+        数据会<b>自动同步</b>到仓库 <b>${UI.esc(GH_LABEL)}</b> 的 <b>userdata</b> 分支（保存即上传、定时自动拉取），换设备用同一账号名 + 令牌即可恢复。</div>
         <div class="row" style="margin-top:10px">
           <button class="btn primary" id="push">立即上传</button>
           <button class="btn" id="pull">拉取云端</button>
+          <button class="btn" id="exp">导出备份</button>
+          <button class="btn" id="imp">导入历史数据</button>
           <button class="btn danger" id="logout">退出登录</button>
         </div>
-        <div class="muted small" style="margin-top:8px">退出仅清除本机令牌，云端数据保留。</div>`;
+        <div class="muted small" style="margin-top:8px">「导入历史数据」会把备份文件<b>合并</b>进现有进度，不会覆盖。退出仅清除本机令牌，云端数据保留。</div>`;
     }
 
     UI.modal({ title: logged ? "云端同步" : "开启云端同步", body: box, width: "480px",
@@ -141,14 +143,17 @@
         const u = box.querySelector("#u").value.trim(), p = box.querySelector("#p").value.trim();
         if (!u || !p) { UI.toast("请填写账号名和令牌"); return; }
         DB.login(u, p).then(() => {
-          UI.toast("登录成功，正在同步…"); refreshTop(); renderRoute();
+          DB._cloudReady = true; DB.startAutoSync();
+          UI.toast("登录成功，已开启自动同步"); refreshTop(); renderRoute();
           document.querySelector(".modal-mask") && document.querySelector(".modal-mask").remove();
         }).catch(e => UI.toast("连接失败：" + e.message));
       };
     } else {
       box.querySelector("#push").onclick = () => { DB.save(true); UI.toast("已触发上传"); };
       box.querySelector("#pull").onclick = () => { DB.pull().then(() => { UI.toast("已拉取云端数据"); renderRoute(); refreshTop(); }).catch(e => UI.toast("拉取失败：" + e.message)); };
-      box.querySelector("#logout").onclick = () => { DB.logout(); refreshTop(); UI.toast("已退出登录"); document.querySelector(".modal-mask") && document.querySelector(".modal-mask").remove(); };
+      box.querySelector("#exp").onclick = exportData;
+      box.querySelector("#imp").onclick = importData;
+      box.querySelector("#logout").onclick = () => { DB.stopAutoSync(); DB.logout(); refreshTop(); UI.toast("已退出登录"); document.querySelector(".modal-mask") && document.querySelector(".modal-mask").remove(); };
     }
   }
 
@@ -162,7 +167,15 @@
     inp.onchange = () => {
       const f = inp.files[0]; if (!f) return;
       const rd = new FileReader();
-      rd.onload = () => { try { DB.state = JSON.parse(rd.result); DB.save(true); UI.toast("导入成功，正在刷新…"); renderRoute(); refreshTop(); } catch (e) { UI.toast("文件解析失败"); } };
+      rd.onload = () => {
+        try {
+          // 累积合并：把备份里的数据并进现有进度，绝不覆盖已有历史
+          DB.state = DB.mergeStates(DB.state, JSON.parse(rd.result));
+          DB.save(true);
+          UI.toast("导入成功（已与现有数据合并），正在刷新…");
+          renderRoute(); refreshTop();
+        } catch (e) { UI.toast("文件解析失败"); }
+      };
       rd.readAsText(f);
     };
     inp.click();
@@ -188,8 +201,8 @@
     if (!location.hash) location.hash = "#/countdown";
     if (DB.isLoggedIn()) {
       UI.toast("正在从云端拉取数据…");
-      DB.pull().then(() => { DB._cloudReady = true; renderRoute(); refreshTop(); })
-              .catch(() => { DB._cloudReady = true; renderRoute(); });
+      DB.pull().then(() => { DB._cloudReady = true; DB.startAutoSync(); renderRoute(); refreshTop(); })
+              .catch(() => { DB._cloudReady = true; DB.startAutoSync(); renderRoute(); });
     } else {
       DB._cloudReady = true;
       renderRoute();

@@ -167,12 +167,12 @@
         it.cat === "fourth" ? "四次方" : "开根号" )));
 
       if (mode === "easy") {
-        // 闪卡：默认显示 prompt，翻转后看 answer
+        // 闪卡：「翻转」按钮始终常驻，可反复切换正面 / 答案
         cardEl.innerHTML = `
           <div class="fc-face fc-front">
             <div class="muted small">第 ${cur + 1} / ${queue.length} 题 · ${cat}</div>
             <div class="fc-big">${UI.esc(it.prompt)}</div>
-            <div class="muted small">点击卡片看答案</div>
+            <div class="muted small">点击下方按钮看答案</div>
           </div>
           <div class="fc-actions">
             <button class="btn" id="flip">🔄 翻转看答案</button>
@@ -182,15 +182,31 @@
             <button class="btn primary" data-judge="remember">😊 记得（对的）</button>
           </div>
         `;
-        cardEl.querySelector("#flip").onclick = () => {
-          cardEl.querySelector(".fc-face").classList.add("flipped");
-          cardEl.querySelector(".fc-face").innerHTML = `
-            <div class="muted small">第 ${cur + 1} / ${queue.length} 题 · ${cat} · 答案</div>
-            <div class="fc-big fc-ans">${UI.esc(it.answer)}</div>
-            <div class="muted small">如百化分可视为近似值，请按实际能记住的精度记忆</div>
-          `;
-          cardEl.querySelector("#flip").style.display = "none";
-          cardEl.querySelector(".fc-judge").style.display = "flex";
+        const faceEl = cardEl.querySelector(".fc-face");
+        const flipBtn = cardEl.querySelector("#flip");
+        const judgeEl = cardEl.querySelector(".fc-judge");
+        let flipped = false;
+        flipBtn.onclick = () => {
+          flipped = !flipped;
+          if (flipped) {
+            faceEl.classList.add("flipped");
+            faceEl.innerHTML = `
+              <div class="muted small">第 ${cur + 1} / ${queue.length} 题 · ${cat} · 答案</div>
+              <div class="fc-big fc-ans">${UI.esc(it.answer)}</div>
+              <div class="muted small">如百化分可视为近似值，请按实际能记住的精度记忆</div>
+            `;
+            flipBtn.textContent = "↩ 翻转回去";
+            judgeEl.style.display = "flex";
+          } else {
+            faceEl.classList.remove("flipped");
+            faceEl.innerHTML = `
+              <div class="muted small">第 ${cur + 1} / ${queue.length} 题 · ${cat}</div>
+              <div class="fc-big">${UI.esc(it.prompt)}</div>
+              <div class="muted small">点击下方按钮看答案</div>
+            `;
+            flipBtn.textContent = "🔄 翻转看答案";
+            judgeEl.style.display = "none";
+          }
         };
         cardEl.querySelectorAll("[data-judge]").forEach(b => b.onclick = () => {
           const ok = b.dataset.judge === "remember";

@@ -220,6 +220,159 @@
         (s.wrongbook && Object.keys(s.wrongbook).length) ||
         (s.todos && Object.keys(s.todos).length));
     },
+    /* ===== 累积合并：把两份数据「并集 / 求和 / 取大」地合在一起，绝不覆盖已有历史 ===== */
+    mergeStates(a, b) {
+      if (!a) return JSON.parse(JSON.stringify(b || {}));
+      if (!b) return a;
+      const out = JSON.parse(JSON.stringify(a));
+      const S = (x) => (x == null ? "" : String(x));
+
+      // 已学习历史 { key: { 'YYYY-MM-DD': [id...] } } → 按天取并集
+      const ll = b.learnedLog || {};
+      out.learnedLog = out.learnedLog || {};
+      for (const k in ll) {
+        out.learnedLog[k] = out.learnedLog[k] || {};
+        for (const d in (ll[k] || {})) {
+          out.learnedLog[k][d] = Array.from(new Set([...(out.learnedLog[k][d] || []), ...((ll[k] || {})[d] || [])]));
+        }
+      }
+
+      // 专注计时：按天取大（不会把多的那份改小）
+      out.timer = out.timer || {};
+      const ts = (b.timer && b.timer.sessions) || {};
+      out.timer.sessions = out.timer.sessions || {};
+      for (const d in ts) out.timer.sessions[d] = Math.max(out.timer.sessions[d] || 0, ts[d] || 0);
+      const ss = (b.timer && b.timer.subjectSessions) || {};
+      out.timer.subjectSessions = out.timer.subjectSessions || {};
+      for (const d in ss) {
+        out.timer.subjectSessions[d] = out.timer.subjectSessions[d] || {};
+        for (const s in (ss[d] || {})) {
+          out.timer.subjectSessions[d][s] = Math.max(out.timer.subjectSessions[d][s] || 0, ss[d][s] || 0);
+        }
+      }
+
+      // 累计正确率：求和
+      const ac = b.accuracyCumulative || {};
+      out.accuracyCumulative = out.accuracyCumulative || {};
+      for (const s in ac) {
+        out.accuracyCumulative[s] = out.accuracyCumulative[s] || { correct: 0, total: 0 };
+        out.accuracyCumulative[s].correct += (ac[s] && ac[s].correct) || 0;
+        out.accuracyCumulative[s].total += (ac[s] && ac[s].total) || 0;
+      }
+
+      // 错词 / 错题本：按 id 去重追加
+      function mergeArrById(cur, inc) {
+        const arr = cur || [];
+        const have = new Set(arr.map(x => S(x && x.id)));
+        (inc || []).forEach(x => { const id = S(x && x.id); if (!id || !have.has(id)) { arr.push(x); if (id) have.add(id); } });
+        return arr;
+      }
+      out.wrongwords = mergeArrById(out.wrongwords, b.wrongwords);
+      const wb = b.wrongbook || {};
+      out.wrongbook = out.wrongbook || {};
+      for (const s in wb) out.wrongbook[s] = mergeArrById(out.wrongbook[s], wb[s]);
+
+      // 做题历史：按「日期 + 题量」去重追加
+      function mergeHist(cur, inc) {
+        const arr = cur || [];
+        const sig = (r) => S(r && r.date) + "|" + S(r && r.count) + "|" + ((r && r.items) ? r.items.length : "");
+        const have = new Set(arr.map(sig));
+        (inc || []).forEach(r => { if (!have.has(sig(r))) { arr.push(r); have.add(sig(r)); } });
+        return arr;
+      }
+      out.mutiHistory = mergeHist(out.mutiHistory, b.mutiHistory);
+      const ch = b.commonHistory || {};
+      out.commonHistory = out.commonHistory || {};
+      for (const m in ch) out.commonHistory[m] = mergeHist(out.commonHistory[m], ch[m]);
+
+      // 打卡日期：并集
+      out.checkin = out.checkin || {};
+      out.checkin.dates = Array.from(new Set([...(out.checkin.dates || []), ...((b.checkin && b.checkin.dates) || [])]));
+
+      // 日历：起止取已有值，打卡状态取「或」
+      const cal = b.calendar || {};
+      out.calendar = out.calendar || {};
+      for (const d in cal) {
+        const A = out.calendar[d] || {}, B = cal[d] || {};
+        out.calendar[d] = {
+          start: A.start != null ? A.start : B.start,
+          end: A.end != null ? A.end : B.end,
+          checked: !!(A.checked || B.checked)
+        };
+      }
+
+      // 浏览复习次数：取大
+      function mergeMax(cur, inc) { const o = cur || {}; for (const k in (inc || {})) o[k] = Math.max(o[k] || 0, inc[k] || 0); return o; }
+      out.idiomReview = mergeMax(out.idiomReview, b.idiomReview);
+      out.politicsReview = mergeMax(out.politicsReview, b.politicsReview);
+
+      // 轮转进度（种子 / 游标 / 轮次）：取轮次更靠后的一份
+      function mergeProgress(cur, inc, keys) {
+        const A = cur || {}, B = inc || {};
+        const pick = ((B.round || 0) > (A.round || 0)) ? B : A;
+        const o = {};
+        keys.forEach(k => { o[k] = pick[k] != null ? pick[k] : (A[k] != null ? A[k] : B[k]); });
+        return o;
+      }
+      out.verbalDef = mergeProgress(out.verbalDef, b.verbalDef, ["seed", "ptr", "round"]);
+      out.common = out.common || {};
+      out.common.kpDeck = mergeProgress(out.common.kpDeck, (b.common || {}).kpDeck, ["seed", "ptr", "round"]);
+
+      // 常识分模块已做 id：并集
+      const cm = b.commonModules || {};
+      out.commonModules = out.commonModules || {};
+      for (const m in cm) out.commonModules[m] = Array.from(new Set([...(out.commonModules[m] || []), ...(cm[m] || [])]));
+
+      // 金句 / 政治题库：按文本去重追加
+      function mergeByField(cur, inc, field) {
+        const arr = cur || [];
+        const have = new Set(arr.map(x => S(x && x[field])));
+        (inc || []).forEach(x => { const sig = S(x && x[field]); if (!sig || !have.has(sig)) { arr.push(x); if (sig) have.add(sig); } });
+        return arr;
+      }
+      out.essay = out.essay || {};
+      out.essay.quotes = mergeByField(out.essay.quotes, (b.essay || {}).quotes, "t");
+      out.quotesLib = mergeByField(out.quotesLib, b.quotesLib, "t");
+      out.politics = out.politics || {};
+      out.politics.questions = mergeByField(out.politics.questions, (b.politics || {}).questions, "q");
+
+      // 其余字段：本地已有内容优先，缺失的才用传入数据补齐
+      function fill(cur, inc) {
+        for (const k in (inc || {})) {
+          if (inc[k] && typeof inc[k] === "object" && !Array.isArray(inc[k])) { cur[k] = cur[k] || {}; fill(cur[k], inc[k]); }
+          else if (cur[k] == null || cur[k] === "" || (Array.isArray(cur[k]) && !cur[k].length)) cur[k] = inc[k];
+        }
+      }
+      fill(out, b);
+      return out;
+    },
+
+    /* ===== 自动同步：定时拉取 + 切回页面 / 获得焦点时立即拉取（保存时自动上传已在 save() 中） ===== */
+    startAutoSync(intervalMs) {
+      this.stopAutoSync();
+      const ms = intervalMs || 60000;
+      this._autoTimer = setInterval(() => this._schedulePull(), ms);
+      const onWake = () => { if (document.visibilityState === "visible") this._schedulePull(); };
+      document.addEventListener("visibilitychange", onWake);
+      window.addEventListener("focus", onWake);
+      this._onWake = onWake;
+    },
+    stopAutoSync() {
+      if (this._autoTimer) { clearInterval(this._autoTimer); this._autoTimer = null; }
+      if (this._onWake) {
+        document.removeEventListener("visibilitychange", this._onWake);
+        window.removeEventListener("focus", this._onWake);
+        this._onWake = null;
+      }
+    },
+    _schedulePull() {
+      if (!this.isLoggedIn() || !this._cloudReady || this._pulling || this._syncing) return;
+      this._pulling = true;
+      this.pull()
+        .then(() => { if (window.__refreshTop) window.__refreshTop(); })
+        .catch(() => {})
+        .then(() => { this._pulling = false; });
+    },
     async login(username, token) {
       const u = (username || "").trim(), t = (token || "").trim();
       if (!u || !t) throw new Error("请填写用户名和令牌");
@@ -236,6 +389,9 @@
         // 云端尚为空：把本机已有学习数据上传，避免首次登录丢数据
         state = localSnapshot; this._localSave();
         try { await this.push(); } catch (e) { console.warn("首次上传本机数据失败", e); }
+      } else if (!cloudEmpty && localHasData) {
+        // 云端已有数据：pull 已把两边累积合并，回推一次，让云端也拿到本机历史
+        try { await this.push(); } catch (e) { console.warn("上传本机历史数据失败", e); }
       }
       this._cloudReady = true;
       return { username: safe };
@@ -247,8 +403,9 @@
       if (!this.isLoggedIn()) return;
       try {
         const r = await this._gh(`/repos/${GH.owner}/${GH.repo}/contents/${this._userPath()}?ref=${GH.dataBranch}`);
-        const data = JSON.parse(this._b64dec(r.content));
-        state = mergeDefault(data, DEFAULT_STATE);
+        const data = mergeDefault(JSON.parse(this._b64dec(r.content)), DEFAULT_STATE);
+        // 与本机「累积合并」：本机尚未上传的历史不会被云端覆盖
+        state = this.mergeStates(state, data);
         this.state = state;
         this._localSave();
       } catch (e) { if (!e.notFound) console.warn("云端拉取失败", e); }
