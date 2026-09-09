@@ -178,6 +178,8 @@ label.fld{display:block;font-size:12px;color:var(--txt-dim);margin:8px 0 4px}
 .essay-body p{margin:0 0 12px;text-indent:2em}
 .essay-body mark{background:#cfe3ff;color:#0b3d91;font-weight:700;padding:0 3px;border-radius:3px}
 .essay-body u{text-decoration:none;border-bottom:2px solid #e23b54;padding-bottom:1px;font-weight:600}
+.essay-body .essay-red{color:#e23b54;font-weight:700}
+.essay-body .essay-sec{margin:16px 0 8px;padding-left:12px;border-left:3px solid var(--cyan);font-weight:800;font-family:var(--font-head);font-size:17px;line-height:1.6}
 .good-words{margin-top:18px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
 .good-words h3{font-family:var(--font-head);font-size:16px;margin:0 0 10px}
 .gw-list{margin:0;padding-left:22px}
@@ -190,6 +192,7 @@ label.fld{display:block;font-size:12px;color:var(--txt-dim);margin:8px 0 4px}
 body.light .essay-title{color:#0f1828}
 body.light .essay-body{color:#1c2433}
 body.light .essay-body mark{background:#d6e8ff;color:#0b3d91}
+body.light .essay-body .essay-red{color:#d11a2a}
 body.light .good-words{background:#f4f7fc}
 
 /* ===== Todo ===== */

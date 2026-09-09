@@ -13,6 +13,7 @@
       .replace(/<\/mark>/g, "</span>")
       .replace(/<u>/g, '<span style="border-bottom:2px solid #c0392b;padding-bottom:1px">')
       .replace(/<\/u>/g, "</span>")
+      .replace(/<b class="essay-red">/g, '<b style="color:#e23b54;font-weight:700">')
       .replace(/<p>/g, '<p style="margin:0 0 12px;text-indent:2em;line-height:1.9">');
   }
 
@@ -46,7 +47,7 @@
             <ol class="gw-list">
               ${e.phrases.map(p => `<li>${esc(typeof p === "string" ? p : p.text)}</li>`).join("")}
             </ol>
-            <div class="muted small gw-note">※ 以上为文中<mark class="lg-mark">蓝色高亮</mark>与<u class="lg-u">红色下划线</u>处摘录的精华句。</div>
+            <div class="muted small gw-note">※ 以上为文中<mark class="lg-mark">蓝色高亮</mark>与<b style="color:#e23b54">红色小标题</b>处摘录的精华句（本 PDF 以蓝色文字标注好词好句，红色为段落小标题）。</div>
           </div>
           <div class="row essay-nav">
             <button class="btn" id="prev">← 上一篇</button>
@@ -69,7 +70,7 @@
 
         body.querySelector("#dlGw").onclick = () => {
           let h = `<h2 style="text-align:center;border-bottom:2px solid #9b6cff;padding-bottom:6px">好词好句 · ${esc(e.title)}</h2>
-            <div class="meta" style="color:#666;font-size:12px;margin:6px 0 12px">文中蓝色高亮与红色下划线摘录</div><ol style="line-height:2;font-size:15px">`;
+            <div class="meta" style="color:#666;font-size:12px;margin:6px 0 12px">文中蓝色高亮与红色小标题摘录</div><ol style="line-height:2;font-size:15px">`;
           e.phrases.forEach(p => { h += `<li>${esc(typeof p === "string" ? p : p.text)}</li>`; });
           h += `</ol>`;
           window.PDF.exportHtml("好词好句 · " + e.title, h);

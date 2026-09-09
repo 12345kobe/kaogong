@@ -267,6 +267,8 @@
           <button class="btn primary" id="wdStart">▶ 开始一组（10词）</button>
           <button class="btn" id="wdNext">🔀 下一组</button>
           <button class="btn ghost" id="wdReset">重置进度</button>
+          <button class="btn" id="wdLearned">📅 已练过</button>
+          <button class="btn ghost" id="wdExpWrong">⬇ 导出错题PDF</button>
         </div>
         <div id="wdQuiz" style="margin-top:14px"></div>
       </div>`);
@@ -289,6 +291,8 @@
       function startDefRound() {
         wdBatch = pickDefGroup();
         if (!wdBatch.length) { UI.toast("词库为空"); return; }
+        // 记录当日已练过的词（按天累积，供「已练过」查看）
+        window.LearnedHistory.record("verbal_def_practice", wdBatch.map(w => w.word));
         renderWdStats();
         const qs = wdBatch.map(makeDefQuestion);
         window.Quiz.start(wdCard.querySelector("#wdQuiz"), qs, SUBJECT, {
@@ -326,6 +330,25 @@
         DB.state.verbalDef = { seed: (Math.random() * 1e9) | 0, ptr: 0, round: 1 };
         DB.save(); renderWdStats(); UI.toast("已重置词语释义练习进度");
       };
+      wdCard.querySelector("#wdLearned").onclick = () => {
+        window.LearnedHistory.open("verbal_def_practice", "词语释义 · 已练过", id => {
+          const w = WD_POOL.find(x => x.word === id);
+          if (!w) return null;
+          return { primary: w.word, secondary: (idiomMeaning(w.def) || "") + (w.ex ? "　例句：" + w.ex : "") };
+        });
+      };
+      wdCard.querySelector("#wdExpWrong").onclick = () => {
+        const arr = DB.state.wrongwords || [];
+        if (!arr.length) { UI.toast("暂无错词，去练几组吧"); return; }
+        let html = "";
+        arr.forEach((w, i) => {
+          html += `<div class="item"><b>${i + 1}. ${UI.esc(w.word)}</b>` +
+            `<div class="muted small">释义：${UI.esc(w.def || "")}</div>` +
+            (w.ex ? `<div class="muted small">例句：${UI.esc(w.ex)}</div>` : "") + `</div>`;
+        });
+        window.PDF.exportHtml("错词本 · 词语释义（" + arr.length + " 词）", html);
+        UI.toast("已生成错题PDF，请在打印窗口选择「另存为 PDF」");
+      };
       renderWdStats();
 
       /* ================= 按组别浏览（点击浏览 → 目录 → 翻书式） =================
@@ -357,18 +380,26 @@
           <div id="dir" style="max-height:56vh;overflow:auto;display:flex;flex-direction:column;gap:6px"></div>`;
         UI.modal({ title: "📑 成语辨析 · 目录（" + bookGroups.length + " 组）", body: box, width: "680px",
           actions: [{ label: "关闭", cls: "ghost", onClick: (m, c) => { if (bookTimer) clearTimeout(bookTimer); c(); } }] });
+        // 自动定位：找到含「上次已学过的词汇」的组别
+        const lastW = DB.state.verbalLastWord;
+        const targetGi = lastW ? bookGroups.findIndex(g => g.words.some(w => w.word === lastW)) : -1;
         function render(kw) {
           kw = (kw || "").trim();
           const list = kw ? bookGroups.filter(g => g.name.includes(kw) || g.words.some(w => w.word.includes(kw) || (w.def || "").includes(kw))) : bookGroups;
           box.querySelector("#dir").innerHTML = list.map((g, i) => {
             const gi = bookGroups.indexOf(g);
             const stars = "★".repeat(g.stars || 0);
-            return `<button class="book-dir-item" data-i="${gi}">
+            const hl = (!kw && gi === targetGi) ? " style=\"outline:2px solid var(--cyan);outline-offset:2px\"" : "";
+            return `<button class="book-dir-item" data-i="${gi}"${hl}>
               ${g.num ? '<span class="book-dir-no">第' + UI.esc(g.num) + '组</span>' : ""}
               <b>${UI.esc(g.name)}</b>${stars ? ' <span class="chip star">${stars}</span>' : ""}
               <span class="muted small">${g.words.length} 词</span></button>`;
           }).join("") || `<div class="empty">无匹配组别</div>`;
           box.querySelectorAll(".book-dir-item").forEach(b => b.onclick = () => openGroupReader(bookGroups[+b.dataset.i]));
+          if (!kw && targetGi >= 0) {
+            const el = box.querySelector(".book-dir-item[data-i=\"" + targetGi + "\"]");
+            if (el) el.scrollIntoView({ block: "center" });
+          }
         }
         box.querySelector("#kw").oninput = e => render(e.target.value.trim());
         render("");
@@ -387,8 +418,12 @@
         });
         const words = g.words;
         let wi = 0;
+        // 自动定位到上次已学过的词汇
+        const lw = DB.state.verbalLastWord;
+        if (lw) { const fi = words.findIndex(w => w.word === lw); if (fi >= 0) wi = fi; }
         function renderWord() {
           const w = words[wi];
+          DB.state.verbalLastWord = w.word; DB.save();
           const c = revG[w.word] || 0;
           host.innerHTML = `
             <div class="book-page">
