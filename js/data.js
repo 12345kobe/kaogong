@@ -58,7 +58,9 @@
     wrongbook: {}, // { subject: [ {id, q, a, ua, date, note, img} ] }
     notes: {}, // { subject: { qid: [ {color,width,points:[{x,y}]} ] } }  手写标注笔迹
     reviews: { verbal: {} }, // { word: {box, next} }
-    lastResetDay: null
+    lastResetDay: null,
+    dailyPlan: {}, // 每日计划：{ 'YYYY-MM-DD': { items: [{id,module,type,text,done,createdAt,accuracy,minutes}], note:"" } }
+    taskTimer: { task: "", startTs: 0, accumulated: 0, running: false, planId: null } // 上岸计时器（跨界面持续）
   };
 
   let state = null;
@@ -205,6 +207,89 @@
       const t = this.today();
       state.timer.subjectSessions[t] = state.timer.subjectSessions[t] || {};
       state.timer.subjectSessions[t][subject] = (state.timer.subjectSessions[t][subject] || 0) + minutes;
+      this.save();
+    },
+
+    /* ===== 每日计划 ===== */
+    getPlan(date) {
+      date = date || this.today();
+      state.dailyPlan[date] = state.dailyPlan[date] || { items: [], note: "" };
+      return state.dailyPlan[date];
+    },
+    addPlanItem(date, item) {
+      date = date || this.today();
+      const plan = this.getPlan(date);
+      item.id = item.id || this.uid();
+      item.done = false; item.createdAt = item.createdAt || Date.now();
+      plan.items.push(item);
+      this.save();
+      return item;
+    },
+    togglePlanItem(date, id) {
+      date = date || this.today();
+      const plan = this.getPlan(date);
+      const it = plan.items.find(x => x.id === id);
+      if (!it) return;
+      it.done = !it.done;
+      // 积累类完成 → 注册艾宾浩斯复习
+      if (it.type === "accumulate" && it.done && window.Ebbinghaus) {
+        window.Ebbinghaus.ensureRecord("planAccumulate", it.id);
+      }
+      this.save();
+      return it;
+    },
+    setPlanNote(date, note) {
+      date = date || this.today();
+      this.getPlan(date).note = note;
+      this.save();
+    },
+    /* 刷题 / 闪卡 自动记录进当日计划 */
+    autoPlanRecord(type, module, meta) {
+      try {
+        const label = { quiz: "刷题", flash: "闪卡" }[type] || type;
+        const text = meta && meta.text ? meta.text : (label + (module ? "·" + module : ""));
+        this.addPlanItem(this.today(), { module: module || "", type: type, text: text, meta: meta || null });
+      } catch (e) {}
+    },
+
+    /* ===== 上岸计时器 ===== */
+    timerState() { return state.taskTimer; },
+    timerStart(task, planId) {
+      const tt = state.taskTimer;
+      tt.task = task || tt.task || "专注学习";
+      tt.planId = planId || tt.planId || null;
+      if (tt.running) return tt;
+      tt.startTs = Date.now();
+      tt.running = true;
+      this.save();
+      return tt;
+    },
+    timerPause() {
+      const tt = state.taskTimer;
+      if (tt.running) {
+        tt.accumulated += Date.now() - tt.startTs;
+        tt.running = false;
+        this.save();
+      }
+      return tt;
+    },
+    timerStop() {
+      const tt = state.taskTimer;
+      if (tt.running) { tt.accumulated += Date.now() - tt.startTs; tt.running = false; }
+      const sec = Math.floor(tt.accumulated / 1000);
+      tt.accumulated = 0; tt.startTs = 0; tt.task = ""; tt.planId = null;
+      this.save();
+      return sec;
+    },
+    timerElapsedMs() {
+      const tt = state.taskTimer;
+      let ms = tt.accumulated || 0;
+      if (tt.running) ms += Date.now() - tt.startTs;
+      return ms;
+    },
+    timerReset() {
+      const tt = state.taskTimer;
+      tt.accumulated = 0; tt.startTs = 0; tt.running = false; tt.task = ""; tt.planId = null;
       this.save();
     },
     getTodaySubjectMinutes(subject) {

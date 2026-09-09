@@ -21,6 +21,11 @@
       const log = (window.DB.state.learnedLog || {})[stateKey] || {};
       return Object.keys(log).reduce((s, d) => s + (log[d] ? log[d].length : 0), 0);
     },
+    isLearned(stateKey, id) {
+      const log = (window.DB.state.learnedLog || {})[stateKey] || {};
+      for (const d in log) { if (log[d] && log[d].includes(id)) return true; }
+      return false;
+    },
     dates(stateKey) {
       const log = (window.DB.state.learnedLog || {})[stateKey] || {};
       return Object.keys(log).filter(d => log[d] && log[d].length).sort().reverse();

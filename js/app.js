@@ -3,7 +3,7 @@
   "use strict";
   const DB = window.DB, UI = window.UI, ICONS = window.ICONS, MODULES = window.MODULES;
 
-  const NAV = ["countdown", "verbal", "wrongwords", "data", "logic", "politics", "quantity", "common", "essay", "essays", "allusion", "calendar", "wrongbook", "stats"];
+  const NAV = ["countdown", "timer", "verbal", "wrongwords", "data", "logic", "relation", "politics", "quantity", "common", "essay", "essays", "allusion", "calendar", "wrongbook", "stats"];
   const GH_LABEL = "12345kobe/kaogong";
 
   /* ===== 深浅色主题：按时间自动切换 + 手动覆盖（到点仍按时间表切回） ===== */
@@ -69,7 +69,28 @@
       String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0") + ":" + String(d.getSeconds()).padStart(2, "0");
     const wk = ["日", "一", "二", "三", "四", "五", "六"][d.getDay()];
     document.getElementById("todayDate").textContent = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 周${wk}`;
+    updateTopTimer();
   }
+
+  // 顶栏常驻计时显示（上岸计时器跨界面持续）
+  function fmtMs(ms) {
+    const s = Math.max(0, Math.floor(ms / 1000));
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+    const p = n => String(n).padStart(2, "0");
+    return (h > 0 ? h + ":" : "") + p(m) + ":" + p(ss);
+  }
+  function updateTopTimer() {
+    const el = document.getElementById("topTimer");
+    if (!el) return;
+    const s = DB.timerState ? DB.timerState() : null;
+    if (s && s.running) {
+      el.style.display = "";
+      el.textContent = "⏱ " + fmtMs(DB.timerElapsedMs());
+    } else {
+      el.style.display = "none";
+    }
+  }
+  window.__updateTopTimer = updateTopTimer;
 
   function dailyQuote() {
     const arr = window.BANKS.MOTIVATION;
@@ -230,6 +251,9 @@
     document.getElementById("syncBtn").onclick = openAccount;
     document.getElementById("menuToggle").onclick = () => document.getElementById("sidebar").classList.toggle("open");
     document.getElementById("themeBtn").onclick = () => { const t = Theme.toggle(); UI.toast(t === "light" ? "已切换到浅色（护眼）模式" : "已切换到深色模式"); };
+    const topTimer = document.getElementById("topTimer");
+    if (topTimer) topTimer.onclick = () => { location.hash = "#/timer"; };
+    updateTopTimer();
     window.__refreshTop = refreshTop;
     window.addEventListener("hashchange", renderRoute);
     if (!location.hash) location.hash = "#/countdown";

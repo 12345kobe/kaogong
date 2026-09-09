@@ -179,6 +179,7 @@
           const mins = Math.max(1, Math.round(totalSec / 60));
           DB.addTimerMinutes(subject, mins);
           DB.addSubjectSession(subject, mins);
+          DB.autoPlanRecord("quiz", subject, { text: subject + "刷题 " + questions.length + " 题 · 正确率 " + pct + "%", pct: pct, count: questions.length });
         } catch (e) {}
         // 累计正确率
         try {

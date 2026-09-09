@@ -219,6 +219,11 @@
         const ac = DB.state.accuracyCumulative = DB.state.accuracyCumulative || {};
         ac[subject] = ac[subject] || { correct: 0, total: 0 };
         ac[subject].correct += correctN; ac[subject].total += totalN;
+        const pct = totalN ? Math.round(correctN / totalN * 100) : 0;
+        DB.autoPlanRecord("flash", subject, {
+          text: subject + "闪卡 " + totalN + " 条 · 正确率 " + pct + "%",
+          pct: pct, count: totalN
+        });
         DB.save();
       } catch (e) {}
       const cardEl = host.querySelector("#fcCard");
