@@ -176,7 +176,7 @@ label.fld{display:block;font-size:12px;color:var(--txt-dim);margin:8px 0 4px}
 .essay-meta{margin-bottom:6px}
 .essay-title{font-family:var(--font-head);font-weight:800;font-size:26px;line-height:1.35;
   text-align:center;margin:6px 0 18px;color:var(--txt);border-bottom:3px solid var(--cyan);padding-bottom:12px}
-.essay-body{font-size:16px;line-height:1.9;color:var(--txt)}
+.essay-body{font-size:16px;line-height:1.9;color:var(--txt);user-select:text;-webkit-user-select:text}
 .essay-body p{margin:0 0 12px;text-indent:2em}
 /* 蓝色字（PDF 原生蓝色文字）= 高亮+下划线 */
 .essay-body mark{background:#cfe3ff;color:#0b3d91;font-weight:700;padding:0 3px;border-radius:3px;text-decoration:underline;text-decoration-color:#1763c0;text-decoration-thickness:2px;text-underline-offset:3px}
@@ -204,23 +204,37 @@ label.fld{display:block;font-size:12px;color:var(--txt-dim);margin:8px 0 4px}
 .essay-body u[data-user-mark="line"]{text-decoration:underline;text-decoration-color:var(--um-c,#ff3b3b);text-decoration-thickness:2.5px;text-underline-offset:3px;color:inherit}
 .essay-body u.user-wavy,
 .essay-body u[data-user-mark="wavy"]{text-decoration:underline wavy;text-decoration-color:var(--um-c,#ff3b3b);text-decoration-thickness:2.5px;text-underline-offset:3px;color:inherit}
-/* 浮动选区工具条 */
-.essay-toolbar{position:absolute;display:flex;gap:4px;align-items:center;background:#1d2336;color:#fff;border-radius:10px;
-  padding:6px 8px;box-shadow:0 6px 22px rgba(0,0,0,.28);z-index:999;font-size:13px;user-select:none}
-.essay-toolbar .et-btn{cursor:pointer;padding:4px 8px;border-radius:6px;border:1px solid transparent;background:transparent;color:#fff;font-weight:700;font-size:13px}
+/* 浮动选区工具条：fixed + 视口坐标，移动端也不会飘出屏幕 */
+.essay-toolbar{position:fixed;display:flex;flex-wrap:wrap;gap:4px;align-items:center;background:#1d2336;color:#fff;border-radius:12px;
+  padding:8px 10px;box-shadow:0 8px 26px rgba(0,0,0,.35);z-index:9999;font-size:13px;
+  user-select:none;-webkit-user-select:none;touch-action:manipulation;
+  max-width:calc(100vw - 16px);border:1px solid rgba(255,255,255,.14)}
+.essay-toolbar .et-btn{cursor:pointer;min-height:34px;display:inline-flex;align-items:center;padding:6px 10px;border-radius:7px;border:1px solid transparent;background:transparent;color:#fff;font-weight:700;font-size:13px;-webkit-tap-highlight-color:transparent}
 .essay-toolbar .et-btn:hover{background:rgba(255,255,255,.12)}
-.essay-toolbar .et-btn.active{background:rgba(255,255,255,.22);border-color:rgba(255,255,255,.4)}
-.essay-toolbar .et-sep{width:1px;height:20px;background:rgba(255,255,255,.25);margin:0 2px}
-.essay-toolbar .et-swatches{display:flex;gap:3px;align-items:center}
-.essay-toolbar .et-sw{width:18px;height:18px;border-radius:50%;border:2px solid rgba(255,255,255,.4);cursor:pointer;display:inline-block}
-.essay-toolbar .et-sw.active{border-color:#fff;box-shadow:0 0 0 2px rgba(255,255,255,.25)}
-.essay-toolbar .et-close{opacity:0.7;cursor:pointer;font-size:16px;padding:0 4px}
-body.light .essay-toolbar{background:#fff;color:#111;border:1px solid #d6dce6;box-shadow:0 6px 18px rgba(0,0,0,.12)}
+.essay-toolbar .et-btn.active{background:rgba(255,255,255,.26);border-color:rgba(255,255,255,.55)}
+.essay-toolbar .et-btn.apply{background:#9b6cff;border-color:#9b6cff;color:#fff;min-height:36px;padding:7px 14px;font-size:14px}
+.essay-toolbar .et-btn.apply:active{transform:scale(.96)}
+.essay-toolbar .et-btn.danger{color:#ff9a9a}
+.essay-toolbar .et-sep{width:1px;height:22px;background:rgba(255,255,255,.25);margin:0 2px}
+.essay-toolbar .et-swatches{display:flex;gap:5px;align-items:center}
+.essay-toolbar .et-sw{width:24px;height:24px;border-radius:50%;border:2px solid rgba(255,255,255,.4);cursor:pointer;display:inline-block}
+.essay-toolbar .et-sw.active{border-color:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.28)}
+.essay-toolbar .et-close{opacity:.75;cursor:pointer;font-size:17px;padding:0 6px;min-height:34px;display:inline-flex;align-items:center}
+body.light .essay-toolbar{background:#fff;color:#111;border:1px solid #d6dce6;box-shadow:0 8px 24px rgba(0,0,0,.16)}
 body.light .essay-toolbar .et-btn:hover{background:#f2f4f8}
-body.light .essay-toolbar .et-btn.active{background:#eaf1ff}
+body.light .essay-toolbar .et-btn.active{background:#eaf1ff;border-color:#9b6cff}
+body.light .essay-toolbar .et-btn.danger{color:#c0392b}
 body.light .essay-toolbar .et-sep{background:#d6dce6}
 body.light .essay-toolbar .et-sw{border-color:rgba(0,0,0,.25)}
 body.light .essay-toolbar .et-sw.active{border-color:#111}
+/* 用户标记可点：给个手型和轻微底纹，提示可再编辑 */
+.essay-body [data-mark-id]{cursor:pointer}
+/* 工具条小三角（视觉上指向选区） */
+.essay-toolbar::after{content:"";position:absolute;border:7px solid transparent;left:22px}
+.essay-toolbar.tb-below::after{top:-14px;border-bottom-color:#1d2336}
+.essay-toolbar.tb-above::after{bottom:-14px;border-top-color:#1d2336}
+body.light .essay-toolbar.tb-below::after{border-bottom-color:#fff}
+body.light .essay-toolbar.tb-above::after{border-top-color:#fff}
 
 /* ===== 好词好句编辑 ===== */
 .gw-list li{display:flex;align-items:flex-start;gap:6px}

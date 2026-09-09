@@ -379,9 +379,9 @@
       const eeIn = (b.essay && b.essay.essaysEdit) || {};
       function mergeMarks(ca, cb) {
         const out = (ca || []).slice();
-        const seen = new Set(out.map(m => (m.phrase||"") + "|" + (m.type||"") + "|" + (m.color||"")));
+        const seen = new Set(out.map(m => (m.phrase||"") + "|" + (m.type||"") + "|" + (m.color||"") + "|" + (m.nth||0)));
         (cb || []).forEach(m => {
-          const sig = (m.phrase || "") + "|" + (m.type || "") + "|" + (m.color || "");
+          const sig = (m.phrase || "") + "|" + (m.type || "") + "|" + (m.color || "") + "|" + (m.nth||0);
           if (!seen.has(sig) && m.phrase) { out.push(m); seen.add(sig); }
         });
         return out;
