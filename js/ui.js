@@ -58,10 +58,31 @@
       </svg><div class="disc-center">${centerHtml}</div></div>`;
     },
 
-    /* ===== 上岸计时器组件 ===== */
+    /* ===== 上岸计时器组件（大号电子钟倒计时 + 每次不同的激励语）===== */
     Timer(module, mount) {
-      let remain = 0, total = DB.state.settings.timerGoalMin || 25, running = false, iv = null;
-
+      let remain = 0, total = DB.state.settings.timerGoalMin || 25, running = false, iv = null, doneMsg = "";
+      let lastIdx = -1;
+      const PHRASES = [
+        "坚持很酷，今天的你比昨天更强一寸。",
+        "把每一分钟，都变成上岸的台阶。",
+        "专注的力量，会悄悄改写结局。",
+        "你读过的每一页书，都在为未来铺路。",
+        "别着急，按自己的节奏，稳稳地走。",
+        "上岸不是运气，是日复一日的笃定。",
+        "这一程的孤独，是为了下一段的辽阔。",
+        "你现在的努力，是给未来的自己写情书。",
+        "慢一点没关系，只要一直在向前。",
+        "今天的专注，是明天考场上多一分底气。",
+        "能坐得住冷板凳的人，才配得上热掌声。",
+        "你离想要的生活，只差不肯放弃的自己。"
+      ];
+      function pickPhrase() {
+        let i;
+        do { i = Math.floor(Math.random() * PHRASES.length); } while (PHRASES.length > 1 && i === lastIdx);
+        lastIdx = i;
+        return PHRASES[i];
+      }
+      function fmt(s) { return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }
       function render() {
         const todayMin = DB.getTodayMinutes();
         const goal = DB.state.timerGoal[module] || (DB.state.settings.timerGoalMin * 4);
@@ -74,32 +95,44 @@
             ${UI.disc(pct, `<div class="disc-min">${todayMin}</div><div class="disc-sub">/ ${goal} 分钟</div>`)}
             <div class="muted small">今日已完成专注 ${cnt} 次</div>
           </div>
-          <div class="row" style="justify-content:center;margin-top:10px">
+          <div class="row" style="justify-content:center;margin-top:10px;flex-wrap:wrap;gap:8px">
             <label class="fld" style="margin:0">单段时长(分)</label>
-            <input type="number" min="1" max="180" value="${total}" id="tDur" style="width:80px"/>
-            <button class="btn primary" id="tStart">开始</button>
+            <input type="number" min="1" max="600" value="${total}" id="tDur" style="width:80px"/>
+            <button class="btn primary" id="tStart">${running ? "暂停" : "开始"}</button>
             <button class="btn" id="tReset">重置</button>
             <button class="btn ghost" id="tLog" title="直接记录一段">＋记录</button>
           </div>
-          <div id="tStatus" class="center muted small" style="margin-top:8px">${running ? "专注中：剩余 " + fmt(remain) : "设定时长后开始，结束自动记录"}</div>
+          <div id="tStatus" class="center muted small" style="margin-top:10px">${running ? "专注中，保持呼吸，稳住" : "设定时长后开始，结束自动记录"}</div>
+          <div id="tClock" class="timer-clock ${running ? "show" : ""}">${fmt(running ? remain : total * 60)}</div>
+          <div id="tDone" class="timer-done" style="${doneMsg ? "display:block" : "display:none"}">${doneMsg ? "🎉 " + doneMsg : ""}</div>
         </div>`;
-        mount.querySelector("#tDur").onchange = e => { total = Math.max(1, +e.target.value || 25); };
+        mount.querySelector("#tDur").onchange = e => { total = Math.max(1, +e.target.value || 25); if (!running) render(); };
         mount.querySelector("#tStart").onclick = () => running ? stop(false) : start();
         mount.querySelector("#tReset").onclick = () => stop(true);
         mount.querySelector("#tLog").onclick = () => { DB.addTimerMinutes(module, total); bump(); render(); UI.toast("已记录 " + total + " 分钟"); };
       }
-      function fmt(s) { return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }
       function start() {
         total = Math.max(1, +mount.querySelector("#tDur").value || 25);
-        remain = total * 60; running = true; render();
+        remain = total * 60; running = true; doneMsg = "";
+        clearInterval(iv); iv = null;
+        render();
+        const clockEl = mount.querySelector("#tClock");
         iv = setInterval(() => {
-          remain--; mount.querySelector("#tStatus").textContent = "专注中：剩余 " + fmt(remain);
-          if (remain <= 0) { stop(false); DB.addTimerMinutes(module, total); bump(); render(); UI.toast("🎉 专注完成 +" + total + " 分钟"); }
+          remain--;
+          if (clockEl) clockEl.textContent = fmt(remain);
+          if (remain <= 0) finish();
         }, 1000);
       }
-      function stop(reset) {
+      function finish() {
         running = false; clearInterval(iv); iv = null;
-        if (reset) { remain = 0; }
+        DB.addTimerMinutes(module, total); bump();
+        doneMsg = pickPhrase();
+        UI.toast("🎉 专注完成 +" + total + " 分钟");
+        render();
+      }
+      function stop(reset) {
+        running = false; clearInterval(iv); iv = null; doneMsg = "";
+        if (reset) remain = 0;
         render();
       }
       function bump() { const tm = DB.state.timer.counts = DB.state.timer.counts || {}; const t = DB.today(); tm[t] = (tm[t] || 0) + 1; DB.save(); }

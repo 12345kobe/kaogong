@@ -105,7 +105,39 @@
       if (migrated) this.save(true);
 
       this.dailyResetIfNeeded();
+
+      // 自检：累计答题数若被异常放大（历史「求和合并」导致的翻倍残留），自动清零并提示
+      const bad = this.absurdCounts();
+      if (bad.length) {
+        bad.forEach(s => { state.accuracyCumulative[s] = { correct: 0, total: 0 }; });
+        this.save(true);
+        setTimeout(() => {
+          try { window.UI && window.UI.toast("已修复「" + bad.join("、") + "」异常放大的答题数（历史翻倍导致），已清零重新累计"); } catch (e) {}
+        }, 1200);
+      }
       return state;
+    },
+
+    /* ===== 累计答题数：异常检测 / 重置 =====
+       早期版本对 accuracyCumulative 做「求和」合并，配合自动同步会指数翻倍
+       （100→200→400→800…），可涨到几百万。现已改为取大（不再增长），
+       但已被污染的历史数值需要显式重置才能恢复。 */
+    ABSURD_COUNT: 200000,
+    absurdCounts() {
+      const ac = (state && state.accuracyCumulative) || {};
+      const bad = [];
+      for (const s in ac) {
+        const c = ac[s] || {};
+        if ((c.total || 0) > this.ABSURD_COUNT || (c.correct || 0) > this.ABSURD_COUNT) bad.push(s);
+      }
+      return bad;
+    },
+    resetAccuracy(subjects) {
+      const ac = state.accuracyCumulative = state.accuracyCumulative || {};
+      const list = (subjects && subjects.length) ? subjects : Object.keys(ac);
+      list.forEach(s => { ac[s] = { correct: 0, total: 0 }; });
+      this.save(true);
+      return list;
     },
 
     _localSave() { try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {} },
@@ -253,12 +285,16 @@
 
       // 累计正确率 / 累计答题数：取较大值（**不累加**）
       //   导入的数据更多 → 取导入的；导入的更少 → 维持本机不变
+      //   但若 b 端数值异常放大（历史「求和合并」翻倍残留，可达数百万），
+      //   则忽略 b 端、沿用本地值 —— 防止被污染的云端数据在自动拉取时反复污染本机
       const ac = b.accuracyCumulative || {};
       out.accuracyCumulative = out.accuracyCumulative || {};
       for (const s in ac) {
         out.accuracyCumulative[s] = out.accuracyCumulative[s] || { correct: 0, total: 0 };
-        out.accuracyCumulative[s].correct = Math.max(out.accuracyCumulative[s].correct || 0, (ac[s] && ac[s].correct) || 0);
-        out.accuracyCumulative[s].total = Math.max(out.accuracyCumulative[s].total || 0, (ac[s] && ac[s].total) || 0);
+        const bTotal = (ac[s] && ac[s].total) || 0, bCorrect = (ac[s] && ac[s].correct) || 0;
+        if (bTotal > this.ABSURD_COUNT || bCorrect > this.ABSURD_COUNT) continue; // 污染值，跳过
+        out.accuracyCumulative[s].correct = Math.max(out.accuracyCumulative[s].correct || 0, bCorrect);
+        out.accuracyCumulative[s].total = Math.max(out.accuracyCumulative[s].total || 0, bTotal);
       }
 
       // 错词 / 错题本：按 id 去重追加

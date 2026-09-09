@@ -13,6 +13,7 @@
     quantity: wrap(`<rect x="5" y="6" width="22" height="20" rx="3" stroke="${C}"/><path d="M10 11h3M19 11h3M10 16h3M19 16h3M10 21h3M19 21h3" stroke="${M}"/><circle cx="25" cy="9" r="1.4" fill="${Y}" stroke="none"/>`),
     common: wrap(`<path d="M16 4l9 5v8c0 6-4 9-9 11-5-2-9-5-9-11V9z" stroke="${C}"/><path d="M13 13h6M16 13v6" stroke="${M}"/><circle cx="22" cy="8" r="1.4" fill="${Y}" stroke="none"/>`),
     essay: wrap(`<path d="M7 5h12l6 6v16H7z" stroke="${C}"/><path d="M14 5v6h6" stroke="${M}"/><path d="M11 16l8 8M19 24l3-1-1-3" stroke="${M}"/><circle cx="24" cy="7" r="1.4" fill="${Y}" stroke="none"/>`),
+    essays: wrap(`<path d="M7 5h12l6 6v16H7z" stroke="${C}"/><path d="M14 5v6h6" stroke="${M}"/><path d="M11 14h10M11 18h10M11 22h6" stroke="${M}"/><circle cx="24" cy="7" r="1.4" fill="${Y}" stroke="none"/>`),
     calendar: wrap(`<rect x="5" y="6" width="22" height="21" rx="3" stroke="${C}"/><path d="M5 12h22M10 4v5M22 4v5" stroke="${M}"/><circle cx="16" cy="19" r="2" fill="${Y}" stroke="none"/>`),
     wrongbook: wrap(`<path d="M6 6h9a3 3 0 0 1 3 3v17l-6-3-6 3V6z" stroke="${C}"/><path d="M18 9h8v17l-4 2-4-2" stroke="${M}"/><path d="M10 12l3 3M13 12l-3 3" stroke="${Y}"/>`),
     wrongwords: wrap(`<path d="M6 6h9a3 3 0 0 1 3 3v17l-6-3-6 3V6z" stroke="${C}"/><path d="M19 11h7M19 16h7M19 21h4" stroke="${M}"/><circle cx="25" cy="8" r="1.6" fill="${Y}" stroke="none"/>`),

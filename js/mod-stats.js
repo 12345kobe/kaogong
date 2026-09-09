@@ -52,7 +52,15 @@
       </div>`;
 
       // ===== 各科累计正确率 明细表 =====
-      html += `<div class="card"><h3>📋 各科累计正确率明细</h3><div id="accTable"></div></div>`;
+      const badC = DB.absurdCounts ? DB.absurdCounts() : [];
+      html += `<div class="card"><h3>📋 各科累计正确率明细</h3>
+        <div class="row" style="justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+          <span class="muted small">${badC.length
+            ? "⚠️ 检测到「" + UI.esc(badC.join("、")) + "」答题数异常（历史翻倍导致），建议立即重置"
+            : "若答题数出现异常放大，可一键重置为 0，之后重新累计"}</span>
+          <button class="btn sm ${badC.length ? "magenta" : "ghost"}" id="accReset">🔧 重置累计答题数</button>
+        </div>
+        <div id="accTable"></div></div>`;
 
       // ===== 学习计划 =====
       const todayPct = totalTarget > 0 ? Math.min(100, Math.round(todayMin / totalTarget * 100)) : 0;
@@ -83,6 +91,22 @@
         </div>`);
         accTable.appendChild(row);
       });
+
+      // ===== 累计答题数 重置（修复历史翻倍）=====
+      const accResetBtn = body.querySelector("#accReset");
+      if (accResetBtn) accResetBtn.onclick = () => {
+        const bad = DB.absurdCounts();
+        const msg = bad.length
+          ? "检测到「" + bad.join("、") + "」答题数被异常放大（历史翻倍导致）。"
+          : "将把所有科目的累计答题数清零，之后重新开始累计（不会删除你的错题、学习历史等其他数据）。";
+        if (!confirm(msg + "\n\n确定重置？")) return;
+        const reset = DB.resetAccuracy();
+        UI.toast("已重置 " + reset.length + " 个科目的累计答题数，正在同步…");
+        // 立即重新渲染 + 推送云端，确保被污染的云端数值被覆盖
+        render();
+        DB.save(true);
+        refreshTop();
+      };
 
       // ===== 学习计划 可编辑 =====
       const planGrid = body.querySelector("#planGrid");
