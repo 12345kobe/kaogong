@@ -14,6 +14,8 @@
   "use strict";
   const KEY_IDX = "kg_essay_idx";
   const BLOCK_SEL = "p, div.essay-sec, h1, h2, h3, li";
+  // PDF 原文标记（按此顺序编号，用户可改色/改样式/去掉）
+  const ORIGIN_SEL = "mark.essay-hl, u.essay-line, mark:not([class]), b.essay-red";
 
   function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
@@ -47,11 +49,11 @@
   }
   function getEdit(idx) {
     const all = readEdits();
-    return all[idx] || { phrases: null, marks: [] };
+    return all[idx] || { phrases: null, marks: [], origin: {} };
   }
   function setEdit(idx, patch) {
     const all = readEdits();
-    all[idx] = Object.assign({ phrases: null, marks: [] }, getEdit(idx), patch);
+    all[idx] = Object.assign({ phrases: null, marks: [], origin: {} }, getEdit(idx), patch);
     persistEdits(all);
   }
   function getEffectivePhrases(idx, original) {
@@ -126,7 +128,6 @@
       const str = root.textContent || "";
       let g = nthIndexOf(str, m.phrase, m.nth || 0);
       if (g < 0) g = str.indexOf(m.phrase);
-      if (g < 0) return;
       const ok = wrapGlobal(root, g, g + m.phrase.length, () => {
         const wrap = document.createElement(m.type === "hl" ? "mark" : "u");
         wrap.className = m.type === "hl" ? "user-hl" : (m.type === "wavy" ? "user-wavy" : "user-line");
@@ -141,41 +142,122 @@
     return tmp.innerHTML;
   }
 
-  // ---------- 把所有标记（原文 + 用户）转内联样式，供 PDF 导出保留 ----------
-  function inlineMarksForExport(html, userMarks) {
+  // ---------- 应用「用户对 PDF 原文标记的修改」 ----------
+  // origin: { "序号": { type:'hl'|'line'|'wavy'|'none'|'keep', color } }
+  function applyOriginEdits(baseHtml, origin) {
+    if (!origin) return baseHtml;
+    const keys = Object.keys(origin);
+    if (!keys.length) return baseHtml;
+    const tmp = document.createElement("div");
+    tmp.innerHTML = baseHtml;
+    const els = Array.prototype.slice.call(tmp.querySelectorAll(ORIGIN_SEL));
+    // 先给所有原文标记编号（保证页面上的 data-oi 与这里的序号一致）
+    els.forEach((el, i) => { el.setAttribute("data-oi", String(i)); el.setAttribute("data-origin", "1"); });
+    keys.forEach(k => {
+      const oi = parseInt(k, 10);
+      const el = els[oi];
+      const cfg = origin[k];
+      if (!el || !cfg) return;
+      const color = (COLORS.find(c => c.id === cfg.color) || COLORS[0]).hex;
+      if (cfg.type === "none") {           // 去掉标记，只留文字
+        while (el.firstChild) el.parentNode.insertBefore(el.firstChild, el);
+        el.parentNode.removeChild(el);
+        return;
+      }
+      if (cfg.type === "keep") {           // 保持原样式，仅换颜色
+        if (cfg.color) {
+          el.setAttribute("data-user-mark", "keep");
+          el.classList.add("o-tint");
+          el.style.setProperty("--um-c", color);
+          el.style.setProperty("--um-bg", color);
+        }
+        return;
+      }
+      const newEl = document.createElement(cfg.type === "hl" ? "mark" : "u");
+      newEl.className = cfg.type === "hl" ? "o-hl" : (cfg.type === "wavy" ? "o-wavy" : "o-line");
+      newEl.setAttribute("data-user-mark", cfg.type);
+      newEl.setAttribute("data-oi", String(oi));
+      newEl.style.setProperty("--um-c", color);
+      newEl.style.setProperty("--um-bg", color);
+      while (el.firstChild) newEl.appendChild(el.firstChild);
+      el.parentNode.replaceChild(newEl, el);
+      els[oi] = newEl;
+    });
+    return tmp.innerHTML;
+  }
+
+  // ---------- 把所有标记（原文 + 用户 + 被改过的原文）转内联样式，供 PDF 导出保留 ----------
+  // 用 DOM 处理（正则在嵌套标记下会错位）：用户标记内部的原文标记背景会被中和，保证用户颜色完整可见
+  function inlineMarksForExport(html, userMarks, opts) {
+    const o = opts || {};
     const cmap = {};
     COLORS.forEach(c => { cmap[c.id] = c.hex; });
     const umap = {};
     (userMarks || []).forEach(m => { umap[m.id] = cmap[m.color] || cmap[DEFAULT_COLOR]; });
-    function pick(attrs) {
-      const mm = /data-mark-id="([^"]+)"/.exec(attrs || "");
-      return (mm && umap[mm[1]]) || null;
+
+    const tmp = document.createElement("div");
+    tmp.innerHTML = html;
+    // 按选项剥离：只留文字，去掉标签
+    function unwrap(sel) {
+      Array.prototype.slice.call(tmp.querySelectorAll(sel)).forEach(el => {
+        while (el.firstChild) el.parentNode.insertBefore(el.firstChild, el);
+        el.parentNode.removeChild(el);
+      });
     }
+    if (!o.includeUserMarks) unwrap("mark.user-hl, u.user-line, u.user-wavy");
+    if (!o.includeMarks) unwrap("mark.essay-hl, u.essay-line, mark:not([class]), b.essay-red, mark.o-hl, u.o-line, u.o-wavy");
 
-    let out = html
-      .replace(/<mark class="essay-hl">/g, '<span class="essay-hl-i">')
-      .replace(/<mark>/g, '<span class="essay-blue-i">')
-      .replace(/<\/mark>/g, "</span>")
-      .replace(/<u class="essay-line">/g, '<span class="essay-line-i">')
-      .replace(/<u>/g, '<span class="essay-u-i">')
-      .replace(/<\/u>/g, "</span>")
-      .replace(/<b class="essay-red">/g, '<b class="essay-red-i">')
-      .replace(/<p class="essay-p">/g, '<p class="essay-p-i">')
-      .replace(/<p>/g, '<p class="essay-p-i">');
+    function toSpan(el, style, keepColor) {
+      const s = document.createElement("span");
+      s.setAttribute("style", style + (keepColor ? ";color:" + keepColor : ""));
+      while (el.firstChild) s.appendChild(el.firstChild);
+      el.parentNode.replaceChild(s, el);
+      return s;
+    }
+    const HL = "background:#ffe680;padding:0 2px;border-radius:2px";
+    const BLUE = "color:#0b3d91;font-weight:700;text-decoration:underline;text-decoration-color:#1763c0;text-decoration-thickness:2px;text-underline-offset:3px";
+    const LINE = "text-decoration:underline;text-decoration-color:#e23b54;text-decoration-thickness:2.5px;text-underline-offset:3px";
+    const WAVY = "text-decoration:underline wavy;text-decoration-color:#e23b54;text-decoration-thickness:2.5px;text-underline-offset:3px";
+    const RED = "color:#e23b54;font-weight:700";
 
-    out = out.replace(/<mark class="user-hl"([^>]*)>/g, (m0, attrs) => {
-      const c = pick(attrs) || "#ffd542";
-      return `<span style="background:${c};padding:0 2px;border-radius:2px;font-weight:700">`;
+    // 1) 原文标记
+    Array.prototype.slice.call(tmp.querySelectorAll("mark.essay-hl")).forEach(el => toSpan(el, HL));
+    Array.prototype.slice.call(tmp.querySelectorAll("u.essay-line")).forEach(el => toSpan(el, LINE));
+    Array.prototype.slice.call(tmp.querySelectorAll("mark:not([class])")).forEach(el => toSpan(el, BLUE));
+    Array.prototype.slice.call(tmp.querySelectorAll("b.essay-red")).forEach(el => toSpan(el, RED));
+    // 2) 用户标记（含被用户改过的原文标记 o-hl/o-line/o-wavy）
+    function userMarkStyle(el, kind) {
+      const mid = el.getAttribute("data-mark-id");
+      const c = (mid && umap[mid]) || el.style.getPropertyValue("--um-c") || "#ff3b3b";
+      if (kind === "hl") return `background:${c};padding:0 2px;border-radius:2px;font-weight:700`;
+      if (kind === "wavy") return `text-decoration:underline wavy;text-decoration-color:${c};text-decoration-thickness:2.5px;text-underline-offset:3px;font-weight:700`;
+      return `text-decoration:underline;text-decoration-color:${c};text-decoration-thickness:2.5px;text-underline-offset:3px;font-weight:700`;
+    }
+    ["user-hl", "o-hl"].forEach(cls => {
+      Array.prototype.slice.call(tmp.querySelectorAll("mark." + cls)).forEach(el => {
+        const s = toSpan(el, userMarkStyle(el, "hl"));
+        neutralizeInner(s);
+      });
     });
-    out = out.replace(/<u class="user-line"([^>]*)>/g, (m0, attrs) => {
-      const c = pick(attrs) || "#ff3b3b";
-      return `<span style="text-decoration:underline;text-decoration-color:${c};text-decoration-thickness:2.5px;text-underline-offset:3px;font-weight:700">`;
+    ["user-line", "o-line"].forEach(cls => {
+      Array.prototype.slice.call(tmp.querySelectorAll("u." + cls)).forEach(el => toSpan(el, userMarkStyle(el, "line")));
     });
-    out = out.replace(/<u class="user-wavy"([^>]*)>/g, (m0, attrs) => {
-      const c = pick(attrs) || "#ff3b3b";
-      return `<span style="text-decoration:underline wavy;text-decoration-color:${c};text-decoration-thickness:2.5px;text-underline-offset:3px;font-weight:700">`;
+    ["user-wavy", "o-wavy"].forEach(cls => {
+      Array.prototype.slice.call(tmp.querySelectorAll("u." + cls)).forEach(el => toSpan(el, userMarkStyle(el, "wavy")));
     });
-    return out;
+    // 3) 段落缩进
+    Array.prototype.slice.call(tmp.querySelectorAll("p")).forEach(el => {
+      const st = el.getAttribute("style") || "";
+      el.setAttribute("style", st + ";text-indent:2em;margin:0 0 10px;line-height:1.9");
+    });
+    return tmp.innerHTML;
+  }
+  // 中和用户高亮内部的原文底色，避免用户颜色被盖住
+  function neutralizeInner(span) {
+    Array.prototype.slice.call(span.querySelectorAll("span")).forEach(s => {
+      const st = s.getAttribute("style") || "";
+      s.setAttribute("style", st.replace(/background:[^;]*;?/g, "") + ";background:transparent");
+    });
   }
 
   // ---------- 字体选择 ----------
@@ -254,7 +336,9 @@
       function getRenderedHtml(e, i) {
         if (renderCache[i] !== undefined) return renderCache[i];
         const ed = getEdit(i);
-        const html = ed.marks && ed.marks.length ? applyMarks(e.html, ed.marks) : e.html;
+        let html = e.html;
+        if (ed.origin) html = applyOriginEdits(html, ed.origin);   // 先套「原文标记改动」
+        if (ed.marks && ed.marks.length) html = applyMarks(html, ed.marks);  // 再套「用户标记」
         renderCache[i] = html;
         return html;
       }
@@ -272,13 +356,14 @@
       let currentColor = DEFAULT_COLOR;
       let currentType = "line";
       let pendingCap = null;   // 选区快照（iOS 上选区可能已被系统清掉，用快照兜底）
-      let editingId = null;    // 正在编辑的已有标记 id
+      let editingId = null;    // 正在编辑的用户标记 id
+      let editOi = null;       // 正在编辑的 PDF 原文标记序号
       let selTimer = null;
 
       // keepPending=true：重绘工具条时保留选区快照（showToolbar 内部复用）
       function hideToolbar(keepPending) {
         if (toolbar) { toolbar.remove(); toolbar = null; }
-        editingId = null;
+        editingId = null; editOi = null;
         if (!keepPending) pendingCap = null;
       }
 
@@ -301,10 +386,12 @@
         });
       }
 
-      function showToolbar(rect, mode, editId) {
+      function showToolbar(rect, mode, editId, editOiNum) {
         hideToolbar(true);
         editingId = editId || null;
+        editOi = (editOiNum == null ? null : editOiNum);
         const isEdit = mode === "edit";
+        const isOrigin = editOi != null;   // 编辑 PDF 原文标记
         toolbar = document.createElement("div");
         toolbar.className = "essay-toolbar";
         toolbar.innerHTML = `
@@ -316,9 +403,9 @@
           <span class="et-btn ${currentType==='line'?'active':''}" data-t="line">━ 横线</span>
           <span class="et-btn ${currentType==='wavy'?'active':''}" data-t="wavy">〰 波浪</span>
           <span class="et-sep"></span>
-          <span class="et-btn apply" data-act="apply">✓ 确定</span>
+          <span class="et-btn apply" data-act="apply">${isEdit ? "✓ 应用" : "✓ 确定"}</span>
           <span class="et-sep"></span>
-          ${isEdit ? `<span class="et-btn danger" data-act="del">🗑 删除</span><span class="et-sep"></span>` : ""}
+          ${isEdit ? `<span class="et-btn danger" data-act="del">${isOrigin ? "🗑 去掉" : "🗑 删除"}</span>${isOrigin ? `<span class="et-btn" data-act="reset">↺ 原样</span>` : ""}<span class="et-sep"></span>` : ""}
           <span class="et-btn" data-act="addgw" title="加入好词好句">+ 好句</span>
           <span class="et-close" data-act="close">✕</span>
         `;
@@ -331,12 +418,12 @@
         function syncColorUI() {
           toolbar.querySelectorAll(".et-sw").forEach(x => x.classList.toggle("active", x.dataset.c === currentColor));
         }
-        // 颜色：仅切换；若是「改已有标记」模式则立即生效
+        // 颜色：仅切换；「改已有标记」模式下立即生效
         toolbar.querySelectorAll(".et-sw").forEach(sw => {
           sw.onclick = (e) => {
             e.preventDefault(); e.stopPropagation();
             currentColor = sw.dataset.c; syncColorUI();
-            if (isEdit && editingId) { updateMark(editingId, { color: currentColor }); }
+            if (isEdit) { if (isOrigin) updateOrigin(editOi, { color: currentColor }); else if (editingId) updateMark(editingId, { color: currentColor }); }
           };
         });
         // 类型：选区模式仅切换（点「✓ 确定」生效）；编辑模式立即生效
@@ -344,10 +431,16 @@
           b.onclick = (e) => {
             e.preventDefault(); e.stopPropagation();
             currentType = b.dataset.t; syncTypeUI();
-            if (isEdit && editingId) { updateMark(editingId, { type: currentType }); }
+            if (isEdit) { if (isOrigin) updateOrigin(editOi, { type: currentType }); else if (editingId) updateMark(editingId, { type: currentType }); }
           };
         });
-        toolbar.querySelector('[data-act="apply"]').onclick = (e) => { e.preventDefault(); e.stopPropagation(); doApply(); };
+        toolbar.querySelector('[data-act="apply"]').onclick = (e) => {
+          e.preventDefault(); e.stopPropagation();
+          if (isEdit) {
+            if (isOrigin) updateOrigin(editOi, { type: currentType, color: currentColor });
+            else if (editingId) updateMark(editingId, { type: currentType, color: currentColor });
+          } else doApply();
+        };
         toolbar.querySelector('[data-act="close"]').onclick = (e) => { e.preventDefault(); e.stopPropagation(); hideToolbar(); try { window.getSelection().removeAllRanges(); } catch (err) {} };
         toolbar.querySelector('[data-act="addgw"]').onclick = (e) => {
           e.preventDefault(); e.stopPropagation();
@@ -358,9 +451,17 @@
         if (isEdit) {
           toolbar.querySelector('[data-act="del"]').onclick = (e) => {
             e.preventDefault(); e.stopPropagation();
-            if (!editingId) return;
+            if (isOrigin) { updateOrigin(editOi, { type: "none" }, "已去掉原标记"); return; }            if (!editingId) return;
             const marks = (getEdit(idx).marks || []).filter(m => m.id !== editingId);
             persistAndRerender({ marks }, "已删除标记");
+          };
+          const rst = toolbar.querySelector('[data-act="reset"]');
+          if (rst) rst.onclick = (e) => {
+            e.preventDefault(); e.stopPropagation();
+            if (isOrigin) { updateOrigin(editOi, { type: "reset" }, "已还原为 PDF 原标记"); return; }
+            const origin = Object.assign({}, getEdit(idx).origin || {});
+            delete origin[editOi];
+            persistAndRerender({ origin }, "已还原为 PDF 原标记");
           };
         }
         // 按住工具条时不让选区丢失（iOS 上选区被清也没关系：已存快照 pendingCap）
@@ -418,11 +519,66 @@
         persistAndRerender({ marks }, `已加${TYPE_LABEL[currentType] || "标记"}：${first.slice(0, 10)}${first.length > 10 ? "…" : ""}${extra}`);
       }
 
-      function updateMark(id, patch) {
-        const marks = (getEdit(idx).marks || []).map(m => m.id === id ? Object.assign({}, m, patch) : m);
-        editingId = id;
-        persistAndRerender({ marks }, "已更新标记");
-        editingId = null;
+      // 原地改样式（不重渲染，工具条就不会消失，可连续调色/换样式）
+      function restyleEl(el, type, color, isOrigin) {
+        if (!el) return null;
+        const hex = (COLORS.find(c => c.id === color) || COLORS[0]).hex;
+        if (type === "keep") {                       // 保持原文样式，只换色
+          el.classList.add("o-tint");
+          el.setAttribute("data-user-mark", "keep");
+          el.style.setProperty("--um-c", hex);
+          el.style.setProperty("--um-bg", hex);
+          return el;
+        }
+        let target = el;
+        const needTag = (type === "hl") ? "MARK" : "U";
+        if (el.tagName !== needTag) {
+          const n = document.createElement(type === "hl" ? "mark" : "u");
+          Array.prototype.slice.call(el.attributes).forEach(a => n.setAttribute(a.name, a.value));
+          while (el.firstChild) n.appendChild(el.firstChild);
+          el.parentNode.replaceChild(n, el);
+          target = n;
+        }
+        const base = isOrigin ? "o" : "user";
+        target.className = type === "hl" ? base + "-hl" : (type === "wavy" ? base + "-wavy" : base + "-line");
+        target.setAttribute("data-user-mark", type);
+        target.style.setProperty("--um-c", hex);
+        target.style.setProperty("--um-bg", hex);
+        return target;
+      }
+
+      function updateMark(id, patch, tip) {
+        const ed = getEdit(idx);
+        const mk = (ed.marks || []).find(m => m.id === id);
+        if (!mk) return;
+        const next = Object.assign({}, mk, patch);
+        setEdit(idx, { marks: (ed.marks || []).map(m => m.id === id ? next : m) });
+        bustCache();
+        const el = document.querySelector('[data-mark-id="' + id + '"]');
+        restyleEl(el, next.type, next.color, false);
+        if (window.UI && UI.toast) UI.toast(tip || "已更新标记");
+      }
+
+      // 改 PDF 原文标记（改样式 / 改色 / 去掉 / 还原）
+      function updateOrigin(oi, patch, tip) {
+        if (oi == null) return;
+        const ed = getEdit(idx);
+        if (patch.type === "none" || patch.type === "reset") {   // 结构变化 → 需要重渲染
+          const origin = Object.assign({}, ed.origin || {});
+          if (patch.type === "reset") delete origin[oi];
+          else origin[oi] = { type: "none" };
+          persistAndRerender({ origin }, tip || "已更新原文标记");
+          return;
+        }
+        const origin = Object.assign({}, ed.origin || {});
+        const cur = Object.assign({}, origin[oi] || { type: "keep", color: DEFAULT_COLOR });
+        const next = Object.assign(cur, patch);
+        origin[oi] = next;
+        setEdit(idx, { origin });
+        bustCache();
+        const el = document.querySelector('[data-oi="' + oi + '"]');
+        restyleEl(el, next.type, next.color, true);
+        if (window.UI && UI.toast) UI.toast(tip || "已更新原文标记");
       }
 
       function addGoodWord(text) {
@@ -475,10 +631,25 @@
         // 点已有标记 → 编辑（click 兼容桌面；pointerup 兼容 iOS 触摸）
         let lastTapAt = 0, lastTapId = "";
         function handleMarkTap(target) {
-          const el = target && target.closest ? target.closest("[data-mark-id]") : null;
+          if (!target || !target.closest) return;
+          const elUser = target.closest("[data-mark-id]");
+          const elOrg = elUser ? null : target.closest("[data-oi]");
+          const el = elUser || elOrg;
           if (!el || !rootEl.contains(el)) return;
-          const id = el.getAttribute("data-mark-id");
           const now = Date.now();
+          if (isOriginTap(el)) {
+            const oi = parseInt(el.getAttribute("data-oi"), 10);
+            if (isNaN(oi)) return;
+            if (lastTapId === "o" + oi && now - lastTapAt < 600) return;
+            lastTapId = "o" + oi; lastTapAt = now;
+            const cfg = (getEdit(idx).origin || {})[oi];
+            currentColor = (cfg && cfg.color) || DEFAULT_COLOR;
+            currentType = (cfg && cfg.type && cfg.type !== "keep" && cfg.type !== "none") ? cfg.type : "line";
+            pendingCap = { text: el.textContent || "", segs: [] };
+            openAt(el, "edit", null, oi);
+            return;
+          }
+          const id = el.getAttribute("data-mark-id");
           if (id === lastTapId && now - lastTapAt < 600) return;  // 防 iOS touch+click 双触发
           lastTapId = id; lastTapAt = now;
           const mk = (getEdit(idx).marks || []).find(m => m.id === id);
@@ -486,10 +657,14 @@
           currentColor = mk.color || DEFAULT_COLOR;
           currentType = mk.type || "line";
           pendingCap = { text: mk.phrase, segs: [] };
+          openAt(el, "edit", id, null);
+        }
+        function isOriginTap(el) { return !el.getAttribute("data-mark-id") && el.hasAttribute("data-oi"); }
+        function openAt(el, mode, id, oi) {
           let r = null;
           try { const rg = document.createRange(); rg.selectNodeContents(el); r = getSelRect(rg); } catch (err) {}
           try { if (!r) r = el.getBoundingClientRect(); } catch (err) {}
-          showToolbar(r || { left: 20, top: 80, bottom: 100, width: 60, height: 20 }, "edit", id);
+          showToolbar(r || { left: 20, top: 80, bottom: 100, width: 60, height: 20 }, mode, id, oi);
         }
         rootEl.addEventListener("click", (ev) => handleMarkTap(ev.target));
         rootEl.addEventListener("pointerup", (ev) => { if (ev.pointerType && ev.pointerType !== "mouse") handleMarkTap(ev.target); });
@@ -549,6 +724,10 @@
         body.querySelector("#next").onclick = () => go(idx + 1);
 
         const eb = body.querySelector("#essayBody");
+        // 给 PDF 原文标记编号（已有编号的来自 applyOriginEdits，跳过）
+        Array.prototype.slice.call(eb.querySelectorAll(ORIGIN_SEL)).forEach((el, i) => {
+          if (!el.hasAttribute("data-oi")) el.setAttribute("data-oi", String(i));
+        });
         bindSelection(eb);
 
         const mkClear = body.querySelector("#mkClear");
@@ -606,20 +785,9 @@
           let exportTitle = e.title;
           if (kind === "orig") {
             exportTitle = e.title + "（原文排版稿）";
-            let html = getRenderedHtml(e, idx);
-            html = inlineMarksForExport(html, ed.marks);
-            if (!opt.includeUserMarks) {
-              html = html.replace(/<mark class="user-hl"[^>]*>([\s\S]*?)<\/mark>/g, "$1")
-                         .replace(/<u class="user-line"[^>]*>([\s\S]*?)<\/u>/g, "$1")
-                         .replace(/<u class="user-wavy"[^>]*>([\s\S]*?)<\/u>/g, "$1");
-            }
-            if (!opt.includeMarks) {
-              html = html.replace(/<span class="essay-hl-i">([\s\S]*?)<\/span>/g, "$1")
-                         .replace(/<span class="essay-blue-i">([\s\S]*?)<\/span>/g, "$1")
-                         .replace(/<span class="essay-line-i">([\s\S]*?)<\/span>/g, "$1")
-                         .replace(/<span class="essay-u-i">([\s\S]*?)<\/span>/g, "$1")
-                         .replace(/<b class="essay-red-i">([\s\S]*?)<\/b>/g, "$1");
-            }
+            // 基线：原文 + 用户对原标记的改动（始终保留）；自定义标记按选项决定是否带上
+            let html = opt.includeUserMarks ? getRenderedHtml(e, idx) : applyOriginEdits(e.html, ed.origin);
+            html = inlineMarksForExport(html, ed.marks, { includeMarks: opt.includeMarks, includeUserMarks: opt.includeUserMarks });
             bodyHtml = `<h1 style="text-align:center;font-size:22px;border-bottom:3px solid #34e7e4;padding-bottom:10px">${esc(e.title)}</h1>
               <div class="meta" style="color:#666;font-size:12px;margin:6px 0 14px">来源：${esc(e.src || "")}</div>
               ${html}`;

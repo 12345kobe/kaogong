@@ -21,7 +21,17 @@
     w.document.write(`<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8">
 <title>${title}</title>
 <style>
-  body{font-family:${font};color:#111;margin:28px;line-height:1.7}
+  /* 关键：不加这两行，打印/另存 PDF 时背景色（高亮）会被浏览器丢掉 */
+  body{font-family:${font};color:#111;margin:28px;line-height:1.7;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  /* 范文导出用 */
+  .essay-p-i{text-indent:2em;margin:0 0 10px;line-height:1.9}
+  .essay-hl-i{background:#ffe680;padding:0 2px;border-radius:2px}
+  .essay-blue-i{color:#0b3d91;font-weight:700;text-decoration:underline;text-decoration-color:#1763c0;text-decoration-thickness:2px}
+  .essay-line-i,.essay-u-i{text-decoration:underline;text-decoration-color:#e23b54;text-decoration-thickness:2.5px}
+  .essay-red-i{color:#e23b54;font-weight:700}
+  .user-hl-i{font-weight:700}
   h1{font-size:20px;border-bottom:3px solid #34e7e4;padding-bottom:8px}
   .meta{color:#666;font-size:12px;margin-bottom:8px}
   .sec{font-size:17px;font-weight:800;margin:22px 0 10px;border-bottom:2px solid #9b6cff;padding-bottom:4px;page-break-after:avoid}

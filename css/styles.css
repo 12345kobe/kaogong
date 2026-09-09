@@ -199,11 +199,23 @@ label.fld{display:block;font-size:12px;color:var(--txt-dim);margin:8px 0 4px}
 
 /* ===== 用户自定义标记 ===== */
 .essay-body mark.user-hl,
+.essay-body mark.o-hl,
 .essay-body mark[data-user-mark="hl"]{background:var(--um-bg,#ffd542);color:inherit;padding:0 2px;border-radius:2px;font-weight:700}
 .essay-body u.user-line,
+.essay-body u.o-line,
 .essay-body u[data-user-mark="line"]{text-decoration:underline;text-decoration-color:var(--um-c,#ff3b3b);text-decoration-thickness:2.5px;text-underline-offset:3px;color:inherit}
 .essay-body u.user-wavy,
+.essay-body u.o-wavy,
 .essay-body u[data-user-mark="wavy"]{text-decoration:underline wavy;text-decoration-color:var(--um-c,#ff3b3b);text-decoration-thickness:2.5px;text-underline-offset:3px;color:inherit}
+/* 外框：保证用户标记的整句范围一眼可见（子元素背景盖不住 outline） */
+.essay-body [data-user-mark]{outline:1px solid var(--um-c,#ff3b3b);border-radius:2px}
+/* 关键：用户标记内部的原文底色会盖住用户颜色 → 中和掉，只保留原文下划线/红字 */
+.essay-body [data-user-mark] mark,
+.essay-body [data-user-mark] mark.essay-hl{background:transparent!important;box-shadow:none}
+/* 只换色、不改类型的原文标记 */
+.essay-body .o-tint{background:var(--um-bg,transparent)!important;text-decoration-color:var(--um-c,#e23b54)}
+/* 原文标记也可点：给手型提示 */
+.essay-body [data-oi]{cursor:pointer}
 /* 浮动选区工具条：fixed + 视口坐标，移动端也不会飘出屏幕 */
 .essay-toolbar{position:fixed;display:flex;flex-wrap:wrap;gap:4px;align-items:center;background:#1d2336;color:#fff;border-radius:12px;
   padding:8px 10px;box-shadow:0 8px 26px rgba(0,0,0,.35);z-index:9999;font-size:13px;
@@ -246,6 +258,17 @@ body.light .essay-toolbar.tb-above::after{border-top-color:#fff}
 .gw-add-row{margin-top:10px;display:flex;gap:6px;align-items:flex-start}
 .gw-add-row textarea{flex:1;min-height:60px;padding:8px;border:1px solid var(--line);border-radius:8px;
   background:var(--bg2);color:var(--txt);font:inherit;line-height:1.6;resize:vertical}
+
+/* ===== 申论典故 ===== */
+.allu-card{margin-bottom:10px;padding:16px 18px}
+.allu-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.allu-title{margin:0;font-size:19px;font-weight:800;line-height:1.5}
+.allu-check{display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg2);font-weight:700;-webkit-tap-highlight-color:transparent}
+.allu-check input{width:18px;height:18px}
+.allu-sec{margin:8px 0;padding:8px 10px;background:var(--bg2);border-radius:8px;line-height:1.85;font-size:15px}
+.allu-label{display:inline-block;font-weight:800;color:#9b6cff;margin-bottom:4px;font-size:14px}
+.al-p{margin:0 0 6px;text-indent:2em}
+.al-p:last-child{margin-bottom:0}
 .gw-tools{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;align-items:center}
 .gw-tools .small{font-size:12px}
 body.light .gw-edit-input{background:#fff;border-color:#9b6cff}

@@ -387,11 +387,13 @@
         return out;
       }
       for (const k in eeIn) {
-        const cur = out.essay.essaysEdit[k] || { phrases: null, marks: [] };
-        const inc = eeIn[k] || { phrases: null, marks: [] };
+        const cur = out.essay.essaysEdit[k] || { phrases: null, marks: [], origin: {} };
+        const inc = eeIn[k] || { phrases: null, marks: [], origin: {} };
         const phrases = (cur.phrases != null && cur.phrases.length) ? cur.phrases
                        : ((inc.phrases != null && inc.phrases.length) ? inc.phrases : cur.phrases);
-        out.essay.essaysEdit[k] = { phrases: phrases, marks: mergeMarks(cur.marks, inc.marks) };
+        // 原文标记改动：本地非空优先，缺失项用传入补齐
+        const origin = Object.assign({}, inc.origin || {}, cur.origin || {});
+        out.essay.essaysEdit[k] = { phrases: phrases, marks: mergeMarks(cur.marks, inc.marks), origin: origin };
       }
 
       // 其余字段：本地已有内容优先，缺失的才用传入数据补齐
