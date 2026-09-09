@@ -1,4 +1,4 @@
-/* 范文积累模块：一次展示一篇（可切换上下篇），保留原标题加粗大字号、蓝色高亮、下划线排版；
+/* 范文积累模块：一次展示一篇（可切换上下篇），保留原标题加粗大字号、黄色高亮、红色画线排版；
    文末另起「好词好句」板块，摘录文中被高亮/画横线的精华句并顺序编号；支持下载原文排版稿与好词好句。 */
 (function () {
   "use strict";
@@ -6,14 +6,17 @@
 
   function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
-  // 将正文里的 <mark>(蓝底高亮) / <u>(红线) 转成打印用内联样式，保证导出的 PDF 也保留标记
+  // 将正文里的 <mark>(蓝底) / <mark class="essay-hl">(黄底高亮) / <u class="essay-line">(红线) / <u>(旧红线) / <b class="essay-red">(小标题) / <p class="essay-p"> 转成打印用内联样式，保证导出的 PDF 也保留标记
   function inlineMarks(html) {
     return html
+      .replace(/<mark class="essay-hl">/g, '<span style="background:linear-gradient(transparent 18%,rgba(255,213,50,.62) 18%,rgba(255,213,50,.62) 82%,transparent 82%);padding:0 2px;font-weight:700">')
       .replace(/<mark>/g, '<span style="background:#cfe3ff;color:#0b3d91;font-weight:700;padding:0 2px;border-radius:3px;text-decoration:underline;text-decoration-color:#1763c0;text-underline-offset:2px">')
       .replace(/<\/mark>/g, "</span>")
+      .replace(/<u class="essay-line">/g, '<span style="text-decoration:underline;text-decoration-color:#e23b54;text-decoration-thickness:2.5px;text-underline-offset:3px;font-weight:700">')
       .replace(/<u>/g, '<span style="border-bottom:2px solid #c0392b;padding-bottom:1px">')
       .replace(/<\/u>/g, "</span>")
       .replace(/<b class="essay-red">/g, '<b style="color:#e23b54;font-weight:700">')
+      .replace(/<p class="essay-p">/g, '<p style="margin:0 0 12px;text-indent:2em;line-height:1.9">')
       .replace(/<p>/g, '<p style="margin:0 0 12px;text-indent:2em;line-height:1.9">');
   }
 
@@ -47,7 +50,7 @@
             <ol class="gw-list">
               ${e.phrases.map(p => `<li>${esc(typeof p === "string" ? p : p.text)}</li>`).join("")}
             </ol>
-            <div class="muted small gw-note">※ 以上为文中<mark class="lg-mark">蓝色高亮＋下划线</mark>与<b style="color:#e23b54">红色小标题</b>处摘录的精华句（本 PDF 以蓝色文字标注好词好句，红色为段落小标题）。</div>
+            <div class="muted small gw-note">※ 以上为文中<mark class="lg-hl">黄色高亮</mark>与<u class="lg-u">红色画线</u>处摘录的精华句（本 PDF 黄色背景=好词好句，红色横线=重点画线，红色字体=段落小标题）。</div>
           </div>
           <div class="row essay-nav">
             <button class="btn" id="prev">← 上一篇</button>
@@ -70,7 +73,7 @@
 
         body.querySelector("#dlGw").onclick = () => {
           let h = `<h2 style="text-align:center;border-bottom:2px solid #9b6cff;padding-bottom:6px">好词好句 · ${esc(e.title)}</h2>
-            <div class="meta" style="color:#666;font-size:12px;margin:6px 0 12px">文中蓝色高亮＋下划线与红色小标题摘录</div><ol style="line-height:2;font-size:15px">`;
+            <div class="meta" style="color:#666;font-size:12px;margin:6px 0 12px">文中黄色高亮与红色画线摘录</div><ol style="line-height:2;font-size:15px">`;
           e.phrases.forEach(p => { h += `<li>${esc(typeof p === "string" ? p : p.text)}</li>`; });
           h += `</ol>`;
           window.PDF.exportHtml("好词好句 · " + e.title, h);

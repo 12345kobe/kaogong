@@ -177,7 +177,21 @@ label.fld{display:block;font-size:12px;color:var(--txt-dim);margin:8px 0 4px}
   text-align:center;margin:6px 0 18px;color:var(--txt);border-bottom:3px solid var(--cyan);padding-bottom:12px}
 .essay-body{font-size:16px;line-height:1.9;color:var(--txt)}
 .essay-body p{margin:0 0 12px;text-indent:2em}
+/* 蓝色字（PDF 原生蓝色文字）= 高亮+下划线 */
 .essay-body mark{background:#cfe3ff;color:#0b3d91;font-weight:700;padding:0 3px;border-radius:3px;text-decoration:underline;text-decoration-color:#1763c0;text-decoration-thickness:2px;text-underline-offset:3px}
+/* 黄色高亮（PDF 矢量绘制的黄底矩形）= 像荧光笔 */
+.essay-body mark.essay-hl{
+  background:linear-gradient(transparent 18%,rgba(255,213,50,.62) 18%,rgba(255,213,50,.62) 82%,transparent 82%);
+  color:inherit;font-weight:700;padding:0 2px;border-radius:2px;
+  text-shadow:0 0 1px rgba(0,0,0,.15);
+}
+/* 红色画线（PDF 矢量绘制的红线/波浪线） */
+.essay-body u.essay-line{
+  text-decoration:underline;text-decoration-color:#e23b54;
+  text-decoration-thickness:2.5px;text-underline-offset:3px;
+  font-weight:700;color:inherit;
+}
+/* 旧版 <u> 仍按红边框线呈现（兼容历史数据） */
 .essay-body u{text-decoration:none;border-bottom:2px solid #e23b54;padding-bottom:1px;font-weight:600}
 .essay-body .essay-red{color:#e23b54;font-weight:700}
 .essay-body .essay-sec{margin:16px 0 8px;padding-left:12px;border-left:3px solid var(--cyan);font-weight:800;font-family:var(--font-head);font-size:17px;line-height:1.6}
@@ -187,7 +201,8 @@ label.fld{display:block;font-size:12px;color:var(--txt-dim);margin:8px 0 4px}
 .gw-list li{margin:6px 0;line-height:1.7;color:var(--txt)}
 .gw-note{margin-top:8px}
 .lg-mark{background:#cfe3ff;color:#0b3d91;font-weight:700;padding:0 3px;border-radius:3px;text-decoration:underline;text-decoration-color:#1763c0;text-decoration-thickness:2px;text-underline-offset:2px}
-.lg-u{text-decoration:none;border-bottom:2px solid #e23b54;padding-bottom:1px}
+.lg-hl{background:linear-gradient(transparent 18%,rgba(255,213,50,.62) 18%,rgba(255,213,50,.62) 82%,transparent 82%);font-weight:700;padding:0 2px;border-radius:2px}
+.lg-u{text-decoration:underline;text-decoration-color:#e23b54;text-decoration-thickness:2.5px;text-underline-offset:3px;font-weight:700}
 .essay-nav{justify-content:center;gap:10px;margin-top:16px;flex-wrap:wrap}
 /* 浅色模式：范文标题/标记在纯白背景下更清晰 */
 body.light .essay-title{color:#0f1828}
