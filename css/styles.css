@@ -1,6 +1,7 @@
 :root{
-  --font-head:"SimHei","黑体","STHeiti","Microsoft YaHei",sans-serif;
-  --font-body:"KaiTi","楷体","STKaiti","Kaiti SC",serif;
+  /* 标题用黑体类：苹果优先“华文黑体/苹方黑”，Windows 回退“黑体(SimHei)”；正文用楷体类：苹果优先“华文楷体(Kaiti SC)”，Windows 回退“楷体(KaiTi)” */
+  --font-head:"Heiti SC","PingFang SC","SimHei","黑体","STHeiti","Microsoft YaHei",sans-serif;
+  --font-body:"Kaiti SC","STKaiti","KaiTi","楷体",serif;
   --bg:#0b1020;
   --bg2:#0f1730;
   --panel:#141d3b;
@@ -176,7 +177,7 @@ label.fld{display:block;font-size:12px;color:var(--txt-dim);margin:8px 0 4px}
   text-align:center;margin:6px 0 18px;color:var(--txt);border-bottom:3px solid var(--cyan);padding-bottom:12px}
 .essay-body{font-size:16px;line-height:1.9;color:var(--txt)}
 .essay-body p{margin:0 0 12px;text-indent:2em}
-.essay-body mark{background:#cfe3ff;color:#0b3d91;font-weight:700;padding:0 3px;border-radius:3px}
+.essay-body mark{background:#cfe3ff;color:#0b3d91;font-weight:700;padding:0 3px;border-radius:3px;text-decoration:underline;text-decoration-color:#1763c0;text-decoration-thickness:2px;text-underline-offset:3px}
 .essay-body u{text-decoration:none;border-bottom:2px solid #e23b54;padding-bottom:1px;font-weight:600}
 .essay-body .essay-red{color:#e23b54;font-weight:700}
 .essay-body .essay-sec{margin:16px 0 8px;padding-left:12px;border-left:3px solid var(--cyan);font-weight:800;font-family:var(--font-head);font-size:17px;line-height:1.6}
@@ -185,13 +186,13 @@ label.fld{display:block;font-size:12px;color:var(--txt-dim);margin:8px 0 4px}
 .gw-list{margin:0;padding-left:22px}
 .gw-list li{margin:6px 0;line-height:1.7;color:var(--txt)}
 .gw-note{margin-top:8px}
-.lg-mark{background:#cfe3ff;color:#0b3d91;font-weight:700;padding:0 3px;border-radius:3px}
+.lg-mark{background:#cfe3ff;color:#0b3d91;font-weight:700;padding:0 3px;border-radius:3px;text-decoration:underline;text-decoration-color:#1763c0;text-decoration-thickness:2px;text-underline-offset:2px}
 .lg-u{text-decoration:none;border-bottom:2px solid #e23b54;padding-bottom:1px}
 .essay-nav{justify-content:center;gap:10px;margin-top:16px;flex-wrap:wrap}
 /* 浅色模式：范文标题/标记在纯白背景下更清晰 */
 body.light .essay-title{color:#0f1828}
 body.light .essay-body{color:#1c2433}
-body.light .essay-body mark{background:#d6e8ff;color:#0b3d91}
+body.light .essay-body mark{background:#d6e8ff;color:#0b3d91;text-decoration:underline;text-decoration-color:#1763c0;text-decoration-thickness:2px;text-underline-offset:3px}
 body.light .essay-body .essay-red{color:#d11a2a}
 body.light .good-words{background:#f4f7fc}
 

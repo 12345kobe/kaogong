@@ -9,7 +9,7 @@
   // 将正文里的 <mark>(蓝底高亮) / <u>(红线) 转成打印用内联样式，保证导出的 PDF 也保留标记
   function inlineMarks(html) {
     return html
-      .replace(/<mark>/g, '<span style="background:#cfe3ff;color:#0b3d91;font-weight:700;padding:0 2px;border-radius:3px">')
+      .replace(/<mark>/g, '<span style="background:#cfe3ff;color:#0b3d91;font-weight:700;padding:0 2px;border-radius:3px;text-decoration:underline;text-decoration-color:#1763c0;text-underline-offset:2px">')
       .replace(/<\/mark>/g, "</span>")
       .replace(/<u>/g, '<span style="border-bottom:2px solid #c0392b;padding-bottom:1px">')
       .replace(/<\/u>/g, "</span>")
@@ -47,7 +47,7 @@
             <ol class="gw-list">
               ${e.phrases.map(p => `<li>${esc(typeof p === "string" ? p : p.text)}</li>`).join("")}
             </ol>
-            <div class="muted small gw-note">※ 以上为文中<mark class="lg-mark">蓝色高亮</mark>与<b style="color:#e23b54">红色小标题</b>处摘录的精华句（本 PDF 以蓝色文字标注好词好句，红色为段落小标题）。</div>
+            <div class="muted small gw-note">※ 以上为文中<mark class="lg-mark">蓝色高亮＋下划线</mark>与<b style="color:#e23b54">红色小标题</b>处摘录的精华句（本 PDF 以蓝色文字标注好词好句，红色为段落小标题）。</div>
           </div>
           <div class="row essay-nav">
             <button class="btn" id="prev">← 上一篇</button>
@@ -70,7 +70,7 @@
 
         body.querySelector("#dlGw").onclick = () => {
           let h = `<h2 style="text-align:center;border-bottom:2px solid #9b6cff;padding-bottom:6px">好词好句 · ${esc(e.title)}</h2>
-            <div class="meta" style="color:#666;font-size:12px;margin:6px 0 12px">文中蓝色高亮与红色小标题摘录</div><ol style="line-height:2;font-size:15px">`;
+            <div class="meta" style="color:#666;font-size:12px;margin:6px 0 12px">文中蓝色高亮＋下划线与红色小标题摘录</div><ol style="line-height:2;font-size:15px">`;
           e.phrases.forEach(p => { h += `<li>${esc(typeof p === "string" ? p : p.text)}</li>`; });
           h += `</ol>`;
           window.PDF.exportHtml("好词好句 · " + e.title, h);
