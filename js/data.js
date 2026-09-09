@@ -49,7 +49,8 @@
       xiaoti: { done: 0, total: 0 },
       dagongwen: { done: 0, total: 0 },
       quotes: [],
-      quoteDaily: { date: null, seed: 0, picks: [], done: [] } // 申论名言：每日 11 主题各 1 句，勾选完成
+      quoteDaily: { date: null, seed: 0, picks: [], done: [] }, // 申论名言：每日 11 主题各 1 句，勾选完成
+      essaysEdit: {} // 范文用户编辑：{[essayIdx]: {phrases: [string,...]|null, marks: [{id, phrase, type:'hl'|'line'|'wavy', color:'red'|'yellow'|...}]}}
     },
     calendar: {}, // { 'YYYY-MM-DD': {start,end,checked} }
     checkin: { lastDate: null, dates: [] },
@@ -372,6 +373,26 @@
       out.quotesLib = mergeByField(out.quotesLib, b.quotesLib, "t");
       out.politics = out.politics || {};
       out.politics.questions = mergeByField(out.politics.questions, (b.politics || {}).questions, "q");
+
+      // 范文用户标记 / 自编辑好词好句：phrases 本地非空优先；marks 按 phrase+type+color 合并去重
+      out.essay.essaysEdit = out.essay.essaysEdit || {};
+      const eeIn = (b.essay && b.essay.essaysEdit) || {};
+      function mergeMarks(ca, cb) {
+        const out = (ca || []).slice();
+        const seen = new Set(out.map(m => (m.phrase||"") + "|" + (m.type||"") + "|" + (m.color||"")));
+        (cb || []).forEach(m => {
+          const sig = (m.phrase || "") + "|" + (m.type || "") + "|" + (m.color || "");
+          if (!seen.has(sig) && m.phrase) { out.push(m); seen.add(sig); }
+        });
+        return out;
+      }
+      for (const k in eeIn) {
+        const cur = out.essay.essaysEdit[k] || { phrases: null, marks: [] };
+        const inc = eeIn[k] || { phrases: null, marks: [] };
+        const phrases = (cur.phrases != null && cur.phrases.length) ? cur.phrases
+                       : ((inc.phrases != null && inc.phrases.length) ? inc.phrases : cur.phrases);
+        out.essay.essaysEdit[k] = { phrases: phrases, marks: mergeMarks(cur.marks, inc.marks) };
+      }
 
       // 其余字段：本地已有内容优先，缺失的才用传入数据补齐
       function fill(cur, inc) {

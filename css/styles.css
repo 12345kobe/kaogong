@@ -129,6 +129,7 @@ h1,#pageTitle,.page-title,.fc-big,.countdown-num{ font-weight:700; }
 .btn.magenta{background:linear-gradient(135deg,var(--magenta),var(--purple));color:#fff;border:none}
 .btn.ghost{background:transparent}
 .btn.danger{border-color:var(--red);color:var(--red)}
+.btn.xs{padding:5px 9px;font-size:12px;border-radius:8px}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 input,select,textarea{
   background:var(--bg2);border:1px solid var(--line);color:var(--txt);
@@ -195,6 +196,47 @@ label.fld{display:block;font-size:12px;color:var(--txt-dim);margin:8px 0 4px}
 .essay-body u{text-decoration:none;border-bottom:2px solid #e23b54;padding-bottom:1px;font-weight:600}
 .essay-body .essay-red{color:#e23b54;font-weight:700}
 .essay-body .essay-sec{margin:16px 0 8px;padding-left:12px;border-left:3px solid var(--cyan);font-weight:800;font-family:var(--font-head);font-size:17px;line-height:1.6}
+
+/* ===== 用户自定义标记 ===== */
+.essay-body mark.user-hl,
+.essay-body mark[data-user-mark="hl"]{background:var(--um-bg,#ffd542);color:inherit;padding:0 2px;border-radius:2px;font-weight:700}
+.essay-body u.user-line,
+.essay-body u[data-user-mark="line"]{text-decoration:underline;text-decoration-color:var(--um-c,#ff3b3b);text-decoration-thickness:2.5px;text-underline-offset:3px;color:inherit}
+.essay-body u.user-wavy,
+.essay-body u[data-user-mark="wavy"]{text-decoration:underline wavy;text-decoration-color:var(--um-c,#ff3b3b);text-decoration-thickness:2.5px;text-underline-offset:3px;color:inherit}
+/* 浮动选区工具条 */
+.essay-toolbar{position:absolute;display:flex;gap:4px;align-items:center;background:#1d2336;color:#fff;border-radius:10px;
+  padding:6px 8px;box-shadow:0 6px 22px rgba(0,0,0,.28);z-index:999;font-size:13px;user-select:none}
+.essay-toolbar .et-btn{cursor:pointer;padding:4px 8px;border-radius:6px;border:1px solid transparent;background:transparent;color:#fff;font-weight:700;font-size:13px}
+.essay-toolbar .et-btn:hover{background:rgba(255,255,255,.12)}
+.essay-toolbar .et-btn.active{background:rgba(255,255,255,.22);border-color:rgba(255,255,255,.4)}
+.essay-toolbar .et-sep{width:1px;height:20px;background:rgba(255,255,255,.25);margin:0 2px}
+.essay-toolbar .et-swatches{display:flex;gap:3px;align-items:center}
+.essay-toolbar .et-sw{width:18px;height:18px;border-radius:50%;border:2px solid rgba(255,255,255,.4);cursor:pointer;display:inline-block}
+.essay-toolbar .et-sw.active{border-color:#fff;box-shadow:0 0 0 2px rgba(255,255,255,.25)}
+.essay-toolbar .et-close{opacity:0.7;cursor:pointer;font-size:16px;padding:0 4px}
+body.light .essay-toolbar{background:#fff;color:#111;border:1px solid #d6dce6;box-shadow:0 6px 18px rgba(0,0,0,.12)}
+body.light .essay-toolbar .et-btn:hover{background:#f2f4f8}
+body.light .essay-toolbar .et-btn.active{background:#eaf1ff}
+body.light .essay-toolbar .et-sep{background:#d6dce6}
+body.light .essay-toolbar .et-sw{border-color:rgba(0,0,0,.25)}
+body.light .essay-toolbar .et-sw.active{border-color:#111}
+
+/* ===== 好词好句编辑 ===== */
+.gw-list li{display:flex;align-items:flex-start;gap:6px}
+.gw-text{flex:1}
+.gw-actions{display:flex;gap:4px;opacity:0;transition:opacity .15s;flex:0 0 auto}
+.gw-list li:hover .gw-actions{opacity:1}
+.gw-edit-input{width:100%;min-height:1.5em;padding:4px 6px;border:1px solid var(--cyan);border-radius:6px;
+  background:var(--bg2);color:var(--txt);font:inherit;line-height:1.7;resize:vertical}
+.gw-add-row{margin-top:10px;display:flex;gap:6px;align-items:flex-start}
+.gw-add-row textarea{flex:1;min-height:60px;padding:8px;border:1px solid var(--line);border-radius:8px;
+  background:var(--bg2);color:var(--txt);font:inherit;line-height:1.6;resize:vertical}
+.gw-tools{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;align-items:center}
+.gw-tools .small{font-size:12px}
+body.light .gw-edit-input{background:#fff;border-color:#9b6cff}
+body.light .gw-add-row textarea{background:#fff}
+
 .good-words{margin-top:18px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
 .good-words h3{font-family:var(--font-head);font-size:16px;margin:0 0 10px}
 .gw-list{margin:0;padding-left:22px}

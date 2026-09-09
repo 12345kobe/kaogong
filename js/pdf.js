@@ -11,16 +11,17 @@
     return `<button class="noprint backhome" onclick="(function(){try{if(window.opener&&!window.opener.closed){window.opener.focus();window.close();return;}}catch(e){}try{window.close();}catch(e){}window.location.href='${homeUrl}';})()">← 返回主页面</button>`;
   }
 
-  function printHtml(title, bodyHtml) {
+  function printHtml(title, bodyHtml, opts) {
     const w = window.open("", "_blank");
     if (!w) { alert("浏览器拦截了弹窗，请允许弹窗后重试"); return; }
     const d = new Date();
     const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
     const homeUrl = window.location.href;
+    const font = (opts && opts.font) || '"Microsoft YaHei","PingFang SC",sans-serif';
     w.document.write(`<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8">
 <title>${title}</title>
 <style>
-  body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;color:#111;margin:28px;line-height:1.7}
+  body{font-family:${font};color:#111;margin:28px;line-height:1.7}
   h1{font-size:20px;border-bottom:3px solid #34e7e4;padding-bottom:8px}
   .meta{color:#666;font-size:12px;margin-bottom:8px}
   .sec{font-size:17px;font-weight:800;margin:22px 0 10px;border-bottom:2px solid #9b6cff;padding-bottom:4px;page-break-after:avoid}
@@ -52,7 +53,7 @@
 </style></head><body>
 ${backHomeBtn(homeUrl)}
 <h1>${title}</h1>
-<div class="meta">导出来源：考公工作台 · 生成时间：${stamp}</div>
+<div class="meta">导出来源：考公工作台 · 生成时间：${stamp}${opts && opts.fontLabel ? " · 字体：" + opts.fontLabel : ""}</div>
 ${bodyHtml}
 <div class="foot">考公工作台 · 个人备考助手</div>
 ${backHomeBtn(homeUrl)}
@@ -144,7 +145,7 @@ ${qHtml}
 <h2 class="sec">二、答案与解析</h2>
 ${aHtml}`);
     },
-    exportHtml(title, bodyHtml) { printHtml(title, bodyHtml); }
+    exportHtml(title, bodyHtml, opts) { printHtml(title, bodyHtml, opts); }
   };
 
   window.PDF = PDF;
