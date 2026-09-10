@@ -313,6 +313,22 @@
       if (tt.running) ms += Date.now() - tt.startTs;
       return ms;
     },
+    /* 统一结算：停止计时 + 记当日专注分钟 + 标记绑定计划项完成。返回 {sec, mins, planId}
+       上岸计时器与刷题模式共用，避免重复逻辑 */
+    timerSettle(label) {
+      label = label || "计时器";
+      const tt = state.taskTimer;
+      const planId = tt.planId, targetMs = tt.targetMs;
+      const sec = this.timerStop();
+      const mins = targetMs && targetMs > 0 ? Math.max(1, Math.round(targetMs / 60000)) : Math.max(1, Math.round(sec / 60));
+      this.addTimerMinutes(label, mins);
+      if (planId) {
+        const plan = this.getPlan(this.today());
+        const it = plan.items.find(x => x.id === planId);
+        if (it) { it.minutes = (it.minutes || 0) + mins; it.done = true; this.save(); }
+      }
+      return { sec: sec, mins: mins, planId: planId };
+    },
     timerReset() {
       const tt = state.taskTimer;
       tt.accumulated = 0; tt.startTs = 0; tt.running = false; tt.task = ""; tt.planId = null; tt.laps = [];

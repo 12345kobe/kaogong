@@ -12,10 +12,12 @@
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="apple-touch-icon" href="icon-192.png" />
 <link rel="icon" type="image/png" href="icon-192.png" />
-<link rel="stylesheet" href="css/styles.css?v=20260910c" />
+<link rel="stylesheet" href="css/styles.css?v=20260910d" />
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
+<!-- 白噪音（雨声）常驻音频：跨模块持续播放，由顶栏「🎧 白噪音」按钮控制 -->
+<audio id="whiteNoise" src="assets/audio/white-noise.ogg" loop preload="auto"></audio>
 <div id="app">
   <!-- 左侧导航 -->
   <aside id="sidebar">
@@ -40,6 +42,7 @@
         <button id="menuToggle" class="icon-btn" title="菜单">☰</button>
         <div id="clock" class="clock">--:--:--</div>
         <button id="themeBtn" class="icon-btn" title="切换深/浅色模式（白天自动护眼）">🌓</button>
+        <button id="whiteNoiseBtn" class="icon-btn wn-btn" title="白噪音（雨声）· 点击播放/关闭，跨模块持续">🎧 白噪音</button>
         <div id="todayDate" class="today-date"></div>
         <button id="topTimer" class="icon-btn" style="display:none" title="计时中，点此查看"></button>
       </div>
@@ -86,36 +89,37 @@
 <script src="assets/data/common_kp.js?v=20260909b"></script>
 <script src="assets/data/essay_quotes.js?v=20260909b"></script>
 <script src="assets/data/essay_normwords.js?v=20260909b"></script>
-<script src="js/config.js?v=20260910c"></script>
-<script src="js/data.js?v=20260910c"></script>
-<script src="js/ebbinghaus.js?v=20260910c"></script>
-<script src="js/icons.js?v=20260910c"></script>
-<script src="js/ui.js?v=20260910c"></script>
-<script src="js/quiz.js?v=20260910c"></script>
-<script src="js/banks.js?v=20260910c"></script>
-<script src="js/pdf.js?v=20260910c"></script>
-<script src="js/flashcard.js?v=20260910c"></script>
-<script src="js/learned-history.js?v=20260910c"></script>
-<script src="js/analogy-data.js?v=20260910c"></script>
-<script src="js/relation-data.js?v=20260910c"></script>
-<script src="js/mod-countdown.js?v=20260910c"></script>
-<script src="js/mod-verbal.js?v=20260910c"></script>
-<script src="js/mod-wrongwords.js?v=20260910c"></script>
-<script src="js/mod-formulas.js?v=20260910c"></script>
-<script src="js/mod-logic.js?v=20260910c"></script>
-<script src="js/mod-politics.js?v=20260910c"></script>
-<script src="js/mod-muti.js?v=20260910c"></script>
-<script src="js/mod-common.js?v=20260910c"></script>
-<script src="js/mod-essay.js?v=20260910c"></script>
-<script src="js/essays-data.js?v=20260910c"></script>
-<script src="js/mod-essays.js?v=20260910c"></script>
-<script src="js/allusion-data.js?v=20260910c"></script>
-<script src="js/mod-allusion.js?v=20260910c"></script>
-<script src="js/mod-relation.js?v=20260910c"></script>
-<script src="js/mod-timer.js?v=20260910c"></script>
-<script src="js/mod-calendar.js?v=20260910c"></script>
-<script src="js/mod-wrongbook.js?v=20260910c"></script>
-<script src="js/mod-stats.js?v=20260910c"></script>
-<script src="js/app.js?v=20260910c"></script>
+<script src="js/config.js?v=20260910d"></script>
+<script src="js/data.js?v=20260910d"></script>
+<script src="js/ebbinghaus.js?v=20260910d"></script>
+<script src="js/icons.js?v=20260910d"></script>
+<script src="js/ui.js?v=20260910d"></script>
+<script src="js/quiz.js?v=20260910d"></script>
+<script src="js/banks.js?v=20260910d"></script>
+<script src="js/pdf.js?v=20260910d"></script>
+<script src="js/flashcard.js?v=20260910d"></script>
+<script src="js/learned-history.js?v=20260910d"></script>
+<script src="js/analogy-data.js?v=20260910d"></script>
+<script src="js/relation-data.js?v=20260910d"></script>
+<script src="js/mod-countdown.js?v=20260910d"></script>
+<script src="js/mod-verbal.js?v=20260910d"></script>
+<script src="js/mod-wrongwords.js?v=20260910d"></script>
+<script src="js/mod-formulas.js?v=20260910d"></script>
+<script src="js/mod-logic.js?v=20260910d"></script>
+<script src="js/mod-politics.js?v=20260910d"></script>
+<script src="js/mod-muti.js?v=20260910d"></script>
+<script src="js/mod-common.js?v=20260910d"></script>
+<script src="js/mod-essay.js?v=20260910d"></script>
+<script src="js/essays-data.js?v=20260910d"></script>
+<script src="js/mod-essays.js?v=20260910d"></script>
+<script src="js/allusion-data.js?v=20260910d"></script>
+<script src="js/mod-allusion.js?v=20260910d"></script>
+<script src="js/mod-relation.js?v=20260910d"></script>
+<script src="js/mod-timer.js?v=20260910d"></script>
+<script src="js/mod-shuati.js?v=20260910d"></script>
+<script src="js/mod-calendar.js?v=20260910d"></script>
+<script src="js/mod-wrongbook.js?v=20260910d"></script>
+<script src="js/mod-stats.js?v=20260910d"></script>
+<script src="js/app.js?v=20260910d"></script>
 </body>
 </html>

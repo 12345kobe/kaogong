@@ -119,8 +119,8 @@
             if (it.type === "quiz" && it.meta && it.meta.pct != null) meta.push(`正确率 ${it.meta.pct}%`);
             if (it.minutes) meta.push("专注 " + fmt(it.minutes * 60));
             const metaStr = meta.length ? `<span class="muted small">· ${meta.join(" · ")}</span>` : "";
-            const focusBtn = (it.focusMin && !it.done)
-              ? `<button class="btn xs" data-focus="${it.id}" style="margin-left:6px">⏱ 开始专注</button>`
+            const focusBtn = ((it.focusMin && !it.done) || (it.type === "quiz" && !it.done))
+              ? `<button class="btn xs" data-focus="${it.id}" style="margin-left:6px">${it.type === "quiz" ? "📱 进入刷题" : "⏱ 开始专注"}</button>`
               : "";
             return `<div class="todo"${dim}>
               <label class="row" style="gap:8px;flex:1;align-items:flex-start;cursor:pointer">
@@ -164,8 +164,8 @@
         host.querySelectorAll("[data-focus]").forEach(b => b.onclick = () => {
           const it = DB.getPlan(date).items.find(x => x.id === b.dataset.focus);
           if (it) {
-            window.__pendingFocus = { planId: it.id, text: it.text, focusMin: it.focusMin || 0 };
-            location.hash = "#/timer";
+            window.__pendingFocus = { planId: it.id, text: it.text, focusMin: it.focusMin || 0, type: it.type };
+            location.hash = (it.type === "quiz") ? "#/shuati" : "#/timer";
           }
         });
         host.querySelectorAll("[data-del]").forEach(b => b.onclick = () => {
@@ -177,7 +177,9 @@
       }
 
       function openAddPlan(host) {
-        const mods = (window.MODULES ? Object.keys(window.MODULES) : []);
+        // 新增计划项时，模块下拉不包括：倒计时、上岸计时器、学习统计（这些是功能/界面，不是可排计划的学习模块）
+        const EXCLUDE = { countdown: 1, timer: 1, stats: 1, shuati: 1 };
+        const mods = (window.MODULES ? Object.keys(window.MODULES) : []).filter(k => !EXCLUDE[k]);
         const modOpts = mods.map(k => `<option value="${k}">${esc(window.MODULES[k].title)}</option>`).join("");
         const typeOpts = Object.keys(TYPE_LABEL).map(k => `<option value="${k}">${TYPE_LABEL[k]}</option>`).join("");
         const box = UI.el(`<div></div>`);

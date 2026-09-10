@@ -73,6 +73,7 @@
         body.innerHTML = `<div class="card">
           <h3>⏱ 上岸计时器</h3>
           <div class="muted small">自定义任务名开始专注；默认计入「今日计划」，停止时自动记已完成 + 专注时长。计时跨界面持续，顶栏也会显示。运行中可按「⏱ 分段」记录当前节点。</div>
+          <button class="btn ghost sm" id="toShuati" style="margin-top:10px">📱 进入刷题模式（全屏 · 可自定义背景图）</button>
         </div>
         <div class="card" style="margin-top:8px;text-align:center">
           <div id="tElapsed" style="font-size:48px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:1px">${fmt(displayMs)}</div>
@@ -144,26 +145,23 @@
         if (lapBtn) lapBtn.onclick = () => { DB.timerLap(); render(); window.__updateTopTimer && window.__updateTopTimer(); };
         body.querySelector("#stop").onclick = () => doStop();
         body.querySelector("#reset").onclick = () => { DB.timerReset(); render(); window.__updateTopTimer && window.__updateTopTimer(); };
+        const toShuati = body.querySelector("#toShuati");
+        if (toShuati) toShuati.onclick = () => {
+          window.__pendingFocus = { planId: DB.timerState().planId, text: DB.timerState().task || "刷题", focusMin: 0 };
+          location.hash = "#/shuati";
+        };
 
         function doStop() {
           if (iv) { clearInterval(iv); iv = null; }
-          const st = DB.timerState();
-          const planId = st.planId, targetMs = st.targetMs;
-          // 在停止前快照分段（doStop 内部会清空 laps）；保留给 toast 显示
-          const finalLaps = (st.laps || []).slice();
-          const sec = DB.timerStop();
-          const mins = targetMs && targetMs > 0 ? Math.max(1, Math.round(targetMs / 60000)) : Math.max(1, Math.round(sec / 60));
-          DB.addTimerMinutes("计时器", mins);
-          if (planId) {
-            const it = DB.getPlan(date).items.find(x => x.id === planId);
-            if (it) { it.minutes = (it.minutes || 0) + mins; it.done = true; DB.save(); }
-          }
+          // 在停止前快照分段（timerSettle 内部会清空 laps）；保留给 toast 显示
+          const finalLaps = (DB.timerState().laps || []).slice();
+          const r = DB.timerSettle("计时器");
           let extra = "";
           if (finalLaps.length) {
             const totalMs = finalLaps.reduce((a, b) => a + b, 0);
             extra = ` · 共 ${finalLaps.length} 段（${fmt(totalMs)}）`;
           }
-          UI.toast(`已结算：专注 ${fmt(sec)}${extra}${planId ? "，已记入今日计划 ✓" : ""}`);
+          UI.toast(`已结算：专注 ${fmt(r.sec)}${extra}${r.planId ? "，已记入今日计划 ✓" : ""}`);
           render(); window.__updateTopTimer && window.__updateTopTimer();
         }
       }

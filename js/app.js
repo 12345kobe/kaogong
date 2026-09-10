@@ -53,9 +53,19 @@
     document.getElementById("pageTitle").innerHTML = (ICONS[m.icon] || "") + `<span>${m.title}</span>`;
   }
 
+  let lastKey = null;
   function renderRoute() {
     const key = (location.hash.replace("#/", "") || "countdown");
     if (!MODULES[key]) { location.hash = "#/countdown"; return; }
+    // 离开「刷题模式」且仍在计时 → 自动结算（结束计时）
+    if (lastKey === "shuati" && key !== "shuati") {
+      if (window.__shuatiCleanup) { try { window.__shuatiCleanup(); } catch (e) {} }
+      if (DB.timerState && DB.timerState().running) {
+        const r = DB.timerSettle("刷题模式");
+        UI.toast(`已退出刷题模式，计时结束：专注 ${fmtMs(r.sec * 1000)}${r.planId ? "，已记入今日计划 ✓" : ""}`);
+        window.__updateTopTimer && window.__updateTopTimer();
+      }
+    }
     setActive(key);
     const body = document.getElementById("pageBody"); body.innerHTML = "";
     try { MODULES[key].render(body); }
@@ -63,9 +73,10 @@
     // 每个模块都提供「专注计时」入口（上岸计时器）：点击带本模块名跳到计时器
     const fab = document.getElementById("focusFab");
     if (fab) {
-      if (key === "timer") { fab.style.display = "none"; }
+      if (key === "timer" || key === "shuati") { fab.style.display = "none"; }
       else { fab.style.display = ""; fab.dataset.module = key; }
     }
+    lastKey = key;
   }
 
   /* ===== 顶部栏 ===== */
@@ -260,6 +271,38 @@
     const topTimer = document.getElementById("topTimer");
     if (topTimer) topTimer.onclick = () => { location.hash = "#/timer"; };
     updateTopTimer();
+
+    /* ===== 白噪音（雨声）全局播放：跨模块持续，顶栏按钮控制 ===== */
+    const wnAudio = document.getElementById("whiteNoise");
+    const wnBtn = document.getElementById("whiteNoiseBtn");
+    let wnOn = false;
+    try { wnOn = localStorage.getItem("kg_whitenoise") === "on"; } catch (e) {}
+    if (wnAudio) { wnAudio.loop = true; wnAudio.volume = 0.6; wnAudio.preload = "auto"; }
+    function wnRender() {
+      if (!wnBtn) return;
+      wnBtn.classList.toggle("on", wnOn);
+      wnBtn.textContent = wnOn ? "🎧 白噪音 · 播放中" : "🎧 白噪音";
+    }
+    function wnPlay() { if (wnAudio) wnAudio.play().catch(() => {}); }
+    window.WhiteNoise = {
+      toggle() {
+        wnOn = !wnOn;
+        try { localStorage.setItem("kg_whitenoise", wnOn ? "on" : "off"); } catch (e) {}
+        if (wnOn) wnPlay(); else if (wnAudio) wnAudio.pause();
+        wnRender(); return wnOn;
+      },
+      isOn() { return wnOn; },
+      play() { if (!wnOn) { wnOn = true; try { localStorage.setItem("kg_whitenoise", "on"); } catch (e) {} wnPlay(); wnRender(); } },
+      stop() { if (wnOn) { wnOn = false; try { localStorage.setItem("kg_whitenoise", "off"); } catch (e) {} if (wnAudio) wnAudio.pause(); wnRender(); } }
+    };
+    if (wnBtn) wnBtn.onclick = () => window.WhiteNoise.toggle();
+    if (wnOn) {
+      wnRender(); wnPlay();
+      // 浏览器禁止无手势自动播放：首次交互时补播
+      document.addEventListener("pointerdown", function once() {
+        if (window.WhiteNoise.isOn() && wnAudio && wnAudio.paused) wnAudio.play().catch(() => {});
+      }, { once: true });
+    }
     window.__refreshTop = refreshTop;
     window.addEventListener("hashchange", renderRoute);
     if (!location.hash) location.hash = "#/countdown";
