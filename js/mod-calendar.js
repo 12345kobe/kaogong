@@ -116,7 +116,12 @@
           listHtml = items.map(it => {
             const dim = it.done ? " style=\"opacity:.5;text-decoration:line-through\"" : "";
             const meta = [];
-            if (it.type === "quiz" && it.meta && it.meta.pct != null) meta.push(`正确率 ${it.meta.pct}%`);
+            if (it.type === "quiz") {
+              if (it.count != null) {
+                const pct2 = (it.correct != null && it.count) ? Math.round(it.correct / it.count * 100) : null;
+                meta.push(`刷题 ${it.count} 道 · 对 ${it.correct != null ? it.correct : "?"} 道${pct2 != null ? "（正确率 " + pct2 + "%）" : ""}`);
+              } else if (it.meta && it.meta.pct != null) meta.push(`正确率 ${it.meta.pct}%`);
+            }
             if (it.minutes) meta.push("专注 " + fmt(it.minutes * 60));
             const metaStr = meta.length ? `<span class="muted small">· ${meta.join(" · ")}</span>` : "";
             const focusBtn = ((it.focusMin && !it.done) || (it.type === "quiz" && !it.done))
