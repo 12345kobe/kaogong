@@ -63,14 +63,28 @@
         body.querySelectorAll("[data-unit]").forEach(c => c.onclick = () => openStudy(c.dataset.unit));
       }
 
+      // 题目清洗：去掉「判断推理常识积累…真题链接」等无关前缀，直接从（2022联考）开始
+      function cleanQ(q) {
+        if (!q) return q;
+        let s = q;
+        const dl = s.indexOf("真题链接");
+        if (dl >= 0) {
+          s = s.slice(dl + 4);
+          s = s.replace(/^[（(][一二三四五六七八九十]+[)）]\s*/, "");
+        }
+        return s.trim();
+      }
+
       function openStudy(uid) {
         const u = units.find(x => x.id === uid);
         if (!u) return;
         let pts = "";
         if (u.points.length) {
+          // 整句语义完整再断行：每个考点块就是一段；二级标题（t="item"）加粗加大 + emoji
           pts = u.points.map(p => {
-            if (p.type === "item") return `<li class="al-li">${esc(p.text)}</li>`;
-            return `<p class="al-p">${esc(p.text)}</p>`;
+            const txt = esc(p.x || "");
+            if (p.t === "item") return `<div class="al-sub"><b>🔹 ${txt}</b></div>`;
+            return `<p class="al-p">${txt}</p>`;
           }).join("");
         } else {
           pts = `<div class="muted small">（本专题无「考点直击」文本）</div>`;
@@ -102,7 +116,7 @@
       function startQuiz(uid) {
         const u = units.find(x => x.id === uid);
         if (!u || !u.questions.length) { UI.toast("本专题暂无题目"); return; }
-        const qs = u.questions.map(q => ({ q: q.q, options: q.o, a: q.a, e: q.e }));
+        const qs = u.questions.map(q => ({ q: cleanQ(q.q), options: q.o, a: q.a, e: cleanQ(q.e) }));
         // 用通用答题引擎；完成后回到学习页
         body.innerHTML = "";
         const wrap = UI.el(`<div class="quiz-host"></div>`);

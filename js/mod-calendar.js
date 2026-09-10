@@ -6,7 +6,7 @@
 (function () {
   "use strict";
   window.MODULES = window.MODULES || {};
-  const TYPE_LABEL = { study: "学习", review: "复习", accumulate: "积累", quiz: "刷题", flash: "闪卡" };
+  const TYPE_LABEL = { study: "学习", review: "复习", accumulate: "积累", quiz: "刷题", flash: "闪卡", focus: "专注" };
 
   function esc(s) { return (s == null ? "" : String(s)).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
   function fmt(sec) { sec = Math.max(0, Math.round(sec)); const m = Math.floor(sec / 60), s = sec % 60; return m + "分" + (s ? s + "秒" : ""); }
@@ -117,8 +117,11 @@
             const dim = it.done ? " style=\"opacity:.5;text-decoration:line-through\"" : "";
             const meta = [];
             if (it.type === "quiz" && it.meta && it.meta.pct != null) meta.push(`正确率 ${it.meta.pct}%`);
-            if (it.minutes) meta.push(fmt(it.minutes * 60));
+            if (it.minutes) meta.push("专注 " + fmt(it.minutes * 60));
             const metaStr = meta.length ? `<span class="muted small">· ${meta.join(" · ")}</span>` : "";
+            const focusBtn = (it.focusMin && !it.done)
+              ? `<button class="btn xs" data-focus="${it.id}" style="margin-left:6px">⏱ 开始专注</button>`
+              : "";
             return `<div class="todo"${dim}>
               <label class="row" style="gap:8px;flex:1;align-items:flex-start;cursor:pointer">
                 <input type="checkbox" data-toggle="${it.id}" ${it.done ? "checked" : ""} style="width:auto;margin-top:3px"/>
@@ -126,8 +129,10 @@
                   <span class="tag" style="margin-right:6px">${TYPE_LABEL[it.type] || it.type}</span>
                   ${esc(it.text)}${metaStr}
                   ${it.module ? `<span class="muted small"> · ${esc(it.module)}</span>` : ""}
+                  ${it.focusMin ? `<span class="muted small"> · 计划专注 ${it.focusMin} 分</span>` : ""}
                 </div>
               </label>
+              ${focusBtn}
               <button class="del" data-del="${it.id}" style="border:none;background:none;color:#ff6b81;font-size:15px">✕</button>
             </div>`;
           }).join("");
@@ -156,6 +161,13 @@
         host.querySelectorAll("[data-toggle]").forEach(cb => cb.onchange = () => {
           DB.togglePlanItem(date, cb.dataset.toggle); renderPlan(host);
         });
+        host.querySelectorAll("[data-focus]").forEach(b => b.onclick = () => {
+          const it = DB.getPlan(date).items.find(x => x.id === b.dataset.focus);
+          if (it) {
+            window.__pendingFocus = { planId: it.id, text: it.text, focusMin: it.focusMin || 0 };
+            location.hash = "#/timer";
+          }
+        });
         host.querySelectorAll("[data-del]").forEach(b => b.onclick = () => {
           const plan2 = DB.getPlan(date);
           plan2.items = plan2.items.filter(x => x.id !== b.dataset.del);
@@ -173,17 +185,26 @@
           <label class="fld">模块</label><select id="pm" class="full">${modOpts}</select>
           <label class="fld">类型</label><select id="pt" class="full">${typeOpts}</select>
           <label class="fld">内容</label><input id="ptx" placeholder="例如：复习类比推理专题三 / 做常识10题" class="full"/>
-          <div class="muted small" style="margin-top:6px">类型说明：学习/复习=普通任务；积累=按艾宾浩斯曲线安排复习；刷题=会记录正确率与时间。</div>`;
+          <label class="fld" style="margin-top:10px">专注时长（分钟，可选）</label>
+          <input id="pfm" type="number" min="1" class="full" placeholder="例如 25，留空则不计时长"/>
+          <div class="muted small" style="margin-top:6px">类型说明：学习/复习=普通任务；积累=按艾宾浩斯曲线安排复习；刷题=会记录正确率与时间；专注=可点「开始专注」跳到计时器倒计时。</div>`;
+        // 每次新增都恢复到原始状态（不带上次填写的内容）
+        const ptx = box.querySelector("#ptx"); ptx.value = "";
+        box.querySelector("#pfm").value = "";
+        box.querySelector("#pm").selectedIndex = 0;
+        box.querySelector("#pt").selectedIndex = 0;
         UI.modal({
           title: "新增计划项", body: box, width: "460px",
           actions: [
             { label: "取消", cls: "ghost", onClick: (m, c) => c() },
             { label: "添加", cls: "primary", onClick: (m, c) => {
-              const text = box.querySelector("#ptx").value.trim() || (TYPE_LABEL[box.querySelector("#pt").value] + "任务");
+              const text = ptx.value.trim() || (TYPE_LABEL[box.querySelector("#pt").value] + "任务");
+              const fmin = parseInt(box.querySelector("#pfm").value, 10);
               DB.addPlanItem(DB.today(), {
                 module: box.querySelector("#pm").value,
                 type: box.querySelector("#pt").value,
-                text: text
+                text: text,
+                focusMin: (!isNaN(fmin) && fmin > 0) ? fmin : 0
               });
               c(); renderPlan(host);
             } }

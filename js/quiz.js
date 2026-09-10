@@ -110,6 +110,7 @@
         const card = UI.el(`<div class="quiz-q" data-done="0" data-qi="${qi}">
           <div class="q-head">
             <span class="tag">第 ${qi + 1} 题</span>
+            <span class="q-time muted small" style="margin-left:auto"></span>
             <button class="pen-btn ${hasNote ? "has" : ""}" title="手写标注（Apple Pencil）">✏️${hasNote ? "•" : ""}</button>
           </div>
           <div class="q">${nl2br(qq.q)}</div>
@@ -129,13 +130,16 @@
           b.onclick = () => {
             if (card.dataset.done === "1") return;
             card.dataset.ua = i;
+            const now = Date.now();
+            // 每道题用时（自上一题作答以来的时间，首题自开始计时）
+            qTimes[qi] = now - lastAnswer; lastAnswer = now;
+            const qtEl = card.querySelector(".q-time");
+            if (qtEl) qtEl.textContent = "⏱ 用时 " + fmt(qTimes[qi] / 1000);
             if (mode === "practice") {
               // 仅标记选择，不揭示
               optsWrap.querySelectorAll(".opt").forEach(ob => ob.classList.remove("selected"));
               b.classList.add("selected");
               results[qi] = { ua: i, right: null };
-              const now = Date.now();
-              qTimes[qi] = now - lastAnswer; lastAnswer = now;
               if (answeredCount() === questions.length && revealBar) {
                 revealBar.style.display = "flex";
               }

@@ -60,7 +60,7 @@
     reviews: { verbal: {} }, // { word: {box, next} }
     lastResetDay: null,
     dailyPlan: {}, // 每日计划：{ 'YYYY-MM-DD': { items: [{id,module,type,text,done,createdAt,accuracy,minutes}], note:"" } }
-    taskTimer: { task: "", startTs: 0, accumulated: 0, running: false, planId: null } // 上岸计时器（跨界面持续）
+    taskTimer: { task: "", startTs: 0, accumulated: 0, running: false, planId: null, targetMs: 0 } // 上岸计时器（跨界面持续）；targetMs>0 为倒计时专注
   };
 
   let state = null;
@@ -254,15 +254,21 @@
 
     /* ===== 上岸计时器 ===== */
     timerState() { return state.taskTimer; },
-    timerStart(task, planId) {
+    timerStart(task, planId, targetMs) {
       const tt = state.taskTimer;
       tt.task = task || tt.task || "专注学习";
-      tt.planId = planId || tt.planId || null;
+      tt.planId = (planId === undefined ? tt.planId : planId) || null;
+      tt.targetMs = targetMs || 0;
       if (tt.running) return tt;
       tt.startTs = Date.now();
       tt.running = true;
       this.save();
       return tt;
+    },
+    timerRemainingMs() {
+      const tt = state.taskTimer;
+      if (!tt.targetMs || tt.targetMs <= 0) return 0;
+      return Math.max(0, tt.targetMs - this.timerElapsedMs());
     },
     timerPause() {
       const tt = state.taskTimer;
@@ -277,7 +283,7 @@
       const tt = state.taskTimer;
       if (tt.running) { tt.accumulated += Date.now() - tt.startTs; tt.running = false; }
       const sec = Math.floor(tt.accumulated / 1000);
-      tt.accumulated = 0; tt.startTs = 0; tt.task = ""; tt.planId = null;
+      tt.accumulated = 0; tt.startTs = 0; tt.task = ""; tt.planId = null; tt.targetMs = 0;
       this.save();
       return sec;
     },

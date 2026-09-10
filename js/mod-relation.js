@@ -1,4 +1,4 @@
-/* 模块：必对应关系（类比推理必会对应关系）
+/* 模块：必会对应关系（类比推理必会对应关系）
    - 每天自动展示一个专题（按日期循环），学完点「已复习」记一次（计入已学习历史）；
    - 也可前后翻看其它专题；已复习的专题带标记。
 */
@@ -10,8 +10,49 @@
 
   function esc(s) { return (s == null ? "" : String(s)).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
+  // 把「真题示例」正文解析成：1. 题目 / 题干逻辑关系 / 正确答案 / 答案逻辑关系，逐行加粗换行
+  function parseExams(text) {
+    const s = (text || "").replace(/题于逻辑关系/g, "题干逻辑关系");
+    const parts = s.split(/(?=\d+\.)/);
+    let html = "";
+    parts.forEach(part => {
+      const m = part.match(/^(\d+)\.\s*([\s\S]*)$/);
+      if (!m) { const t = part.trim(); if (t) html += `<div class="exam-line">${esc(t)}</div>`; return; }
+      const num = m[1];
+      let body = m[2].trim();
+      let q = body, logic = "", ans = "", ansLogic = "";
+      const li = body.search(/题干逻辑关系/);
+      if (li >= 0) {
+        q = body.slice(0, li).trim();
+        let after = body.slice(li + 5).replace(/^[:：]/, "").trim();
+        const ai = after.search(/正确答案/);
+        if (ai >= 0) {
+          logic = after.slice(0, ai).trim().replace(/[:：]$/, "");
+          let ansPart = after.slice(ai + 4).replace(/^[:：]/, "").trim();
+          const ali = ansPart.search(/答案逻辑关系/);
+          if (ali >= 0) { ans = ansPart.slice(0, ali).trim().replace(/[:：]$/, ""); ansLogic = ansPart.slice(ali + 5).replace(/^[:：]/, "").trim(); }
+          else ans = ansPart.trim().replace(/[:：]$/, "");
+        } else { logic = after; }
+      } else {
+        const ai = body.search(/正确答案/);
+        if (ai >= 0) {
+          q = body.slice(0, ai).trim();
+          const idx = body.indexOf("正确答案");
+          ans = body.slice(idx + 4).replace(/^[:：]/, "").trim();
+        }
+      }
+      html += `<div class="exam-item">
+        <div class="exam-q"><b>${num}. ${esc(q)}</b></div>
+        ${logic ? `<div class="exam-line"><b>题干逻辑关系：</b>${esc(logic)}</div>` : ""}
+        ${ans ? `<div class="exam-line"><b>正确答案：</b>${esc(ans)}</div>` : ""}
+        ${ansLogic ? `<div class="exam-line"><b>答案逻辑关系：</b>${esc(ansLogic)}</div>` : ""}
+      </div>`;
+    });
+    return html;
+  }
+
   window.MODULES.relation = {
-    title: "必对应关系", icon: "relation",
+    title: "必会对应关系", icon: "relation",
     render(body) {
       const DB = window.DB, UI = window.UI, LH = window.LearnedHistory;
       const topics = (window.RELATION && window.RELATION.topics) || [];
@@ -31,15 +72,23 @@
         const reviewed = LH.isLearned(KEY, t.id);
         const totalReviewed = LH.count(KEY);
 
-        let paras = t.paras.map(p => {
-          if (HEAD.test(p.trim())) return `<div class="rel-head">${esc(p)}</div>`;
-          return `<p class="rel-p">${esc(p)}</p>`;
-        }).join("");
+        let parasHtml = "";
+        let expectingExam = false;
+        t.paras.forEach(p => {
+          const pt = p.trim();
+          if (HEAD.test(pt)) {
+            parasHtml += `<div class="rel-head">${esc(pt)}</div>`;
+            expectingExam = (pt === "真题示例");
+            return;
+          }
+          if (expectingExam) { parasHtml += parseExams(p); expectingExam = false; }
+          else parasHtml += `<p class="rel-p">${esc(p)}</p>`;
+        });
 
         body.innerHTML = `
           <div class="card">
             <div class="row spread">
-              <span class="muted small">📅 每日一题 · 必对应关系</span>
+              <span class="muted small">📅 每日一题 · 必会对应关系</span>
               <div class="row" style="gap:6px">
                 <button class="btn xs ghost" id="prev">‹ 上一篇</button>
                 <button class="btn xs ghost" id="next">下一篇 ›</button>
@@ -52,7 +101,7 @@
             <div class="muted small" style="margin-top:4px">第 ${viewIdx + 1} / ${topics.length} 个专题 · 已复习 ${totalReviewed} 个</div>
           </div>
           <div class="card" style="margin-top:8px">
-            <div class="allu-sec">${paras || '<div class="muted small">（暂无正文）</div>'}</div>
+            <div class="allu-sec">${parasHtml || '<div class="muted small">（暂无正文）</div>'}</div>
             <div class="row" style="margin-top:12px">
               ${isToday
                 ? `<button class="btn primary" id="review" ${reviewed ? "disabled" : ""}>${reviewed ? "✓ 今日已复习" : "✓ 我复习完了"}</button>`

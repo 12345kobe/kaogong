@@ -18,6 +18,9 @@
     wrongbook: wrap(`<path d="M6 6h9a3 3 0 0 1 3 3v17l-6-3-6 3V6z" stroke="${C}"/><path d="M18 9h8v17l-4 2-4-2" stroke="${M}"/><path d="M10 12l3 3M13 12l-3 3" stroke="${Y}"/>`),
     wrongwords: wrap(`<path d="M6 6h9a3 3 0 0 1 3 3v17l-6-3-6 3V6z" stroke="${C}"/><path d="M19 11h7M19 16h7M19 21h4" stroke="${M}"/><circle cx="25" cy="8" r="1.6" fill="${Y}" stroke="none"/>`),
     stats: wrap(`<path d="M5 26h22" stroke="${C}"/><path d="M8 26V16l5-6 4 4 6-9" stroke="${M}"/><circle cx="27" cy="5" r="1.8" fill="${Y}" stroke="none"/>`),
+    relation: wrap(`<circle cx="10" cy="16" r="4.2" stroke="${C}"/><circle cx="22" cy="16" r="4.2" stroke="${M}"/><path d="M14.2 16h3.6" stroke="${Y}" stroke-width="2.4"/><path d="M16 9v5M16 19v5" stroke="${P}"/>`),
+    timer: wrap(`<circle cx="16" cy="18" r="8" stroke="${C}"/><path d="M16 18V13M16 18l4 3" stroke="${M}"/><path d="M12 7l2-2h8l2 2" stroke="${Y}"/><circle cx="16" cy="6" r="1.4" fill="${Y}" stroke="none"/>`),
+    allusion: wrap(`<rect x="6" y="8" width="20" height="15" rx="3" stroke="${C}"/><path d="M11 13c-2 0-2 2 0 2M17 13c-2 0-2 2 0 2" stroke="${M}" stroke-width="2.2"/><path d="M11 19h10" stroke="${Y}"/><path d="M9 26l2-3h12l2 3" stroke="${P}"/>`),
     account: wrap(`<circle cx="16" cy="12" r="6" stroke="${C}"/><path d="M6 27c0-6 5-9 10-9s10 3 10 9" stroke="${M}"/>`),
     sync: wrap(`<path d="M7 16a9 9 0 0 1 15-5l2 2" stroke="${C}"/><path d="M25 16a9 9 0 0 1-15 5l-2-2" stroke="${M}"/><path d="M24 6v7h-7M8 26v-7h7" stroke="${Y}"/>`)
   };

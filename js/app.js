@@ -60,6 +60,12 @@
     const body = document.getElementById("pageBody"); body.innerHTML = "";
     try { MODULES[key].render(body); }
     catch (e) { body.innerHTML = `<div class="card empty">模块加载出错：${UI.esc(e.message)}</div>`; console.error(e); }
+    // 每个模块都提供「专注计时」入口（上岸计时器）：点击带本模块名跳到计时器
+    const fab = document.getElementById("focusFab");
+    if (fab) {
+      if (key === "timer") { fab.style.display = "none"; }
+      else { fab.style.display = ""; fab.dataset.module = key; }
+    }
   }
 
   /* ===== 顶部栏 ===== */
@@ -257,14 +263,23 @@
     window.__refreshTop = refreshTop;
     window.addEventListener("hashchange", renderRoute);
     if (!location.hash) location.hash = "#/countdown";
-    if (DB.isLoggedIn()) {
-      UI.toast("正在从云端拉取数据…");
-      DB.pull().then(() => { DB._cloudReady = true; DB.startAutoSync(); renderRoute(); refreshTop(); })
-              .catch(() => { DB._cloudReady = true; DB.startAutoSync(); renderRoute(); });
-    } else {
-      DB._cloudReady = true;
-      renderRoute();
-    }
+      if (DB.isLoggedIn()) {
+        UI.toast("正在从云端拉取数据…");
+        DB.pull().then(() => { DB._cloudReady = true; DB.startAutoSync(); renderRoute(); refreshTop(); })
+                .catch(() => { DB._cloudReady = true; DB.startAutoSync(); renderRoute(); });
+      } else {
+        DB._cloudReady = true;
+        renderRoute();
+      }
+
+      // 每个模块的「专注计时」浮动按钮：跳到计时器并预填本模块名（默认计入计划）
+      const fab = document.getElementById("focusFab");
+      if (fab) fab.onclick = () => {
+        const key = (location.hash.replace("#/", "") || "countdown");
+        const m = MODULES[key];
+        window.__focusPrefill = (m && m.title) ? m.title + " 专注" : "专注学习";
+        location.hash = "#/timer";
+      };
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);

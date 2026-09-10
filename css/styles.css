@@ -474,6 +474,28 @@ body.light .good-words{background:#f4f7fc}
 .fc-verdict.ng{background:rgba(255,107,129,.10);color:#ff7a8c;border:1px solid rgba(255,107,129,.35)}
 .fc-verdict code{font-family:monospace;color:#fff;background:var(--panel);padding:1px 6px;border-radius:4px}
 
+/* ===== 必会对应关系 · 真题示例解析 ===== */
+.rel-head{font-weight:800;color:#9b6cff;margin:10px 0 4px;font-size:15px}
+.rel-p{margin:0 0 6px;text-indent:2em;line-height:1.85}
+.rel-p:last-child{margin-bottom:0}
+.exam-item{border-left:3px solid var(--accent,#34e7e4);background:var(--bg2);border-radius:8px;padding:8px 10px;margin:8px 0}
+.exam-q{font-size:15px;line-height:1.7;margin-bottom:4px}
+.exam-line{font-size:14px;line-height:1.75;margin:3px 0;font-weight:400}
+.exam-line b{color:#ffd166}
+
+/* 逻辑判断·学考点：二级标题（考点块） */
+.al-sub{font-size:17px;font-weight:800;line-height:1.6;margin:12px 0 6px;color:#34e7e4}
+
+/* 答题：每题用时 */
+.q-time{font-variant-numeric:tabular-nums}
+
+/* 每个模块的「专注计时」浮动入口 */
+.focus-fab{position:fixed;right:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 18px);z-index:55;
+  display:inline-flex;align-items:center;gap:6px;padding:12px 18px;border:none;border-radius:30px;
+  background:linear-gradient(90deg,#34e7e4,#9b6cff);color:#0f1430;font-size:15px;font-weight:800;
+  box-shadow:0 8px 24px rgba(52,231,228,.35);cursor:pointer;-webkit-tap-highlight-color:transparent}
+.focus-fab:active{transform:scale(.96)}
+
 /* ===== Mobile ===== */
 @media(max-width:760px){
   #sidebar{position:fixed;left:0;top:0;bottom:0;z-index:60;transform:translateX(-100%);
