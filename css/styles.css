@@ -496,6 +496,41 @@ body.light .good-words{background:#f4f7fc}
   box-shadow:0 8px 24px rgba(52,231,228,.35);cursor:pointer;-webkit-tap-highlight-color:transparent}
 .focus-fab:active{transform:scale(.96)}
 
+/* ===== 上岸计时器 · 分段记录（仿 iPhone 秒表） ===== */
+.lap-btn{min-width:96px;font-weight:800;background:linear-gradient(135deg,#9b6cff,#34e7e4);color:#0f1430;border:none}
+.lap-btn:disabled{opacity:.4;cursor:not-allowed;background:var(--panel2);color:var(--txt-dim);border:1px solid var(--line)}
+body.light .lap-btn:disabled{background:#fafbfc;color:#5a6b86;border-color:#e3e8f0}
+.lap-list{display:flex;flex-direction:column;gap:6px;max-height:280px;overflow:auto;padding-right:4px}
+.lap-row{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-radius:8px;
+  background:var(--panel2);border:1px solid var(--line);font-variant-numeric:tabular-nums}
+.lap-row .lap-label{font-size:14px;color:var(--txt-dim)}
+.lap-row .lap-time{font-size:16px;font-weight:700;color:var(--txt)}
+.lap-row.lap-latest{background:rgba(255,92,240,.10);border-color:rgba(255,92,240,.45)}
+.lap-row.lap-latest .lap-label{color:#ff5cf0;font-weight:800}
+.lap-row.lap-latest .lap-time{color:#ff5cf0}
+.lap-row.lap-fast{background:rgba(52,231,228,.12);border-color:rgba(52,231,228,.45)}
+.lap-row.lap-fast .lap-label{color:#34e7e4;font-weight:800}
+.lap-row.lap-fast .lap-time{color:#34e7e4}
+.lap-row.lap-latest.lap-fast{background:linear-gradient(90deg,rgba(255,92,240,.10),rgba(52,231,228,.12))}
+body.light .lap-row{background:#fafbfc;border-color:#e3e8f0}
+body.light .lap-row .lap-label{color:#5a6b86}
+body.light .lap-row .lap-time{color:#0f1828}
+body.light .lap-row.lap-latest{background:rgba(226,59,84,.10);border-color:rgba(226,59,84,.45)}
+body.light .lap-row.lap-latest .lap-label{color:#c01f38}
+body.light .lap-row.lap-latest .lap-time{color:#c01f38}
+body.light .lap-row.lap-fast{background:rgba(31,158,107,.12);border-color:rgba(31,158,107,.5)}
+body.light .lap-row.lap-fast .lap-label{color:#1f9e6b}
+body.light .lap-row.lap-fast .lap-time{color:#1f9e6b}
+
+/* ===== 申论 · 每日名言积累（浅色模式黑字） ===== */
+.qd-text{font-size:15px;margin-top:4px;line-height:1.7}
+.qd-text.qd-undone{color:#e7ecff}                      /* 深色模式：未读仍用淡蓝白 */
+.qd-text.qd-done{color:var(--txt-dim);text-decoration:line-through;opacity:.85}
+.qd-author{font-size:13px;color:var(--txt-dim);margin-top:2px}
+body.light .qd-text.qd-undone{color:#0f1828}            /* 浅色模式：未读直接黑字 */
+body.light .qd-text.qd-done{color:#5a6b86;text-decoration:line-through;opacity:.85}
+body.light .qd-author{color:#1c2433}                   /* 浅色模式：作者深色加深 */
+
 /* ===== Mobile ===== */
 @media(max-width:760px){
   #sidebar{position:fixed;left:0;top:0;bottom:0;z-index:60;transform:translateX(-100%);

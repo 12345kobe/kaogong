@@ -60,7 +60,7 @@
     reviews: { verbal: {} }, // { word: {box, next} }
     lastResetDay: null,
     dailyPlan: {}, // 每日计划：{ 'YYYY-MM-DD': { items: [{id,module,type,text,done,createdAt,accuracy,minutes}], note:"" } }
-    taskTimer: { task: "", startTs: 0, accumulated: 0, running: false, planId: null, targetMs: 0 } // 上岸计时器（跨界面持续）；targetMs>0 为倒计时专注
+    taskTimer: { task: "", startTs: 0, accumulated: 0, running: false, planId: null, targetMs: 0, laps: [] } // 上岸计时器（跨界面持续）；targetMs>0 为倒计时专注；laps 为分段记录（每个元素是该段耗时毫秒）
   };
 
   let state = null;
@@ -259,6 +259,7 @@
       tt.task = task || tt.task || "专注学习";
       tt.planId = (planId === undefined ? tt.planId : planId) || null;
       tt.targetMs = targetMs || 0;
+      tt.laps = []; // 重新开始，清空分段
       if (tt.running) return tt;
       tt.startTs = Date.now();
       tt.running = true;
@@ -269,6 +270,18 @@
       const tt = state.taskTimer;
       if (!tt.targetMs || tt.targetMs <= 0) return 0;
       return Math.max(0, tt.targetMs - this.timerElapsedMs());
+    },
+    timerLap() {
+      // 记录当前 elapsed 与已有 laps 总和的差为新段；只有 running 时才有效
+      const tt = state.taskTimer;
+      if (!tt.running) return null;
+      const total = this.timerElapsedMs();
+      const used = (tt.laps || []).reduce((a, b) => a + (b || 0), 0);
+      const dur = Math.max(0, total - used);
+      tt.laps = tt.laps || [];
+      tt.laps.push(dur);
+      this.save();
+      return tt.laps.slice();
     },
     timerPause() {
       const tt = state.taskTimer;
@@ -282,8 +295,15 @@
     timerStop() {
       const tt = state.taskTimer;
       if (tt.running) { tt.accumulated += Date.now() - tt.startTs; tt.running = false; }
+      // 在清空前追加最后一段（如果当前 elapsed > 已有 laps 总和）
+      const total = tt.accumulated;
+      const used = (tt.laps || []).reduce((a, b) => a + (b || 0), 0);
+      if (total > used) {
+        tt.laps = tt.laps || [];
+        tt.laps.push(total - used);
+      }
       const sec = Math.floor(tt.accumulated / 1000);
-      tt.accumulated = 0; tt.startTs = 0; tt.task = ""; tt.planId = null; tt.targetMs = 0;
+      tt.accumulated = 0; tt.startTs = 0; tt.task = ""; tt.planId = null; tt.targetMs = 0; tt.laps = [];
       this.save();
       return sec;
     },
@@ -295,7 +315,7 @@
     },
     timerReset() {
       const tt = state.taskTimer;
-      tt.accumulated = 0; tt.startTs = 0; tt.running = false; tt.task = ""; tt.planId = null;
+      tt.accumulated = 0; tt.startTs = 0; tt.running = false; tt.task = ""; tt.planId = null; tt.laps = [];
       this.save();
     },
     getTodaySubjectMinutes(subject) {
