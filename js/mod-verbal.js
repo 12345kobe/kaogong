@@ -281,10 +281,35 @@
         wdCard.querySelector("#wdStats").innerHTML = `
           <div class="eb-stat"><span class="n">${st.seen}/${st.total}</span><span class="l">已复习 / 总词数</span></div>
           <div class="eb-stat"><span class="n">${unrev}</span><span class="l">未复习</span></div>
-          <div class="eb-stat"><span class="n">${st.due}</span><span class="l">待复习(到期)</span></div>
+          <div class="eb-stat" id="wdDueStat" style="cursor:pointer" title="点击开始到期复习"><span class="n">${st.due}</span><span class="l">待复习(到期) · 点击复习</span></div>
           <div class="eb-stat"><span class="n">${st.accuracy}%</span><span class="l">正确率</span></div>
           <div class="eb-stat"><span class="n">${wdState.round || 1}</span><span class="l">轮次</span></div>
           <div class="eb-stat"><span class="n">${ww}</span><span class="l">错词本</span></div>`;
+        const ds = wdCard.querySelector("#wdDueStat");
+        if (ds) ds.onclick = () => startDueReview();
+      }
+
+      /* 到期复习：点「待复习(到期)」直接开一组到期词（不推进新词顺序指针） */
+      function dueWordList() {
+        const eb = (DB.state.eb && DB.state.eb[WD_GROUP]) || {};
+        const map = {}; WD_POOL.forEach(w => { map[w.word] = w; });
+        return Object.keys(eb).filter(id => EBv.isDue(WD_GROUP, id)).map(id => map[id]).filter(Boolean);
+      }
+      function startDueReview() {
+        const due = dueWordList();
+        if (!due.length) { UI.toast("当前没有到期待复习的词，先练一组新词吧"); return; }
+        const words = due.slice(0, 20); // 到期词可能很多，一次最多 20 个
+        UI.toast(`复习模式：本次 ${words.length} 个到期词`);
+        const qs = words.map(makeDefQuestion);
+        window.Quiz.start(wdCard.querySelector("#wdQuiz"), qs, SUBJECT, {
+          mode: "memorize",
+          onAnswer: (qq, correct) => {
+            EBv.updateAfterReview(WD_GROUP, qq.word, correct);
+            if (!correct) addWrongWord(qq);
+          },
+          onDone: ({ correct, total }) => { UI.toast(`复习完成，正确率 ${correct}/${total}`); renderWdStats(); },
+          onAgain: () => startDueReview()
+        });
       }
 
       let wdBatch = [];
