@@ -75,6 +75,17 @@
           ${voiceOk
             ? `<div class="muted small" style="margin-top:8px;color:var(--green)">✓ 当前浏览器支持语音识别（建议 Chrome / Edge / Safari，且需联网与授予麦克风权限）。</div>`
             : `<div class="muted small" style="margin-top:8px;color:var(--red)">⚠️ 当前浏览器不支持语音识别，请改用 Chrome / Edge / Safari，并确保通过 https 打开。</div>`}
+        </div>
+
+        <div class="card" style="margin-top:12px">
+          <h3>🔑 AI 令牌</h3>
+          <div class="muted small">AI 咨询需要你<b>自己的 GitHub 令牌</b>（PAT，需勾选 <b>models:read</b>）。令牌<b>只保存在本机浏览器</b>、不会上传云端，界面也<b>不会回显</b>已保存的内容。令牌不会写进代码，换设备/清缓存后需重新粘贴一次。</div>
+          <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap;align-items:center">
+            <input id="aiTok" type="password" autocomplete="new-password" placeholder="粘贴 GitHub 个人访问令牌（PAT）" style="flex:1;min-width:200px"/>
+            <button class="btn" id="aiTokSave">保存</button>
+            <button class="btn ghost" id="aiTokClr">清除</button>
+          </div>
+          <div class="muted small" id="aiTokNote" style="margin-top:8px"></div>
         </div>`;
 
       /* ===== PDF 题库导入（合并进设置的子板块） ===== */
@@ -125,6 +136,32 @@
         } else {
           UI.toast("拉取功能未就绪");
         }
+      };
+
+      /* ===== AI 令牌（只存不显：不回显已保存值） ===== */
+      const aiTok = body.querySelector("#aiTok");
+      const aiNote = body.querySelector("#aiTokNote");
+      function syncTokNote() {
+        const A = window.KGAI;
+        if (!aiNote) return;
+        aiNote.textContent = (A && A.hasCustom())
+          ? "✓ 已配置令牌（出于安全，不显示内容）。"
+          : "⚠️ 尚未配置：请在上方粘贴你的 GitHub PAT（需勾选 models:read）。";
+      }
+      syncTokNote();
+      if (body.querySelector("#aiTokSave")) body.querySelector("#aiTokSave").onclick = () => {
+        const A = window.KGAI;
+        if (!A) { UI.toast("AI 模块未就绪"); return; }
+        const v = (aiTok && aiTok.value ? aiTok.value : "").trim();
+        if (!v) { UI.toast("请先粘贴令牌再保存"); return; }
+        A.setToken(v); if (aiTok) aiTok.value = ""; UI.toast("令牌已保存到本机");
+        syncTokNote();
+      };
+      if (body.querySelector("#aiTokClr")) body.querySelector("#aiTokClr").onclick = () => {
+        const A = window.KGAI;
+        if (A) A.setToken("");
+        if (aiTok) aiTok.value = "";
+        syncTokNote(); UI.toast("已清除令牌");
       };
     }
   };

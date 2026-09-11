@@ -70,6 +70,14 @@
     const body = document.getElementById("pageBody"); body.innerHTML = "";
     try { MODULES[key].render(body); }
     catch (e) { body.innerHTML = `<div class="card empty">模块加载出错：${UI.esc(e.message)}</div>`; console.error(e); }
+    // 通用折叠：模块内辅助小板块默认收起（AI 有独立全屏布局、设置为表单页，均不参与）
+    if (key !== "ai" && key !== "settings") {
+      try { UI.autoCollapse(body); } catch (e) { console.error(e); }
+    }
+    // AI 咨询：整屏对话模式（隐藏浮动按钮、去掉内边距，让对话区占屏 80%+）
+    try { document.body.classList.toggle("ai-mode", key === "ai"); } catch (e) {}
+    // 把 PDF 导入的题册挂到对应模块的「自行刷题」入口
+    try { mountPdfBooks(body, key); } catch (e) { console.error(e); }
     // 每个模块都提供「专注计时」入口（上岸计时器）：点击带本模块名跳到计时器
     const fab = document.getElementById("focusFab");
     if (fab) {
@@ -77,6 +85,77 @@
       else { fab.style.display = ""; fab.dataset.module = key; }
     }
     lastKey = key;
+  }
+
+  /* ===== PDF 导入的题册：挂到对应模块的「自行刷题」入口 =====
+     题册由 js/mod-pdfimport.js 解析并存入 DB.state.pdfBooks，通过 window.KGPdfBooks 读取。
+     展示方式：按章节折叠 → 有理论的提供「📖 学考点」→ 题目走 Quiz 引擎（记录每题用时与正确率）。 */
+  const PDFBK_SUBJ = { verbal: "言语", politics: "政治", common: "常识", essay: "申论", data: "资料", logic: "逻辑", quantity: "数量" };
+  function mountPdfBooks(body, key) {
+    const subj = PDFBK_SUBJ[key];
+    const api = window.KGPdfBooks;
+    if (!subj || !api || !api.list) return;
+    let books = [];
+    try { books = api.list(subj) || []; } catch (e) { return; }
+    if (!books.length) return;
+
+    const sec = UI.section("📚 我导入的题册（" + subj + "）");
+    body.appendChild(sec);
+    const box = sec.querySelector(".kg-det-b");
+
+    function openTheory(title, html) {
+      const mask = UI.el(`<div class="modal-mask"><div class="modal" style="max-width:760px;max-height:84vh;overflow:auto">
+        <h3>📖 ${UI.esc(title)}</h3>
+        <div class="pdb-theory">${html || "<div class='muted'>（本章无理论内容）</div>"}</div>
+        <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn ghost pdb-close">关闭</button></div>
+      </div></div>`);
+      document.body.appendChild(mask);
+      mask.querySelector(".pdb-close").onclick = () => mask.remove();
+      mask.onclick = e => { if (e.target === mask) mask.remove(); };
+    }
+    function openQuiz(title, qs) {
+      const mask = UI.el(`<div class="modal-mask"><div class="modal" style="max-width:820px;max-height:88vh;overflow:auto">
+        <h3>✍ ${UI.esc(title)}</h3>
+        <div class="pdb-quiz"></div>
+        <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn ghost pdb-close">关闭</button></div>
+      </div></div>`);
+      document.body.appendChild(mask);
+      mask.querySelector(".pdb-close").onclick = () => mask.remove();
+      mask.onclick = e => { if (e.target === mask) mask.remove(); };
+      try { window.Quiz.start(mask.querySelector(".pdb-quiz"), qs, subj, {}); }
+      catch (e) { mask.querySelector(".pdb-quiz").innerHTML = `<div class="card empty">练习启动失败：${UI.esc(e.message)}</div>`; }
+    }
+
+    books.forEach(bk => {
+      const secs = bk.sections || [];
+      const nq = secs.reduce((s, x) => s + ((x.questions || []).length), 0);
+      const card = UI.el(`<div class="card">
+        <h3>📘 ${UI.esc(bk.name || "未命名题册")}</h3>
+        <div class="muted small">${secs.length} 个部分 · 共 ${nq} 题${bk.date ? " · " + UI.esc(bk.date) : ""}</div>
+      </div>`);
+      secs.forEach((s, si) => {
+        const qs = s.questions || [];
+        const label = (s.name || ("第 " + (si + 1) + " 部分")) + "（" + qs.length + " 题）";
+        const inner = UI.section(label);
+        const ic = UI.el(`<div class="card"></div>`);
+        if (s.theory) {
+          ic.appendChild(UI.el(`<div class="muted small">本章含理论/考点，可先学习再刷题：</div>
+            <div class="row" style="margin-top:8px"><button class="btn pdb-learn">📖 学考点</button></div>`));
+          ic.querySelector(".pdb-learn").onclick = () => openTheory(label, s.theory);
+        }
+        if (qs.length) {
+          ic.appendChild(UI.el(`<div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap">
+            <button class="btn primary pdb-go">✍ 开始练习</button>
+            <span class="muted small">默认每次 ${Math.min(qs.length, 10)} 题</span>
+          </div>`));
+          ic.querySelector(".pdb-go").onclick = () => openQuiz(bk.name + " · " + (s.name || ("第 " + (si + 1) + " 部分")), qs.slice(0, 10));
+        }
+        if (!s.theory && !qs.length) ic.appendChild(UI.el(`<div class="muted small">（本部分无内容）</div>`));
+        inner.querySelector(".kg-det-b").appendChild(ic);
+        card.appendChild(inner);
+      });
+      box.appendChild(card);
+    });
   }
 
   /* ===== 顶部栏 ===== */

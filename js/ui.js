@@ -55,6 +55,28 @@
       </details>`);
     },
 
+    /* ===== 通用折叠：把模块内「直接子卡片」自动包成可折叠小板块 =====
+       说明：第一个卡片通常是模块主功能，保持展开；其余辅助小板块默认折叠。
+       已在 .kg-det 内的、或已处理过的卡片会跳过，所以手动用 section() 包过的模块不会重复包裹。 */
+    autoCollapse(body, opts) {
+      if (!body || !body.children) return;
+      opts = opts || {};
+      const cards = Array.prototype.filter.call(body.children, function (c) {
+        return c.classList && c.classList.contains("card") && !c.classList.contains("kg-det") && c.dataset.kgDet !== "1";
+      });
+      cards.forEach(function (card, i) {
+        const head = card.querySelector("h3, h2, .card-title");
+        let title = head ? (head.textContent || "").trim() : "";
+        if (!title) title = opts.fallback || ("板块 " + (i + 1));
+        const det = el(`<details class="kg-det"><summary class="kg-det-s"><span class="kg-det-t">${esc(title)}</span><span class="kg-det-arrow">▸</span></summary><div class="kg-det-b"></div></details>`);
+        card.parentNode.insertBefore(det, card);
+        det.querySelector(".kg-det-b").appendChild(card);
+        if (head) head.style.display = "none"; // 标题已由 summary 显示，避免重复
+        card.dataset.kgDet = "1";
+        if (i === 0 && opts.openFirst !== false) det.setAttribute("open", "open");
+      });
+    },
+
     /* ===== 圆盘进度 ===== */
     disc(pct, centerHtml) {
       pct = Math.max(0, Math.min(1, pct));

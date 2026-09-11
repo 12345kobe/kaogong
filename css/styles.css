@@ -785,3 +785,49 @@ body.light .ai-msg.bot{ background:#f6f8fc }
 .kg-det-b > .card{ margin-top:0 }
 body.light .kg-det{ background:#fff }
 body.light .kg-det-s:hover{ background:#f3f6fb }
+
+/* ===== AI 咨询：整屏对话（占屏 80% 以上） ===== */
+.ai-wrap{ display:flex; flex-direction:column; height:calc(100vh - 104px); min-height:420px }
+.ai-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border-bottom:1px solid var(--line); flex:0 0 auto }
+.ai-head-t{ font-weight:700; font-size:16px }
+.ai-head-sub{ font-weight:400; font-size:12px; color:var(--txt-dim); margin-left:6px }
+.ai-head-r{ display:flex; gap:8px }
+.ai-msgs{ flex:1 1 auto; overflow-y:auto; padding:12px; -webkit-overflow-scrolling:touch }
+.ai-dock{ flex:0 0 auto; border-top:1px solid var(--line); padding:10px 12px calc(10px + env(safe-area-inset-bottom)) }
+.ai-dock #aiInput{ width:100%; resize:none }
+.ai-dock-row{ display:flex; align-items:center; gap:8px; margin-top:8px }
+.ai-spacer{ flex:1 }
+.ai-models{ display:flex; gap:8px; overflow-x:auto; margin-top:8px; padding-bottom:2px }
+.ai-chip{ flex:0 0 auto; padding:7px 10px; border-radius:999px; border:1px solid var(--line); background:var(--panel2); color:var(--txt); font-size:12px; cursor:pointer; white-space:nowrap }
+.ai-chip.on{ border-color:#34e7e4; background:rgba(52,231,228,.14) }
+.ai-chip-n{ color:var(--txt-dim); margin-left:6px; font-size:11px }
+.ai-atts{ display:flex; gap:8px; flex-wrap:wrap; padding:0 12px }
+.ai-att{ position:relative; display:flex; align-items:center; gap:6px; padding:6px 22px 6px 6px; border:1px solid var(--line); border-radius:10px; background:var(--panel2) }
+.ai-att img{ width:38px; height:38px; object-fit:cover; border-radius:6px }
+.ai-att-pdf{ font-size:22px }
+.ai-att-n{ font-size:12px; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.ai-att-x{ position:absolute; top:-6px; right:-6px; width:20px; height:20px; border-radius:50%; border:1px solid var(--line); background:var(--panel); color:var(--txt); cursor:pointer; line-height:1; font-size:13px }
+.ai-img{ max-width:220px; border-radius:8px; margin-top:6px; display:block }
+.ai-set{ margin-top:12px }
+.ai-set-l{ font-size:13px; font-weight:600; margin-bottom:6px }
+.ai-set-hint{ font-size:12px; color:var(--txt-dim); margin-top:6px }
+.ai-set input[type=password],.ai-set input[type=range]{ width:100% }
+.btn.sm{ padding:6px 10px; font-size:12px }
+body.ai-mode #focusFab{ display:none !important }
+body.ai-mode #pageBody{ padding:8px !important; max-width:none !important }
+body.light .ai-chip{ background:#fff }
+body.light .ai-att{ background:#fff }
+
+/* ===== 答题：模式切换 + 交卷（左下角固定） + 询问AI ===== */
+.quiz-modebar{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 2px }
+.qz-mlabel{ font-size:12px; color:var(--txt-dim); font-weight:700 }
+.qm-chip{ padding:6px 12px; border-radius:999px; border:1px solid var(--line); background:var(--panel2); color:var(--txt); font-size:13px; cursor:pointer }
+.qm-chip.on{ border-color:#34e7e4; background:rgba(52,231,228,.14); font-weight:700 }
+.qz-mhint{ font-size:12px; color:var(--txt-dim) }
+.quiz-submit{ position:fixed; left:12px; bottom:calc(12px + env(safe-area-inset-bottom)); z-index:60; display:flex; align-items:center; gap:8px; background:var(--panel); border:1px solid var(--line); border-radius:999px; padding:8px 14px; box-shadow:0 6px 20px rgba(0,0,0,.28) }
+.quiz-submit .btn{ padding:8px 16px }
+.qz-flash{ animation:qzflash 1.8s ease }
+@keyframes qzflash{ 0%,100%{ box-shadow:none } 25%,60%{ box-shadow:0 0 0 3px rgba(255,92,240,.6) } }
+.qz-ask{ margin-top:10px }
+body.light .qm-chip{ background:#fff }
+body.light .quiz-submit{ background:#fff }
