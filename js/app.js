@@ -3,7 +3,7 @@
   "use strict";
   const DB = window.DB, UI = window.UI, ICONS = window.ICONS, MODULES = window.MODULES;
 
-  const NAV = ["countdown", "timer", "verbal", "wrongwords", "data", "logic", "relation", "politics", "quantity", "common", "essay", "essays", "allusion", "calendar", "wrongbook", "stats"];
+  const NAV = ["countdown", "timer", "verbal", "wrongwords", "data", "logic", "relation", "politics", "quantity", "common", "essay", "essays", "allusion", "calendar", "wrongbook", "stats", "settings"];
   const GH_LABEL = "12345kobe/kaogong";
 
   /* ===== 深浅色主题：按时间自动切换 + 手动覆盖（到点仍按时间表切回） ===== */
@@ -253,6 +253,14 @@
     renderRoute(); refreshTop();
   }
 
+  // 供「设置」模块复用：导出 / 导入 / 上传 / 拉取
+  window.KGDataIO = {
+    exportData: exportData,
+    importData: importData,
+    push() { DB.save(true); UI.toast("已触发上传到云端"); },
+    pull() { return DB.pull(); }
+  };
+
   function closeSidebar() { document.getElementById("sidebar").classList.remove("open"); }
 
   /* ===== 启动 ===== */
@@ -260,6 +268,15 @@
     DB.load();
     loadNav();
     Theme.init();
+    // 应用用户已保存的界面字体（设置里选的）
+    try {
+      const f = localStorage.getItem("kg_font");
+      if (f) document.documentElement.style.setProperty("--kg-user-font", f);
+    } catch (e) {}
+    // 启用语音转文字浮动按钮（不支持的浏览器自动跳过）
+    if (window.KGVoice && window.KGVoice.supported) {
+      try { window.KGVoice.enableFloating(); } catch (e) { console.error(e); }
+    }
     tickClock(); setInterval(tickClock, 1000);
     dailyQuote();
     refreshTop();

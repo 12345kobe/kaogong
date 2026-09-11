@@ -22,7 +22,8 @@
     timer: wrap(`<circle cx="16" cy="18" r="8" stroke="${C}"/><path d="M16 18V13M16 18l4 3" stroke="${M}"/><path d="M12 7l2-2h8l2 2" stroke="${Y}"/><circle cx="16" cy="6" r="1.4" fill="${Y}" stroke="none"/>`),
     allusion: wrap(`<rect x="6" y="8" width="20" height="15" rx="3" stroke="${C}"/><path d="M11 13c-2 0-2 2 0 2M17 13c-2 0-2 2 0 2" stroke="${M}" stroke-width="2.2"/><path d="M11 19h10" stroke="${Y}"/><path d="M9 26l2-3h12l2 3" stroke="${P}"/>`),
     account: wrap(`<circle cx="16" cy="12" r="6" stroke="${C}"/><path d="M6 27c0-6 5-9 10-9s10 3 10 9" stroke="${M}"/>`),
-    sync: wrap(`<path d="M7 16a9 9 0 0 1 15-5l2 2" stroke="${C}"/><path d="M25 16a9 9 0 0 1-15 5l-2-2" stroke="${M}"/><path d="M24 6v7h-7M8 26v-7h7" stroke="${Y}"/>`)
+    sync: wrap(`<path d="M7 16a9 9 0 0 1 15-5l2 2" stroke="${C}"/><path d="M25 16a9 9 0 0 1-15 5l-2-2" stroke="${M}"/><path d="M24 6v7h-7M8 26v-7h7" stroke="${Y}"/>`),
+    settings: wrap(`<circle cx="16" cy="16" r="3.4" stroke="${C}"/><path d="M16 4.5l1.6 2.4 2.9-.6.6 2.9 2.8 1.2-1 2.9 1 2.9-2.8 1.2-.6 2.9-2.9-.6L16 27.5l-1.6-2.4-2.9.6-.6-2.9L8.1 21.5l1-2.9-1-2.9 2.8-1.2.6-2.9 2.9.6z" stroke="${M}"/>`)
   };
 
   window.ICONS = ICONS;

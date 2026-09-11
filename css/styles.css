@@ -21,7 +21,7 @@
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%}
 body{
-  font-family:var(--font-body);
+  font-family:var(--kg-user-font, var(--font-body));
   background:radial-gradient(1200px 600px at 80% -10%,#1a2350 0%,var(--bg) 55%) fixed;
   color:var(--txt);
   font-size:15px;
@@ -29,7 +29,7 @@ body{
 }
 /* 标题 / UI 控件统一用黑体；大标题黑体加粗；正文（body）用楷体 */
 h1,h2,h3,h4,.page-title,#pageTitle,.card>h3,.nav-item,.btn,.chip,.badge,.tag,.todo b,.eb-stat .n,.pct,.modal-title,.qd-chk,.fc-big,.countdown-num,.brand-logo span{
-  font-family:var(--font-head);
+  font-family:var(--kg-user-font, var(--font-head));
 }
 h1,#pageTitle,.page-title,.fc-big,.countdown-num{ font-weight:700; }
 #app{display:flex;height:100vh;overflow:hidden}
@@ -722,4 +722,34 @@ body.light .quiz-reveal-bar{ box-shadow:0 6px 24px rgba(30,50,90,.18) }
 .book-ex{ font-size:15px;line-height:1.9;color:#5a4a2a;background:rgba(255,255,255,.5);border-radius:10px;padding:10px 12px; }
 .book-nav{ display:flex;align-items:center;justify-content:space-between;gap:10px; }
 .book-nav #pind{ color:var(--txt-dim); }
+
+/* ===== 设置页（字体选择） ===== */
+.font-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px }
+.font-opt{
+  display:flex; flex-direction:column; gap:8px; align-items:flex-start;
+  padding:12px 14px; border:1px solid var(--line); border-radius:12px;
+  background:var(--panel2); color:var(--txt); cursor:pointer; transition:.15s; text-align:left;
+}
+.font-opt:hover{ border-color:var(--cyan) }
+.font-opt.on{ border-color:var(--cyan); box-shadow:0 0 0 2px rgba(52,231,228,.35) inset; background:rgba(52,231,228,.10) }
+.font-sample{ font-size:20px; line-height:1.3; font-weight:700; width:100%; word-break:break-all }
+.font-name{ font-size:12px; color:var(--txt-dim) }
+
+/* ===== 语音转文字浮动按钮 ===== */
+#kgVoice{ position:fixed; right:16px; bottom:90px; z-index:99999; display:none; align-items:center; gap:8px }
+.kg-voice-mic{
+  width:54px; height:54px; border-radius:50%; border:none;
+  background:linear-gradient(135deg,var(--cyan),var(--purple)); color:#06121f;
+  font-size:24px; line-height:1; box-shadow:0 6px 20px rgba(0,0,0,.45); cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+}
+.kg-voice-mic.on{ background:linear-gradient(135deg,var(--red),var(--magenta)); color:#fff; animation:pulse 1s infinite }
+.kg-voice-lang{
+  border:1px solid var(--line); background:var(--panel); color:var(--txt);
+  border-radius:20px; padding:7px 12px; font-size:13px; cursor:pointer; white-space:nowrap;
+  -webkit-tap-highlight-color:transparent;
+}
+@keyframes pulse{ 0%{transform:scale(1)} 50%{transform:scale(1.08)} 100%{transform:scale(1)} }
+body.light #kgVoice .kg-voice-mic{ color:#06121f }
+
 
