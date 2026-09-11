@@ -5,6 +5,14 @@
 (function () {
   "use strict";
 
+  // ★ 学科模块统一表（计时 / 刷题 / 录入答题 共用，保证一一对应）
+  // 完整名用于下拉展示，短名用于 accuracyCumulative / 学习计划等存储主键
+  window.KG_SUBJECTS = ["言语理解", "资料分析", "数量关系", "逻辑判断", "常识判断", "政治理论", "申论"];
+  window.KG_SUBJECT_SHORT = {
+    "言语理解": "言语", "资料分析": "资料", "数量关系": "数量", "逻辑判断": "逻辑",
+    "常识判断": "常识", "政治理论": "政治", "申论": "申论"
+  };
+
   // ★ 云端同步后端地址：优先读取 js/config.js 的 APP_CONFIG.SYNC_API_URL
   const SYNC_API_URL = (window.APP_CONFIG && window.APP_CONFIG.SYNC_API_URL) || "";
   // ★ GitHub 云端同步配置（数据存仓库 userdata 分支，与部署的 main 分支隔离，部署不会清空）
@@ -60,7 +68,7 @@
     reviews: { verbal: {} }, // { word: {box, next} }
     lastResetDay: null,
     dailyPlan: {}, // 每日计划：{ 'YYYY-MM-DD': { items: [{id,module,type,text,done,createdAt,accuracy,minutes}], note:"" } }
-    taskTimer: { task: "", startTs: 0, accumulated: 0, running: false, planId: null, targetMs: 0, laps: [] } // 上岸计时器（跨界面持续）；targetMs>0 为倒计时专注；laps 为分段记录（每个元素是该段耗时毫秒）
+    taskTimer: { task: "", startTs: 0, accumulated: 0, running: false, planId: null, targetMs: 0, laps: [], subject: "" } // 上岸计时器（跨界面持续）；targetMs>0 为倒计时专注；laps 为分段记录；subject 为所选学科（用于按学科记时长/正确率）
   };
 
   let state = null;
@@ -210,6 +218,32 @@
       this.save();
     },
 
+    /* 学科名 → 短名（与学习统计 accuracyCumulative 主键一致） */
+    subjectShort(name) {
+      return (window.KG_SUBJECT_SHORT && window.KG_SUBJECT_SHORT[name]) || name || "";
+    },
+    /* 短名 → 完整名（用于判断是否是已知学科） */
+    fullSubject(short) {
+      if (!window.KG_SUBJECT_SHORT) return short || "";
+      for (const k in window.KG_SUBJECT_SHORT) if (window.KG_SUBJECT_SHORT[k] === short) return k;
+      return short || "";
+    },
+
+    /* 集中写入某学科累计正确率 + 正确率趋势（刷题模式 / 手动录入答题 共用，保证一一对应） */
+    recordAccuracy(subject, correct, total) {
+      subject = this.subjectShort(subject);
+      correct = Math.max(0, +correct || 0);
+      total = Math.max(0, +total || 0);
+      const ac = state.accuracyCumulative = state.accuracyCumulative || {};
+      ac[subject] = ac[subject] || { correct: 0, total: 0 };
+      ac[subject].correct += correct;
+      ac[subject].total += total;
+      state.accuracy = state.accuracy || [];
+      state.accuracy.push({ date: this.today(), subject: subject, pct: total ? Math.round(correct / total * 100) : 0 });
+      if (state.accuracy.length > 500) state.accuracy = state.accuracy.slice(-500);
+      this.save();
+    },
+
     /* ===== 每日计划 ===== */
     getPlan(date) {
       date = date || this.today();
@@ -254,11 +288,12 @@
 
     /* ===== 上岸计时器 ===== */
     timerState() { return state.taskTimer; },
-    timerStart(task, planId, targetMs) {
+    timerStart(task, planId, targetMs, subject) {
       const tt = state.taskTimer;
       tt.task = task || tt.task || "专注学习";
       tt.planId = (planId === undefined ? tt.planId : planId) || null;
       tt.targetMs = targetMs || 0;
+      tt.subject = (subject != null && subject !== "") ? this.subjectShort(subject) : (tt.subject || "");
       tt.laps = []; // 重新开始，清空分段
       if (tt.running) return tt;
       tt.startTs = Date.now();
@@ -314,20 +349,24 @@
       return ms;
     },
     /* 统一结算：停止计时 + 记当日专注分钟 + 标记绑定计划项完成。返回 {sec, mins, planId}
-       上岸计时器与刷题模式共用，避免重复逻辑 */
+       上岸计时器与刷题模式共用，避免重复逻辑。有选学科时按学科记专注时长（供学习统计/学习计划）。 */
     timerSettle(label) {
       label = label || "计时器";
       const tt = state.taskTimer;
-      const planId = tt.planId, targetMs = tt.targetMs;
+      const planId = tt.planId, targetMs = tt.targetMs, subject = tt.subject;
       const sec = this.timerStop();
       const mins = targetMs && targetMs > 0 ? Math.max(1, Math.round(targetMs / 60000)) : Math.max(1, Math.round(sec / 60));
-      this.addTimerMinutes(label, mins);
+      const mod = (subject && subject !== "") ? subject : label;
+      this.addTimerMinutes(mod, mins);
+      if (subject && subject !== "" && window.KG_SUBJECTS && window.KG_SUBJECTS.indexOf(this.fullSubject(subject)) >= 0) {
+        this.addSubjectSession(subject, mins);
+      }
       if (planId) {
         const plan = this.getPlan(this.today());
         const it = plan.items.find(x => x.id === planId);
         if (it) { it.minutes = (it.minutes || 0) + mins; it.done = true; this.save(); }
       }
-      return { sec: sec, mins: mins, planId: planId };
+      return { sec: sec, mins: mins, planId: planId, subject: subject };
     },
     timerReset() {
       const tt = state.taskTimer;

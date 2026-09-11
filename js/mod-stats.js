@@ -74,6 +74,20 @@
         <div class="plan-grid" id="planGrid"></div>
       </div>`;
 
+      // ===== 录入答题（按学科，一一对应）=====
+      const recSubs = (window.KG_SUBJECTS || ["言语理解", "资料分析", "数量关系", "逻辑判断", "常识判断", "政治理论", "申论"]);
+      const recOpts = recSubs.map(s => `<option value="${UI.esc(s)}">${UI.esc(s)}</option>`).join("");
+      html += `<div class="card stat-rec">
+        <h3>✍️ 录入答题（按学科）</h3>
+        <div class="muted small" style="margin-bottom:10px">手动补录某学科答题：选择学科 + 填答题数/正确数，保存后<b>按该学科</b>记入累计正确率（与自动刷题一一对应，不会串到别的学科）。</div>
+        <div class="row rec-row" style="gap:10px;flex-wrap:wrap;align-items:flex-end">
+          <div><label class="fld" style="margin:0">学科</label><select id="recSubj" class="full">${recOpts}</select></div>
+          <div><label class="fld" style="margin:0">答题数</label><input id="recTotal" type="number" min="0" inputmode="numeric" style="width:96px" placeholder="如 30"/></div>
+          <div><label class="fld" style="margin:0">正确数</label><input id="recCorrect" type="number" min="0" inputmode="numeric" style="width:96px" placeholder="如 25"/></div>
+          <button class="btn primary" id="recSave">💾 保存录入</button>
+        </div>
+      </div>`;
+
       body.innerHTML = html;
 
       // ===== 各科累计正确率 明细表 =====
@@ -157,6 +171,21 @@
       } else {
         body.insertAdjacentHTML("beforeend", `<div class="card muted">图表库未加载（需联网加载 Chart.js）。统计数字与明细表仍正常显示。</div>`);
       }
+
+      // ===== 录入答题（按学科）保存 =====
+      const recSave = body.querySelector("#recSave");
+      if (recSave) recSave.onclick = () => {
+        const subjName = body.querySelector("#recSubj").value;
+        if (!subjName) { UI.toast("请选择学科"); return; }
+        const total = parseInt(body.querySelector("#recTotal").value, 10);
+        const correct = parseInt(body.querySelector("#recCorrect").value, 10);
+        if (isNaN(total) || total < 0) { UI.toast("请填写有效的答题数"); return; }
+        if (!isNaN(correct) && correct > total) { UI.toast("正确数不能大于答题数"); return; }
+        DB.recordAccuracy(DB.subjectShort(subjName), isNaN(correct) ? 0 : correct, total);
+        DB.save(true);
+        UI.toast("已录入：" + subjName + " " + total + " 题 · 对 " + (isNaN(correct) ? "?" : correct) + " 题");
+        render();
+      };
     }
   };
 })();

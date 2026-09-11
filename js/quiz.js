@@ -185,16 +185,13 @@
           DB.addSubjectSession(subject, mins);
           DB.autoPlanRecord("quiz", subject, { text: subject + "刷题 " + questions.length + " 题 · 正确率 " + pct + "%", pct: pct, count: questions.length });
         } catch (e) {}
-        // 累计正确率
+        // 累计正确率（统一走 DB.recordAccuracy，subjectShort 归一，保证与学习统计一一对应）
         try {
-          const ac = DB.state.accuracyCumulative = DB.state.accuracyCumulative || {};
-          ac[subject] = ac[subject] || { correct: 0, total: 0 };
-          ac[subject].correct += correct;
-          ac[subject].total += questions.length;
+          DB.recordAccuracy(subject, correct, questions.length);
         } catch (e) {}
         try {
           DB.state.accuracy = DB.state.accuracy || [];
-          DB.state.accuracy.push({ date: DB.today(), subject: subject, pct: pct });
+          DB.state.accuracy.push({ date: DB.today(), subject: DB.subjectShort(subject), pct: pct });
           if (DB.state.accuracy.length > 500) DB.state.accuracy = DB.state.accuracy.slice(-500);
           DB.save();
         } catch (e) {}

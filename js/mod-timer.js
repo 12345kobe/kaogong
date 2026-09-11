@@ -95,7 +95,9 @@
           <div id="lapsList" class="lap-list">${renderLaps(laps)}</div>
         </div>` : ''}
         <div class="card" style="margin-top:8px">
-          <label class="fld">任务名（专注内容）</label>
+          <label class="fld">① 选择学科（模块）</label>
+          <select id="tSubj" class="full">${(function(){ const subs = (window.KG_SUBJECTS || ["言语理解","资料分析","数量关系","逻辑判断","常识判断","政治理论","申论"]); const sel = (pending && pending.subject) ? pending.subject : (s.subject || ""); return '<option value="">（不选学科）</option>' + subs.map(x => `<option value="${esc(x)}" ${sel === x ? "selected" : ""}>${esc(x)}</option>`).join(""); })()}</select>
+          <label class="fld" style="margin-top:10px">② 任务名（专注内容）</label>
           <input id="tTask" class="full" placeholder="例如：复习类比推理 / 申论大作文" value="${esc(s.task || (pending ? pending.text : (prefill || "")))}"/>
           <label class="row" style="margin-top:10px;cursor:pointer;gap:8px"><input type="checkbox" id="tCount" style="width:auto" ${s.planId || pending ? "checked" : "checked"}/> 计入今日计划（默认开启，可取消）</label>
           <label class="fld" style="margin-top:10px">绑定计划项（留空则自动新建）</label>
@@ -118,24 +120,27 @@
         }
 
         const taskInput = body.querySelector("#tTask");
+        const subjSel = body.querySelector("#tSubj");
         const planSel = body.querySelector("#tPlan");
         const countChk = body.querySelector("#tCount");
         const minInput = body.querySelector("#tMin");
         const startBtn = body.querySelector("#start");
         if (startBtn) startBtn.onclick = () => {
           const task = taskInput.value.trim();
+          const subjName = subjSel ? subjSel.value : "";
+          const subject = subjName ? DB.subjectShort(subjName) : "";
           const count = countChk.checked;
           const targetMin = parseInt(minInput.value, 10);
           const targetMs = (!isNaN(targetMin) && targetMin > 0) ? targetMin * 60000 : 0;
           let planId = count ? planSel.value : null;
           if (count && !planId) {
-            const it = DB.addPlanItem(date, { module: "计时器", type: "focus", text: task || "专注学习", minutes: 0 });
+            const it = DB.addPlanItem(date, { module: subject || "计时器", type: "focus", text: task || (subject ? DB.fullSubject(subject) + " 专注" : "专注学习"), minutes: 0 });
             planId = it.id;
           } else if (planId) {
             const it = plan.items.find(x => x.id === planId);
             if (it && task && it.text !== task) it.text = task;
           }
-          DB.timerStart(task || (planId ? "" : "专注学习"), planId, targetMs);
+          DB.timerStart(task || (planId ? "" : "专注学习"), planId, targetMs, subject);
           render();
           window.__updateTopTimer && window.__updateTopTimer();
         };
@@ -147,7 +152,8 @@
         body.querySelector("#reset").onclick = () => { DB.timerReset(); render(); window.__updateTopTimer && window.__updateTopTimer(); };
         const toShuati = body.querySelector("#toShuati");
         if (toShuati) toShuati.onclick = () => {
-          window.__pendingFocus = { planId: DB.timerState().planId, text: DB.timerState().task || "刷题", focusMin: 0 };
+          const subjName = subjSel ? subjSel.value : "";
+          window.__pendingFocus = { planId: DB.timerState().planId, text: DB.timerState().task || "刷题", focusMin: 0, subject: subjName ? DB.subjectShort(subjName) : (DB.timerState().subject || "") };
           location.hash = "#/shuati";
         };
 

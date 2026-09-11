@@ -24,6 +24,7 @@
     render(body) {
       const DB = window.DB, UI = window.UI, EB = window.Ebbinghaus;
       let view = new Date(); view.setDate(1);
+      let selDay = DB.today(); // 当前查看的计划日期（可追溯到过去/未来任意一天）
       const WK = ["日", "一", "二", "三", "四", "五", "六"];
 
       function render() {
@@ -38,6 +39,7 @@
           const rec = DB.state.calendar[ds];
           const cls = ["cal-cell"];
           if (ds === today) cls.push("today");
+          if (ds === selDay) cls.push("sel");
           if (rec && rec.checked) cls.push("checked");
           cells += `<div class="${cls.join(" ")}" data-day="${ds}">
             <div class="d">${d}</div>${rec && rec.checked ? '<div class="dot"></div>' : ""}
@@ -54,9 +56,9 @@
             ${WK.map(w => `<div class="center muted small" style="padding:4px">${w}</div>`).join("")}
             ${cells}
           </div>
-          <div class="muted small" style="margin-top:10px">点击日期记录开始/结束学习时间；勾选"已打卡"会在日历标记，并与顶部打卡联动。</div>
+          <div class="muted small" style="margin-top:10px">点击任意日期查看那天的具体计划与学习记录（可追溯到过去 / 未来）；再点「✎ 编辑打卡」记录开始结束时间。</div>
         </div>`;
-        body.querySelectorAll("[data-day]").forEach(c => c.onclick = () => editDay(c.dataset.day));
+        body.querySelectorAll("[data-day]").forEach(c => c.onclick = () => { selDay = c.dataset.day; render(); });
         body.querySelector("#prevM").onclick = () => { view.setMonth(view.getMonth() - 1); render(); };
         body.querySelector("#nextM").onclick = () => { view.setMonth(view.getMonth() + 1); render(); };
 
@@ -93,9 +95,9 @@
         });
       }
 
-      /* ===== 每日计划 ===== */
+      /* ===== 每日计划（按 selDay 显示，可追溯到任意日期） ===== */
       function renderPlan(host) {
-        const date = DB.today();
+        const date = selDay;
         const plan = DB.getPlan(date);
         const items = plan.items;
         const done = items.filter(i => i.done).length;
@@ -146,7 +148,11 @@
         host.innerHTML = `<div class="card" style="margin-top:10px">
           <div class="spread">
             <h3 style="margin:0">📋 每日计划 <span class="muted small">${date}</span></h3>
-            <button class="btn xs primary" id="addPlan">＋ 新增</button>
+            <div class="row">
+              ${date !== DB.today() ? `<button class="btn xs" id="toToday">📅 今天</button>` : ""}
+              <button class="btn xs" id="editDay">✎ 编辑打卡</button>
+              <button class="btn xs primary" id="addPlan">＋ 新增</button>
+            </div>
           </div>
           <div class="row spread" style="margin-top:8px">
             <div class="muted small">完成 ${done} / ${total}　${pct}%</div>
@@ -163,6 +169,10 @@
 
         host.querySelector("#addPlan").onclick = () => openAddPlan(host);
         host.querySelector("#planNote").onchange = e => { DB.setPlanNote(date, e.target.value); };
+        const toToday = host.querySelector("#toToday");
+        if (toToday) toToday.onclick = () => { selDay = DB.today(); render(); };
+        const editDayBtn = host.querySelector("#editDay");
+        if (editDayBtn) editDayBtn.onclick = () => editDay(date);
         host.querySelectorAll("[data-toggle]").forEach(cb => cb.onchange = () => {
           DB.togglePlanItem(date, cb.dataset.toggle); renderPlan(host);
         });
@@ -207,7 +217,7 @@
             { label: "添加", cls: "primary", onClick: (m, c) => {
               const text = ptx.value.trim() || (TYPE_LABEL[box.querySelector("#pt").value] + "任务");
               const fmin = parseInt(box.querySelector("#pfm").value, 10);
-              DB.addPlanItem(DB.today(), {
+              DB.addPlanItem(selDay, {
                 module: box.querySelector("#pm").value,
                 type: box.querySelector("#pt").value,
                 text: text,
