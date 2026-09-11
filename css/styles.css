@@ -833,3 +833,14 @@ body.light .ai-att{ background:#fff }
 .qz-ask{ margin-top:10px }
 body.light .qm-chip{ background:#fff }
 body.light .quiz-submit{ background:#fff }
+
+/* ===== 导入题册：题目清单（含考点） ===== */
+.pdb-qlist{ display:flex; flex-direction:column; gap:6px; max-height:320px; overflow:auto }
+.pdb-qitem{ display:flex; align-items:baseline; gap:8px; font-size:13px; padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:var(--panel2) }
+.pdb-qi{ flex:0 0 auto; color:var(--txt-dim); font-variant-numeric:tabular-nums }
+.pdb-qt{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.pdb-kp{ flex:0 0 auto; font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid var(--line); color:var(--txt-dim) }
+.pdb-theory p,.pdb-theory .al-p{ margin:0 0 10px; text-indent:2em; line-height:1.85 }
+.pdb-theory .al-sub{ font-weight:700; margin:12px 0 6px }
+body.light .pdb-qitem{ background:#fff }
+body.light .pdb-kp{ background:#fff }

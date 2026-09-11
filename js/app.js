@@ -103,10 +103,10 @@
     body.appendChild(sec);
     const box = sec.querySelector(".kg-det-b");
 
-    function openTheory(title, html) {
+    function openHtml(title, html) {
       const mask = UI.el(`<div class="modal-mask"><div class="modal" style="max-width:760px;max-height:84vh;overflow:auto">
         <h3>📖 ${UI.esc(title)}</h3>
-        <div class="pdb-theory">${html || "<div class='muted'>（本章无理论内容）</div>"}</div>
+        <div class="pdb-theory">${html || "<div class='muted'>（本考点无讲解内容）</div>"}</div>
         <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn ghost pdb-close">关闭</button></div>
       </div></div>`);
       document.body.appendChild(mask);
@@ -127,33 +127,65 @@
     }
 
     books.forEach(bk => {
-      const secs = bk.sections || [];
+      // 只保留有内容（有题或有讲解）的部分；题目必须有 options，避免 Quiz 抛错
+      const secs = (bk.sections || []).filter(s => s && (((s.questions || []).length) || s.theory));
       const nq = secs.reduce((s, x) => s + ((x.questions || []).length), 0);
       const card = UI.el(`<div class="card">
         <h3>📘 ${UI.esc(bk.name || "未命名题册")}</h3>
-        <div class="muted small">${secs.length} 个部分 · 共 ${nq} 题${bk.date ? " · " + UI.esc(bk.date) : ""}</div>
+        <div class="muted small">${secs.length} 个考点/部分 · 共 ${nq} 题${bk.date ? " · " + UI.esc(bk.date) : ""}</div>
+        <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap;align-items:center">
+          <label class="fld" style="margin:0">每次</label>
+          <select class="pdb-size" style="width:96px">
+            <option value="10" selected>10 题</option>
+            <option value="20">20 题</option>
+            <option value="5">5 题</option>
+            <option value="0">本节全部</option>
+          </select>
+          <button class="btn primary pdb-all">▶ 从第一个考点开始练</button>
+        </div>
       </div>`);
+      let firstGo = null;
+
       secs.forEach((s, si) => {
-        const qs = s.questions || [];
-        const label = (s.name || ("第 " + (si + 1) + " 部分")) + "（" + qs.length + " 题）";
-        const inner = UI.section(label);
-        const ic = UI.el(`<div class="card"></div>`);
-        if (s.theory) {
-          ic.appendChild(UI.el(`<div class="muted small">本章含理论/考点，可先学习再刷题：</div>
-            <div class="row" style="margin-top:8px"><button class="btn pdb-learn">📖 学考点</button></div>`));
-          ic.querySelector(".pdb-learn").onclick = () => openTheory(label, s.theory);
+        try {
+          const qs = (s.questions || []).filter(q => q && q.options && q.options.length >= 2 && q.q);
+          const nm = s.name || ("第 " + (si + 1) + " 部分");
+          const label = qs.length ? (nm + "（" + qs.length + " 题）") : ("📖 " + nm + "（考点讲解）");
+          const inner = UI.section(label);
+          const ic = UI.el(`<div class="card"></div>`);
+          const btns = [];
+          if (s.theory) btns.push(`<button class="btn pdb-learn">📖 学考点</button>`);
+          if (qs.length) btns.push(`<button class="btn primary pdb-go">✍ 练习本考点</button>`);
+          const needChk = qs.filter(q => q.needCheck || q.a == null || q.a < 0).length;
+          ic.appendChild(UI.el(`<div class="muted small">${qs.length ? "共 " + qs.length + " 题" : "本部分为纯知识点，无题目"}${needChk ? " · ⚠️ " + needChk + " 题答案待校对" : ""}</div>
+            ${btns.length ? `<div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap">${btns.join("")}</div>` : ""}`));
+          if (s.theory) ic.querySelector(".pdb-learn").onclick = () => openHtml(label, s.theory);
+          if (qs.length) {
+            const go = () => {
+              const sel = card.querySelector(".pdb-size");
+              const n = sel ? parseInt(sel.value, 10) : 10;
+              openQuiz(bk.name + " · " + (s.name || ("第 " + (si + 1) + " 部分")), n > 0 ? qs.slice(0, n) : qs);
+            };
+            ic.querySelector(".pdb-go").onclick = go;
+            if (!firstGo) firstGo = go;
+            // 题目清单：每题 + 所属考点
+            const list = UI.section("题目清单（含考点）");
+            const items = qs.slice(0, 300).map((q, qi) => {
+              const stem = String(q.q || "").replace(/\s+/g, " ").slice(0, 46);
+              return `<div class="pdb-qitem"><span class="pdb-qi">${qi + 1}.</span><span class="pdb-qt">${UI.esc(stem)}</span>${q.kp ? `<span class="pdb-kp">${UI.esc(String(q.kp).slice(0, 24))}</span>` : ""}</div>`;
+            }).join("");
+            list.querySelector(".kg-det-b").appendChild(UI.el(`<div class="card"><div class="pdb-qlist">${items}</div></div>`));
+            ic.appendChild(list);
+          }
+          inner.querySelector(".kg-det-b").appendChild(ic);
+          card.appendChild(inner);
+        } catch (e) {
+          card.appendChild(UI.el(`<div class="card empty">第 ${si + 1} 部分渲染失败：${UI.esc(e.message)}</div>`));
         }
-        if (qs.length) {
-          ic.appendChild(UI.el(`<div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap">
-            <button class="btn primary pdb-go">✍ 开始练习</button>
-            <span class="muted small">默认每次 ${Math.min(qs.length, 10)} 题</span>
-          </div>`));
-          ic.querySelector(".pdb-go").onclick = () => openQuiz(bk.name + " · " + (s.name || ("第 " + (si + 1) + " 部分")), qs.slice(0, 10));
-        }
-        if (!s.theory && !qs.length) ic.appendChild(UI.el(`<div class="muted small">（本部分无内容）</div>`));
-        inner.querySelector(".kg-det-b").appendChild(ic);
-        card.appendChild(inner);
       });
+
+      const allBtn = card.querySelector(".pdb-all");
+      if (allBtn) allBtn.onclick = () => { if (firstGo) firstGo(); else UI.toast("本题册暂无可练习的题目"); };
       box.appendChild(card);
     });
   }
