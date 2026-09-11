@@ -46,10 +46,18 @@
   function ask(text) { pending = text || ""; location.hash = "#/ai"; }
 
   // 供「设置」模块复用（令牌藏在那里，主界面不暴露）
+  // 测试令牌是否可用（发一个极小请求，用于设置页「测试连接」）
+  async function test(token, model) {
+    return await chat(token || getToken(), model || getModel(), [
+      { role: "system", content: "你是一个只回复极短确认消息的助手。" },
+      { role: "user", content: "请只回复两个字：正常" }
+    ]);
+  }
+
   window.KGAI = {
     MODELS: MODELS, getToken: getToken, setToken: setToken, hasCustom: hasCustom,
     getModel: getModel, setModel: setModel, getLog: getLog, setLog: setLog,
-    getTemp: getTemp, setTemp: setTemp, ask: ask
+    getTemp: getTemp, setTemp: setTemp, ask: ask, test: test
   };
 
   async function chat(token, model, messages) {
@@ -202,9 +210,10 @@
         </div></div>`);
         document.body.appendChild(mask);
         const hint = mask.querySelector("#gTokHint");
-        const sync = () => { hint.textContent = hasCustom()
-          ? "✓ 已配置令牌（出于安全，不显示内容）。"
-          : "⚠️ 尚未配置令牌：请在上方粘贴你的 GitHub PAT（需勾选 models:read 权限）。"; };
+        const maskTok = t => { t = String(t || ""); return t.length <= 14 ? t.slice(0, 4) + "••••" : t.slice(0, 10) + "••••" + t.slice(-4); };
+        const sync = () => { hint.innerHTML = hasCustom()
+          ? `✅ 已保存并生效：<code>${esc(maskTok(getToken()))}</code>`
+          : `⚠️ 尚未配置令牌：请在上方粘贴你的 GitHub PAT（需勾选 models:read 权限）。`; };
         sync();
         const t = mask.querySelector("#gTemp"), tv = mask.querySelector("#gTempV");
         t.oninput = () => { tv.textContent = t.value; };

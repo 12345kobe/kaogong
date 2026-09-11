@@ -81,8 +81,9 @@
           <h3>🔑 AI 令牌</h3>
           <div class="muted small">AI 咨询需要你<b>自己的 GitHub 令牌</b>（PAT，需勾选 <b>models:read</b>）。令牌<b>只保存在本机浏览器</b>、不会上传云端，界面也<b>不会回显</b>已保存的内容。令牌不会写进代码，换设备/清缓存后需重新粘贴一次。</div>
           <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap;align-items:center">
-            <input id="aiTok" type="password" autocomplete="new-password" placeholder="粘贴 GitHub 个人访问令牌（PAT）" style="flex:1;min-width:200px"/>
-            <button class="btn" id="aiTokSave">保存</button>
+            <input id="aiTok" type="password" autocomplete="off" placeholder="长按粘贴 GitHub 个人访问令牌（PAT）" style="flex:1;min-width:200px"/>
+            <button class="btn primary" id="aiTokSave">保存</button>
+            <button class="btn" id="aiTokTest">测试连接</button>
             <button class="btn ghost" id="aiTokClr">清除</button>
           </div>
           <div class="muted small" id="aiTokNote" style="margin-top:8px"></div>
@@ -138,26 +139,69 @@
         }
       };
 
-      /* ===== AI 令牌（只存不显：不回显已保存值） ===== */
+      /* ===== AI 令牌（保存后打码回显，让你能确认"确实存上了"） ===== */
       const aiTok = body.querySelector("#aiTok");
       const aiNote = body.querySelector("#aiTokNote");
+      const aiSaveBtn = body.querySelector("#aiTokSave");
+      const aiTestBtn = body.querySelector("#aiTokTest");
+      const aiClrBtn = body.querySelector("#aiTokClr");
+
+      // 打码：前 10 位 + •••• + 后 4 位
+      function mask(t) {
+        t = String(t || "");
+        if (t.length <= 14) return t.slice(0, 4) + "••••";
+        return t.slice(0, 10) + "••••" + t.slice(-4);
+      }
       function syncTokNote() {
         const A = window.KGAI;
         if (!aiNote) return;
-        aiNote.textContent = (A && A.hasCustom())
-          ? "✓ 已配置令牌（出于安全，不显示内容）。"
-          : "⚠️ 尚未配置：请在上方粘贴你的 GitHub PAT（需勾选 models:read）。";
+        const t = (A && A.getToken) ? A.getToken() : "";
+        aiNote.innerHTML = t
+          ? `✅ <b>已保存并生效</b>：<code>${UI.esc(mask(t))}</code>（共 ${t.length} 位）<br>去「AI 咨询」发一句话即可验证。`
+          : `⚠️ 尚未配置：请在上方粘贴你的 GitHub 令牌（需勾选 <b>models:read</b>）。`;
+      }
+      // 真正的保存动作（按钮 / 回车 / 失焦自动保存 都会走这里）
+      function doSave(silent) {
+        const A = window.KGAI;
+        if (!A) { UI.toast("AI 模块未就绪"); return false; }
+        const v = (aiTok && aiTok.value ? aiTok.value : "").trim();
+        if (!v) { if (!silent) UI.toast("输入框是空的，请先长按粘贴令牌"); return false; }
+        try {
+          A.setToken(v);
+          const back = A.getToken();
+          if (!back) throw new Error("写入后读取为空");
+          if (aiTok) aiTok.value = "";
+          syncTokNote();
+          UI.toast("✓ 令牌已保存（" + mask(back) + "）");
+          return true;
+        } catch (e) {
+          UI.toast("保存失败：" + e.message);
+          if (aiNote) aiNote.innerHTML = `❌ <b>保存失败</b>：${UI.esc(e.message)}<br>如果是无痕/隐私模式，浏览器会禁用本地存储，请改用普通窗口打开。`;
+          return false;
+        }
       }
       syncTokNote();
-      if (body.querySelector("#aiTokSave")) body.querySelector("#aiTokSave").onclick = () => {
+      if (aiSaveBtn) aiSaveBtn.onclick = () => doSave(false);
+      // 失焦自动保存：避免"点了保存没反应"导致白忙一场
+      if (aiTok) {
+        aiTok.addEventListener("change", () => { if (aiTok.value.trim()) doSave(false); });
+        aiTok.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); doSave(false); } });
+      }
+      if (aiTestBtn) aiTestBtn.onclick = async () => {
         const A = window.KGAI;
-        if (!A) { UI.toast("AI 模块未就绪"); return; }
-        const v = (aiTok && aiTok.value ? aiTok.value : "").trim();
-        if (!v) { UI.toast("请先粘贴令牌再保存"); return; }
-        A.setToken(v); if (aiTok) aiTok.value = ""; UI.toast("令牌已保存到本机");
-        syncTokNote();
+        if (!A || !A.test) { UI.toast("AI 模块未就绪"); return; }
+        if (!A.getToken()) { UI.toast("请先粘贴并保存令牌"); return; }
+        aiTestBtn.disabled = true; const old = aiTestBtn.textContent; aiTestBtn.textContent = "测试中…";
+        try {
+          const r = await A.test();
+          UI.toast("✓ 连接成功：" + String(r || "").replace(/\s+/g, " ").slice(0, 20));
+          if (aiNote) aiNote.innerHTML += `<br>✅ <b>连接测试通过</b>，AI 可正常使用。`;
+        } catch (e) {
+          UI.toast("连接失败：" + e.message);
+          if (aiNote) aiNote.innerHTML += `<br>❌ <b>连接失败</b>：${UI.esc(e.message)}（401/403 请检查令牌是否勾选 models:read；网络问题请确认可访问 github.com）`;
+        } finally { aiTestBtn.disabled = false; aiTestBtn.textContent = old; }
       };
-      if (body.querySelector("#aiTokClr")) body.querySelector("#aiTokClr").onclick = () => {
+      if (aiClrBtn) aiClrBtn.onclick = () => {
         const A = window.KGAI;
         if (A) A.setToken("");
         if (aiTok) aiTok.value = "";
