@@ -113,8 +113,11 @@
       renderCard(queue[i]);
     }
 
+    const judged = new Set(); // 已判断的 it.id（防止「下一个」跳过导致 0/0）
+
     function renderCard(it) {
       const cardEl = host.querySelector("#fcCard");
+      const already = judged.has(it.id);
       renderStats();
       if (mode === "easy") {
         cardEl.innerHTML = `
@@ -130,12 +133,22 @@
           </div>
           <div class="fc-nav">
             <button class="btn" id="fcPrev">← 上一个</button>
-            <button class="btn" id="fcNext">下一个 →</button>
+            <button class="btn ${already ? "" : "ghost"}" id="fcNext">${already ? "下一个 →" : "请先判断"}</button>
           </div>`;
         let flipped = false;
         const face = cardEl.querySelector(".fc-face");
         const flipBtn = cardEl.querySelector("#flip");
         const judgeEl = cardEl.querySelector(".fc-judge");
+        const nextBtn = cardEl.querySelector("#fcNext");
+        function updateNext() {
+          if (judged.has(it.id)) {
+            nextBtn.textContent = "下一个 →";
+            nextBtn.classList.remove("ghost");
+          } else {
+            nextBtn.textContent = "请先判断";
+            nextBtn.classList.add("ghost");
+          }
+        }
         flipBtn.onclick = () => {
           flipped = !flipped;
           if (flipped) {
@@ -155,10 +168,16 @@
           }
         };
         cardEl.querySelector("#fcPrev").onclick = () => goPrev();
-        cardEl.querySelector("#fcNext").onclick = () => { cur++; next(); };
-        cardEl.querySelectorAll("[data-judge]").forEach(b => b.onclick = () => {
-          recordAnswer(it, b.dataset.judge === "remember");
+        nextBtn.onclick = () => {
+          if (!judged.has(it.id)) { UI.toast("请先点「记得」或「忘记」进行判断"); return; }
           cur++; next();
+        };
+        cardEl.querySelectorAll("[data-judge]").forEach(b => b.onclick = () => {
+          judged.add(it.id);
+          updateNext();
+          recordAnswer(it, b.dataset.judge === "remember");
+          // 延迟 220ms 让用户看到反馈，再自动下一题
+          setTimeout(() => { cur++; next(); }, 220);
         });
       } else {
         cardEl.innerHTML = `

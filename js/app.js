@@ -3,7 +3,7 @@
   "use strict";
   const DB = window.DB, UI = window.UI, ICONS = window.ICONS, MODULES = window.MODULES;
 
-  const NAV = ["countdown", "timer", "verbal", "wrongwords", "data", "logic", "relation", "politics", "quantity", "common", "essay", "essays", "allusion", "calendar", "wrongbook", "stats", "settings"];
+  const NAV = ["countdown", "timer", "verbal", "wrongwords", "data", "logic", "relation", "politics", "quantity", "common", "essay", "essays", "allusion", "calendar", "wrongbook", "stats", "pdfimport", "ai", "settings"];
   const GH_LABEL = "12345kobe/kaogong";
 
   /* ===== 深浅色主题：按时间自动切换 + 手动覆盖（到点仍按时间表切回） ===== */

@@ -753,3 +753,21 @@ body.light .quiz-reveal-bar{ box-shadow:0 6px 24px rgba(30,50,90,.18) }
 body.light #kgVoice .kg-voice-mic{ color:#06121f }
 
 
+
+/* ===== PDF 题库导入 ===== */
+.pdf-q{ border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:10px; background:var(--panel2) }
+.pdf-q textarea{ background:var(--panel); color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:8px; font-family:var(--font-body); font-size:14px; resize:vertical }
+.pdf-q input.pdf-o{ background:var(--panel); color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:7px 9px; font-size:14px }
+.pdf-q .row{ align-items:center }
+#pdfRaw{ background:var(--panel); color:var(--txt); border:1px solid var(--line); border-radius:10px; padding:10px; font-family:var(--font-body); font-size:13px; line-height:1.6 }
+body.light .pdf-q{ background:#fff }
+
+/* ===== AI 咨询 ===== */
+.ai-msgs{ max-height:52vh; overflow:auto; display:flex; flex-direction:column; gap:10px; padding:4px }
+.ai-msg{ border-radius:12px; padding:10px 12px; max-width:92%; line-height:1.7; font-size:14px; white-space:normal }
+.ai-msg.user{ align-self:flex-end; background:rgba(52,231,228,.15); border:1px solid rgba(52,231,228,.4) }
+.ai-msg.bot{ align-self:flex-start; background:var(--panel2); border:1px solid var(--line) }
+.ai-who{ font-size:12px; color:var(--txt-dim); margin-bottom:4px; font-weight:700 }
+#aiInput{ background:var(--panel); color:var(--txt); border:1px solid var(--line); border-radius:10px; padding:9px 10px; font-family:var(--font-body); font-size:14px; resize:vertical }
+body.light .ai-msg.user{ background:#e6fbfa; border-color:#9fe7e4 }
+body.light .ai-msg.bot{ background:#f6f8fc }

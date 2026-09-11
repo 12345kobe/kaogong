@@ -125,11 +125,12 @@
         body.insertBefore(back, wrap);
         back.querySelector("#bq").onclick = () => openStudy(uid);
         window.Quiz.start(wrap, qs, "逻辑", {
+          returnLabel: "‹ 返回专题",
+          returnAction: () => openStudy(uid),
           onDone() {
             // 做题也算「已学」该专题
             LH.record(KEY, [uid]);
-            UI.toast("本专题已标记为已学");
-            setTimeout(renderHome, 600);
+            UI.toast("本专题已标记为已学，可继续查看解析或返回");
           }
         });
         window.scrollTo(0, 0);

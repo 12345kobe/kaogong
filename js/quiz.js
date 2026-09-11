@@ -69,6 +69,8 @@
         const qq = questions[qi];
         const ua = parseInt(card.dataset.ua, 10);
         const right = ua === qq.a;
+        // 关键：把判定结果写回 results，否则 practice（练题）模式下 finish() 统计恒为 0 正确
+        results[qi] = { ua: ua, right: right };
         card.dataset.revealed = "1"; card.dataset.done = "1";
         card.querySelectorAll(".opt").forEach((ob, oi) => {
           ob.classList.add("dim");
@@ -199,6 +201,8 @@
           const t = qTimes[qi] ? fmt(qTimes[qi] / 1000) : "—";
           return `<div class="qz-row"><span>第 ${qi + 1} 题</span><span class="${qTimes[qi] ? "" : "muted"}">${t}</span></div>`;
         }).join("");
+        const returnBtn = opts.returnLabel && opts.returnAction
+          ? `<button class="btn ghost" id="retBtn">${UI.esc(opts.returnLabel)}</button>` : "";
         const bar = UI.el(`<div class="card center" style="margin-top:6px">
           <div style="font-size:22px" class="pct">本次正确率 ${pct}%</div>
           <div class="muted small">${correct} / ${questions.length} 题正确 · 错题已自动收入「${UI.esc(subject)}」错题本</div>
@@ -206,13 +210,16 @@
             <div class="qz-total">⏱ 总用时 <b>${fmt(totalSec)}</b></div>
             <div class="qz-detail"><div class="qz-detail-title">各题用时</div>${breakdown}</div>
           </div>
-          <div class="row" style="justify-content:center;margin-top:10px">
+          <div class="row" style="justify-content:center;margin-top:10px;gap:8px;flex-wrap:wrap">
             <button class="btn" id="expWrong">导出错题PDF</button>
             <button class="btn primary" id="again">再来一组</button>
+            ${returnBtn}
           </div></div>`);
         container.appendChild(bar);
         bar.querySelector("#expWrong").onclick = () => window.PDF.exportWrong(subject);
         bar.querySelector("#again").onclick = () => opts.onAgain ? opts.onAgain() : location.reload();
+        const retBtn = bar.querySelector("#retBtn");
+        if (retBtn && opts.returnAction) retBtn.onclick = () => { try { opts.returnAction(); } catch (e) {} };
         if (opts.onDone) opts.onDone({ correct, total: questions.length, pct, totalSec, qTimes, answers: results, wrong: questions.filter((q, i) => results[i] && !results[i].right) });
       }
     }
