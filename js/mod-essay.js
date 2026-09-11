@@ -5,6 +5,13 @@
     title: "申论", icon: "essay",
     render(body) {
       const DB = window.DB, UI = window.UI;
+      body.innerHTML = "";  // 重新渲染前先清空，避免闪卡退出时重复追加
+      // 把一个小卡片包进可折叠小板块（默认折叠，open 则默认展开）
+      function addSec(title, card, open) {
+        const s = UI.section(title, { open: !!open });
+        s.querySelector(".kg-det-b").appendChild(card);
+        body.appendChild(s);
+      }
       UI.StudyPanel("essay", body);
 
       // 小题 / 大作文 进度
@@ -12,7 +19,7 @@
         <div class="grid g2">
           <div id="xt"></div><div id="dgw"></div>
         </div></div>`);
-      body.appendChild(prog);
+      addSec("✍ 练习进度", prog);
 
       function progEditor(key, label, mount) {
         const s = DB.state.essay[key] = DB.state.essay[key] || { done: 0, total: 0 };
@@ -47,7 +54,7 @@
           <button class="btn" id="jinjuLearned">📅 已学过</button>
         </div>
         <div id="quotes"></div></div>`);
-      body.appendChild(quotesCard);
+      addSec("🌟 每日金句（大作文素材）", quotesCard);
 
       function daySeed() {
         const d = new Date(); const start = new Date(d.getFullYear(), 0, 0);
@@ -119,7 +126,7 @@
         </div>
         <div id="qdList" style="display:flex;flex-direction:column;gap:10px;margin-top:6px"></div>
       </div>`);
-      body.appendChild(qdCard);
+      addSec("🌟 每日名言积累", qdCard);
 
       function renderQd() {
         ensureQd();
@@ -193,7 +200,18 @@
           <label class="row" style="gap:6px;align-items:center;font-size:13px;color:var(--txt2)"><input type="checkbox" id="nwShuffle" checked/> 打乱顺序</label>
         </div>
       </div>`);
-      body.appendChild(nwCard);
+      addSec("📝 规范词积累", nwCard);
+
+      // ===== 合并进来的子板块：范文积累（默认展开） / 申论典故 =====
+      const essaysSec = UI.section("📝 范文积累", { open: true });
+      body.appendChild(essaysSec);
+      try { window.MODULES.essays.render(essaysSec.querySelector(".kg-det-b")); }
+      catch (e) { essaysSec.querySelector(".kg-det-b").innerHTML = `<div class="card empty">范文积累加载失败：${UI.esc(e.message)}</div>`; }
+
+      const alluSec = UI.section("📜 申论典故");
+      body.appendChild(alluSec);
+      try { window.MODULES.allusion.render(alluSec.querySelector(".kg-det-b")); }
+      catch (e) { alluSec.querySelector(".kg-det-b").innerHTML = `<div class="card empty">申论典故加载失败：${UI.esc(e.message)}</div>`; }
 
       function nwSecStats(sec) {
         let seen = 0, due = 0;

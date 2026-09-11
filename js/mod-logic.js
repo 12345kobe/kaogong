@@ -35,10 +35,11 @@
           <h3>🧠 逻辑判断</h3>
           <div class="muted small">本模块含「类比推理板块」：${units.length} 个专题 / ${units.reduce((a, u) => a + u.points.length, 0)} 个考点 / ${units.reduce((a, u) => a + u.questions.length, 0)} 道真题自测。先学「考点直击」，再点「开始做题」巩固。</div>
         </div>`;
+        // 必会对应关系：作为逻辑判断下的一个可折叠小板块（默认折叠，用户点开）
+        html += `<details class="kg-det"><summary class="kg-det-s"><span class="kg-det-t">📐 必会对应关系（类比推理·每日一题）</span><span class="kg-det-arrow">▸</span></summary><div class="kg-det-b" id="relSec"></div></details>`;
         chapters.forEach(ch => {
-          html += `<div class="card" style="margin-top:8px">
-            <div class="row spread"><b style="font-size:16px">📘 ${esc(ch)}</b><span class="muted small">${map[ch].length} 个专题</span></div>
-            <div class="grid g2" style="margin-top:10px">`;
+          html += `<details class="kg-det"><summary class="kg-det-s"><span class="kg-det-t">📘 ${esc(ch)}</span><span class="muted small" style="font-weight:400;color:var(--txt-dim)">${map[ch].length} 个专题</span><span class="kg-det-arrow">▸</span></summary>
+            <div class="kg-det-b"><div class="grid g2" style="margin-top:4px">`;
           map[ch].forEach(u => {
             const learned = LH.isLearned(KEY, u.id);
             html += `<div class="card allu-card" style="margin:0;cursor:pointer" data-unit="${esc(u.id)}">
@@ -53,7 +54,7 @@
               </div>
             </div>`;
           });
-          html += `</div></div>`;
+          html += `</div></div></details>`;
         });
         html += `<div class="card" style="margin-top:8px"><div class="muted small">💡 「学考点」按 PDF 原排版还原「考点直击」；「开始做题」走通用答题引擎，错题自动进入逻辑错题本。</div></div>`;
         body.innerHTML = html;
@@ -61,6 +62,13 @@
         body.querySelectorAll("[data-study]").forEach(b => b.onclick = e => { e.stopPropagation(); openStudy(b.dataset.study); });
         body.querySelectorAll("[data-do]").forEach(b => b.onclick = e => { e.stopPropagation(); startQuiz(b.dataset.do); });
         body.querySelectorAll("[data-unit]").forEach(c => c.onclick = () => openStudy(c.dataset.unit));
+
+        // 必会对应关系：渲染到上面的可折叠块里
+        const relSec = body.querySelector("#relSec");
+        if (relSec && window.MODULES.relation) {
+          try { window.MODULES.relation.render(relSec); }
+          catch (e) { relSec.innerHTML = `<div class="card empty">必会对应关系加载失败：${UI.esc(e.message)}</div>`; }
+        }
       }
 
       // 题目清洗：去掉「判断推理常识积累…真题链接」等无关前缀，直接从（2022联考）开始

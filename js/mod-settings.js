@@ -77,6 +77,12 @@
             : `<div class="muted small" style="margin-top:8px;color:var(--red)">⚠️ 当前浏览器不支持语音识别，请改用 Chrome / Edge / Safari，并确保通过 https 打开。</div>`}
         </div>`;
 
+      /* ===== PDF 题库导入（合并进设置的子板块） ===== */
+      const pdfSec = UI.section("📄 PDF 题库导入");
+      body.appendChild(pdfSec);
+      try { window.MODULES.pdfimport.render(pdfSec.querySelector(".kg-det-b")); }
+      catch (e) { pdfSec.querySelector(".kg-det-b").innerHTML = `<div class="card empty">PDF 题库加载失败：${UI.esc(e.message)}</div>`; }
+
       /* ===== 字体选择 ===== */
       body.querySelectorAll(".font-opt").forEach(b => {
         b.onclick = () => {

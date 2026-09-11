@@ -771,3 +771,17 @@ body.light .pdf-q{ background:#fff }
 #aiInput{ background:var(--panel); color:var(--txt); border:1px solid var(--line); border-radius:10px; padding:9px 10px; font-family:var(--font-body); font-size:14px; resize:vertical }
 body.light .ai-msg.user{ background:#e6fbfa; border-color:#9fe7e4 }
 body.light .ai-msg.bot{ background:#f6f8fc }
+
+/* ===== 可折叠小板块（模块内子版块） ===== */
+.kg-det{ border:1px solid var(--line); border-radius:12px; margin-top:8px; overflow:hidden; background:var(--panel2) }
+.kg-det-s{ list-style:none; cursor:pointer; display:flex; align-items:center; gap:10px; padding:13px 14px; font-weight:700; font-size:15px; user-select:none; color:var(--txt) }
+.kg-det-s::-webkit-details-marker{ display:none }
+.kg-det-s::marker{ content:"" }
+.kg-det-t{ flex:1; min-width:0 }
+.kg-det-arrow{ color:var(--txt-dim); font-size:12px; transition:transform .18s ease; flex:0 0 auto }
+.kg-det[open] > .kg-det-s .kg-det-arrow{ transform:rotate(90deg) }
+.kg-det-s:hover{ background:var(--panel) }
+.kg-det-b{ padding:0 12px 12px }
+.kg-det-b > .card{ margin-top:0 }
+body.light .kg-det{ background:#fff }
+body.light .kg-det-s:hover{ background:#f3f6fb }

@@ -45,6 +45,16 @@
       });
     },
 
+    /* ===== 可折叠小板块（<details>，默认折叠，open:true 则默认展开） ===== */
+    section(title, opts) {
+      opts = opts || {};
+      const open = opts.open ? " open" : "";
+      return el(`<details class="kg-det"${open}>
+        <summary class="kg-det-s"><span class="kg-det-t">${esc(title)}</span><span class="kg-det-arrow">▸</span></summary>
+        <div class="kg-det-b"></div>
+      </details>`);
+    },
+
     /* ===== 圆盘进度 ===== */
     disc(pct, centerHtml) {
       pct = Math.max(0, Math.min(1, pct));
