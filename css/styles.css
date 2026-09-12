@@ -399,15 +399,21 @@ body.light .good-words{background:#f4f7fc}
 .qz-row:last-child{border-bottom:none}
 .qz-row .muted{color:var(--txt-dim)}
 
-/* ===== 手写标注画板 ===== */
-.hw-modal{width:min(760px,96vw)}
-.hw-q{background:var(--bg2);border:1px solid var(--line);border-radius:10px;
-  padding:11px 13px;font-size:14px;margin-bottom:12px;color:var(--txt);line-height:1.6}
-.hw-canvas-wrap{width:100%;height:46vh;min-height:280px;
-  border:1px solid var(--cyan);border-radius:12px;overflow:hidden;
-  background:repeating-linear-gradient(0deg,#0c1530 0 27px,#0e1838 27px 28px)}
-.hw-canvas{width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
-.hw-tip{font-size:12px;color:var(--txt-dim);margin-top:8px}
+/* ===== 全屏手写标注画板 ===== */
+.hw-overlay{position:fixed;inset:0;z-index:120;background:rgba(8,12,28,.78);touch-action:none;-webkit-user-select:none;user-select:none}
+.hw-layer{position:absolute;inset:0;display:block;touch-action:none;cursor:crosshair;background:transparent}
+.hw-tools{position:absolute;top:calc(env(safe-area-inset-top,0px) + 10px);left:10px;right:10px;display:flex;gap:8px;justify-content:center;align-items:center;z-index:121;padding:8px 10px;background:rgba(20,29,59,.88);border:1px solid var(--line);border-radius:14px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);flex-wrap:wrap}
+.hw-tool{border:1px solid var(--line);background:var(--panel2);color:var(--txt);border-radius:10px;min-width:38px;height:38px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:18px;font-weight:800;-webkit-tap-highlight-color:transparent}
+.hw-tool:hover{border-color:var(--cyan)}
+.hw-tool.active{background:rgba(52,231,228,.18);border-color:var(--cyan)}
+.hw-tool.done{background:linear-gradient(135deg,var(--cyan),var(--purple));color:#06121f;border:none}
+.hw-tool.close{font-size:16px}
+.hw-tool.color{-webkit-text-stroke:1px rgba(255,255,255,.35)}
+body.light .hw-overlay{background:rgba(255,255,255,.78)}
+body.light .hw-tools{background:rgba(255,255,255,.92);border-color:#d6dce6}
+body.light .hw-tool{background:#fff;color:#0f1828;border-color:#d6dce6}
+body.light .hw-tool.active{background:#e6fbfa;border-color:var(--cyan)}
+body.light .hw-tool.done{color:#fff}
 
 /* ===== 每日政治理论知识点 ===== */
 .kp-item{border:1px solid var(--line);border-radius:10px;margin-bottom:8px;overflow:hidden;background:var(--bg2)}
@@ -737,22 +743,23 @@ body.light .quiz-reveal-bar{ box-shadow:0 6px 24px rgba(30,50,90,.18) }
 .font-sample{ font-size:20px; line-height:1.3; font-weight:700; width:100%; word-break:break-all }
 .font-name{ font-size:12px; color:var(--txt-dim) }
 
-/* ===== 语音转文字浮动按钮 ===== */
-#kgVoice{ position:fixed; right:16px; bottom:90px; z-index:99999; display:none; align-items:center; gap:8px }
+/* ===== 语音转文字按钮（位于聚焦输入框下方） ===== */
+#kgVoiceInline{ display:flex; gap:8px; align-items:center; margin-top:4px; flex-wrap:wrap }
 .kg-voice-mic{
-  width:54px; height:54px; border-radius:50%; border:none;
+  width:38px; height:38px; border-radius:50%; border:none; flex:0 0 38px;
   background:linear-gradient(135deg,var(--cyan),var(--purple)); color:#06121f;
-  font-size:24px; line-height:1; box-shadow:0 6px 20px rgba(0,0,0,.45); cursor:pointer;
+  font-size:18px; line-height:1; cursor:pointer;
   -webkit-tap-highlight-color:transparent;
 }
 .kg-voice-mic.on{ background:linear-gradient(135deg,var(--red),var(--magenta)); color:#fff; animation:pulse 1s infinite }
 .kg-voice-lang{
   border:1px solid var(--line); background:var(--panel); color:var(--txt);
-  border-radius:20px; padding:7px 12px; font-size:13px; cursor:pointer; white-space:nowrap;
+  border-radius:20px; padding:6px 11px; font-size:12px; cursor:pointer; white-space:nowrap;
   -webkit-tap-highlight-color:transparent;
 }
 @keyframes pulse{ 0%{transform:scale(1)} 50%{transform:scale(1.08)} 100%{transform:scale(1)} }
-body.light #kgVoice .kg-voice-mic{ color:#06121f }
+body.light #kgVoiceInline .kg-voice-mic{ color:#06121f }
+body.light #kgVoiceInline .kg-voice-lang{ background:#fff; color:#0f1828 }
 
 
 

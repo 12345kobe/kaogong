@@ -1,5 +1,5 @@
 /* 语音转文字（Web Speech API）
-   - 浮动 🎤 按钮：任意文本框 / 文本域聚焦时出现于右下角，点击开始识别，再次点击停止；
+   - 按钮显示在聚焦的输入框/文本域正下方（插入到 DOM 中，非悬浮），不遮挡其他操作；
    - 语言切换：🎤 旁的语言按钮在「🇨🇳 普通话 / 🇬🇧 English」之间切换；
    - 识别结果实时插入当前输入框（追加，自动补空格）。
    依赖浏览器原生 SpeechRecognition（Chrome / Edge / Safari 支持；需 https + 麦克风权限）。
@@ -17,7 +17,7 @@
   let recog = null;
   let listening = false;
   let lastEditable = null;          // 最近一次聚焦的可输入元素（用于插入文字）
-  let fab, langBtn, micBtn;
+  let bar = null;
 
   function editable(el) {
     if (!el) return false;
@@ -29,21 +29,37 @@
     return false;
   }
 
-  function initFloating() {
-    if (!supported) return;
-    fab = document.createElement("div");
-    fab.id = "kgVoice";
-    fab.innerHTML =
-      `<button id="kgVoiceLang" class="kg-voice-lang" type="button">${LANGS[langIdx].label}</button>` +
-      `<button id="kgVoiceMic" class="kg-voice-mic" type="button" title="语音转文字（再次点击停止）">🎤</button>`;
-    document.body.appendChild(fab);
-    langBtn = fab.querySelector("#kgVoiceLang");
-    micBtn = fab.querySelector("#kgVoiceMic");
-    langBtn.onclick = () => {
+  function ensureBar() {
+    if (bar) return bar;
+    bar = document.createElement("div");
+    bar.id = "kgVoiceInline";
+    bar.innerHTML =
+      `<button class="kg-voice-lang" type="button">${LANGS[langIdx].label}</button>` +
+      `<button class="kg-voice-mic" type="button" title="语音转文字（再次点击停止）">🎤</button>`;
+    bar.querySelector(".kg-voice-lang").onclick = (e) => {
+      e.stopPropagation();
       langIdx = (langIdx + 1) % LANGS.length;
-      langBtn.textContent = LANGS[langIdx].label;
+      bar.querySelector(".kg-voice-lang").textContent = LANGS[langIdx].label;
     };
-    micBtn.onclick = toggle;
+    bar.querySelector(".kg-voice-mic").onclick = (e) => {
+      e.stopPropagation();
+      toggle();
+    };
+    return bar;
+  }
+
+  function attachTo(el) {
+    if (!el || !el.parentNode) return;
+    const b = ensureBar();
+    if (b.parentNode === el.parentNode && b.previousElementSibling === el) return;
+    el.parentNode.insertBefore(b, el.nextSibling);
+  }
+  function detach() {
+    if (bar && bar.parentNode) bar.parentNode.removeChild(bar);
+  }
+
+  function initInline() {
+    if (!supported) return;
     document.addEventListener("focusin", onFocus);
     document.addEventListener("focusout", onBlur);
   }
@@ -51,16 +67,22 @@
   function onFocus(e) {
     if (editable(e.target)) {
       lastEditable = e.target;
-      if (!listening) fab.style.display = "flex";
+      attachTo(e.target);
     }
   }
-  function onBlur() {
+  function onBlur(e) {
     if (listening) return;
+    const rt = e && e.relatedTarget;
+    if (rt && (rt === bar || (rt.closest && rt.closest("#kgVoiceInline")))) return;
     setTimeout(() => {
       if (listening) return;
       const a = document.activeElement;
-      if (a && a.closest && a.closest("#kgVoice")) return; // 点到语音控件，保持显示
-      fab.style.display = "none";
+      if (a && (a === bar || (a.closest && a.closest("#kgVoiceInline")))) return;
+      if (editable(a)) {
+        // 焦点移动到另一个输入框：attachTo 会在 focusin 里处理，这里不 detach
+        return;
+      }
+      detach();
     }, 120);
   }
 
@@ -91,15 +113,22 @@
       if (listening) { try { recog.start(); } catch (e) {} }
     };
     listening = true;
-    micBtn.classList.add("on");
-    micBtn.textContent = "🔴";
+    const mic = bar ? bar.querySelector(".kg-voice-mic") : null;
+    if (mic) { mic.classList.add("on"); mic.textContent = "🔴"; }
     try { recog.start(); } catch (e) {}
   }
 
   function stop() {
     listening = false;
     if (recog) { try { recog.stop(); } catch (e) {} }
-    if (micBtn) { micBtn.classList.remove("on"); micBtn.textContent = "🎤"; }
+    const mic = bar ? bar.querySelector(".kg-voice-mic") : null;
+    if (mic) { mic.classList.remove("on"); mic.textContent = "🎤"; }
+    setTimeout(() => {
+      if (listening) return;
+      const a = document.activeElement;
+      if (editable(a) || (a && a.closest && a.closest("#kgVoiceInline"))) return;
+      detach();
+    }, 120);
   }
 
   function onResult(e) {
@@ -121,7 +150,7 @@
 
   window.KGVoice = {
     supported: supported,
-    enableFloating: initFloating,
+    enableFloating: initInline,   // 保持 app.js 调用名不变
     toggle: toggle,
     stop: stop
   };

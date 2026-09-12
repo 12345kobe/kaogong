@@ -262,10 +262,12 @@
       renderTodo(); renderProg();
     },
 
-    /* ===== 手写标注画板（Apple Pencil） =====
+    /* ===== 全屏手写标注画板（Apple Pencil / 手指 / 鼠标） =====
        open(subject, qid, questionText, onChange)
-       - 书写时锁定页面滑动（touch-action:none + 锁定 content 滚动）
-       - 工具栏：撤回(一笔) / 消除全部 / 完成(保存并恢复滑动)
+       - 覆盖整个页面，可在题目上直接书写
+       - 性能优化：已完成笔迹缓存到离屏 canvas；书写时只画当前笔画的一段，
+         不再每帧重绘全部笔迹，避免卡顿/不同步
+       - 工具栏：颜色 / 撤回一笔 / 清除全部 / 完成
        - 笔迹按 normalized 坐标存储，跨设备/尺寸可还原 */
     Handwriting: {
       open(subject, qid, questionText, onChange) {
@@ -274,82 +276,162 @@
         notesRoot[subject] = notesRoot[subject] || {};
         let strokes = notesRoot[subject][qid] ? JSON.parse(JSON.stringify(notesRoot[subject][qid])) : [];
         let cur = null, drawing = false;
+        let color = "#ff6b4a";
+        let width = 3.2;
 
-        const mask = el(`<div class="modal-mask hw-mask"></div>`);
-        const m = el(`<div class="modal hw-modal"></div>`);
-        m.appendChild(el(`<h2>✏️ 手写标注</h2>`));
-        m.appendChild(el(`<div class="hw-q">${esc(questionText)}</div>`));
-        const wrap = el(`<div class="hw-canvas-wrap"></div>`);
-        const canvas = el(`<canvas class="hw-canvas"></canvas>`);
-        wrap.appendChild(canvas);
-        m.appendChild(wrap);
-        m.appendChild(el(`<div class="hw-tip">用 Apple Pencil 在画板上书写；书写时已锁定页面滑动。完成后点「完成」保存并恢复滑动。</div>`));
-        const bar = el(`<div class="row" style="justify-content:center;margin-top:10px;gap:8px"></div>`);
-        const undoBtn = el(`<button class="btn">↶ 撤回一笔</button>`);
-        const clearBtn = el(`<button class="btn">🧹 消除笔迹</button>`);
-        const doneBtn = el(`<button class="btn primary">完成</button>`);
-        bar.appendChild(undoBtn); bar.appendChild(clearBtn); bar.appendChild(doneBtn);
-        m.appendChild(bar);
-        mask.appendChild(m);
-        document.getElementById("modalRoot").appendChild(mask);
+        const overlay = el(`<div class="hw-overlay">
+          <div class="hw-tools">
+            <button class="hw-tool close" title="关闭">✕</button>
+            <button class="hw-tool color active" data-c="#ff6b4a" style="color:#ff6b4a" title="红色">●</button>
+            <button class="hw-tool color" data-c="#34e7e4" style="color:#34e7e4" title="青色">●</button>
+            <button class="hw-tool color" data-c="#ffd166" style="color:#ffd166" title="黄色">●</button>
+            <button class="hw-tool color" data-c="#ffffff" style="color:#ffffff" title="白色">●</button>
+            <button class="hw-tool undo" title="撤回一笔">↶</button>
+            <button class="hw-tool clear" title="清除全部">🗑</button>
+            <button class="hw-tool done" title="完成保存">✓</button>
+          </div>
+          <canvas class="hw-layer"></canvas>
+        </div>`);
+        document.body.appendChild(overlay);
 
-        // 锁定背景滚动
-        const content = document.getElementById("content");
-        const prevOverflow = content.style.overflow;
-        content.style.overflow = "hidden";
+        // 锁定页面滚动
+        const prevBodyOverflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
 
-        const ctx = canvas.getContext("2d");
-        function rectSize() { return canvas.getBoundingClientRect(); }
-        function redraw() {
-          const r = rectSize();
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          ctx.lineCap = "round"; ctx.lineJoin = "round";
-          strokes.forEach(st => {
-            if (!st.points.length) return;
-            ctx.strokeStyle = st.color || "#ffd166"; ctx.lineWidth = st.width || 3;
-            ctx.beginPath();
-            st.points.forEach((p, idx) => {
-              const x = p.x * r.width, y = p.y * r.height;
-              idx === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-            });
-            ctx.stroke();
-          });
+        const canvas = overlay.querySelector(".hw-layer");
+        const mainCtx = canvas.getContext("2d", { alpha: true });
+        const offCanvas = document.createElement("canvas");
+        const offCtx = offCanvas.getContext("2d", { alpha: true });
+
+        function viewSize() {
+          return { w: window.innerWidth, h: window.innerHeight, dpr: window.devicePixelRatio || 1 };
         }
         function sizeCanvas() {
-          const r = rectSize();
-          const dpr = window.devicePixelRatio || 1;
-          canvas.width = Math.max(1, Math.round(r.width * dpr));
-          canvas.height = Math.max(1, Math.round(r.height * dpr));
-          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-          redraw();
+          const { w, h, dpr } = viewSize();
+          canvas.width = Math.max(1, Math.round(w * dpr));
+          canvas.height = Math.max(1, Math.round(h * dpr));
+          canvas.style.width = w + "px";
+          canvas.style.height = h + "px";
+          offCanvas.width = canvas.width;
+          offCanvas.height = canvas.height;
+          mainCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          offCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          renderToOffscreen();
+          blit();
         }
-        function pos(e) { const r = rectSize(); return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height }; }
+        function renderToOffscreen() {
+          const { w, h } = viewSize();
+          offCtx.clearRect(0, 0, w, h);
+          offCtx.lineCap = "round";
+          offCtx.lineJoin = "round";
+          strokes.forEach(st => {
+            if (!st.points || st.points.length < 2) return;
+            offCtx.strokeStyle = st.color || color;
+            offCtx.lineWidth = st.width || width;
+            offCtx.beginPath();
+            st.points.forEach((p, idx) => {
+              const x = p.x * w, y = p.y * h;
+              idx === 0 ? offCtx.moveTo(x, y) : offCtx.lineTo(x, y);
+            });
+            offCtx.stroke();
+          });
+        }
+        function blit() {
+          const { w, h } = viewSize();
+          mainCtx.clearRect(0, 0, w, h);
+          mainCtx.drawImage(offCanvas, 0, 0, w, h);
+        }
+        function pos(e) {
+          const { w, h } = viewSize();
+          return { x: e.clientX / w, y: e.clientY / h };
+        }
+        function drawSegment(p1, p2, ctx) {
+          const { w, h } = viewSize();
+          ctx.beginPath();
+          ctx.strokeStyle = cur.color;
+          ctx.lineWidth = cur.width;
+          ctx.lineCap = "round";
+          ctx.lineJoin = "round";
+          ctx.moveTo(p1.x * w, p1.y * h);
+          ctx.lineTo(p2.x * w, p2.y * h);
+          ctx.stroke();
+        }
+        function commitStroke() {
+          if (!cur || cur.points.length < 2) { cur = null; drawing = false; return; }
+          strokes.push(cur);
+          // 把完整笔画写入离屏缓存
+          const { w, h } = viewSize();
+          offCtx.beginPath();
+          offCtx.strokeStyle = cur.color;
+          offCtx.lineWidth = cur.width;
+          offCtx.lineCap = "round";
+          offCtx.lineJoin = "round";
+          cur.points.forEach((p, idx) => {
+            const x = p.x * w, y = p.y * h;
+            idx === 0 ? offCtx.moveTo(x, y) : offCtx.lineTo(x, y);
+          });
+          offCtx.stroke();
+          cur = null; drawing = false;
+          blit();
+        }
 
-        canvas.style.touchAction = "none";
         canvas.addEventListener("pointerdown", e => {
-          drawing = true; cur = { color: "#ffd166", width: 3, points: [] };
-          cur.points.push(pos(e));
+          e.preventDefault();
+          if (e.button > 0) return; // 仅主键/手指/Pencil
+          drawing = true;
+          const p = pos(e);
+          cur = { color, width, points: [p] };
           try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
-        });
+        }, { passive: false });
         canvas.addEventListener("pointermove", e => {
+          e.preventDefault();
+          if (!drawing || !cur) return;
+          const p = pos(e);
+          const last = cur.points[cur.points.length - 1];
+          cur.points.push(p);
+          drawSegment(last, p, mainCtx);
+        }, { passive: false });
+        const endStroke = e => {
+          if (e) e.preventDefault();
           if (!drawing) return;
-          cur.points.push(pos(e)); redraw();
-        });
-        const endStroke = () => { if (!drawing) return; drawing = false; if (cur && cur.points.length) strokes.push(cur); cur = null; };
-        canvas.addEventListener("pointerup", endStroke);
-        canvas.addEventListener("pointercancel", endStroke);
+          commitStroke();
+        };
+        canvas.addEventListener("pointerup", endStroke, { passive: false });
+        canvas.addEventListener("pointercancel", endStroke, { passive: false });
+        canvas.addEventListener("pointerleave", endStroke, { passive: false });
 
-        undoBtn.onclick = () => { strokes.pop(); redraw(); };
-        clearBtn.onclick = () => { strokes = []; redraw(); };
-        const save = () => {
+        // 工具栏
+        overlay.querySelector(".hw-tool.close").onclick = close;
+        overlay.querySelector(".hw-tool.done").onclick = saveAndClose;
+        overlay.querySelector(".hw-tool.undo").onclick = () => {
+          if (!strokes.length) return;
+          strokes.pop();
+          renderToOffscreen(); blit();
+        };
+        overlay.querySelector(".hw-tool.clear").onclick = () => {
+          strokes = [];
+          renderToOffscreen(); blit();
+        };
+        overlay.querySelectorAll(".hw-tool.color").forEach(b => {
+          b.onclick = () => {
+            overlay.querySelectorAll(".hw-tool.color").forEach(x => x.classList.remove("active"));
+            b.classList.add("active");
+            color = b.dataset.c;
+          };
+        });
+
+        function saveAndClose() {
           if (strokes.length) notesRoot[subject][qid] = strokes; else delete notesRoot[subject][qid];
           DB.save(); if (onChange) onChange();
-        };
-        const close = () => { content.style.overflow = prevOverflow; window.removeEventListener("resize", sizeCanvas); mask.remove(); };
-        doneBtn.onclick = () => { save(); close(); };
-        mask.onclick = e => { if (e.target === mask) { save(); close(); } };
+          close();
+        }
+        function close() {
+          document.body.style.overflow = prevBodyOverflow;
+          window.removeEventListener("resize", sizeCanvas);
+          overlay.remove();
+        }
 
-        requestAnimationFrame(sizeCanvas);
+        sizeCanvas();
         window.addEventListener("resize", sizeCanvas);
       }
     }

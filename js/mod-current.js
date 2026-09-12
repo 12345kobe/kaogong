@@ -89,11 +89,25 @@
       while (i < lines.length) {
         const t = clean(lines[i]);
         if (!t) { i++; continue; }
-        const am = /^【答案】\s*([A-Ea-e])\b/.exec(t);
-        if (am) { a = am[1].toUpperCase().charCodeAt(0) - 65; i++; continue; }
-        const tm = /^【答案】\s*(.+)$/.exec(t);
-        if (tm) { e = "【答案】" + tm[1] + (e ? "　" + e : ""); i++; continue; }
-        const em = /^【解析】\s*(.+)$/.exec(t);
+        // 答案支持多种写法：
+        //   【答案】A / 【答案】：A / 答案：A / 正确答案：B / 正确选项：C
+        //   也可用选项文字作答：如「【答案】普惠、创新、协同」
+        //   兼容答案与解析同行：如「【答案】A【解析】官方表述」
+        const am = /^(?:【?答案】?|正确答案|正确选项)\s*[:：]?\s*([A-Da-d])\b(?:\s*[#【\[]?解析[#】\]]?\s*[:：]?\s*(.*))?$/.exec(t);
+        if (am) {
+          a = am[1].toUpperCase().charCodeAt(0) - 65;
+          if (am[2] && am[2].trim()) e = (e ? e + "　" : "") + am[2].trim();
+          i++; continue;
+        }
+        const tm = /^(?:【?答案】?|正确答案|正确选项)\s*[:：]?\s*(.+)$/.exec(t);
+        if (tm) {
+          const txt = tm[1].trim();
+          const fi = opts.findIndex(o => o.replace(/\s+/g, "") === txt.replace(/\s+/g, ""));
+          if (fi >= 0) a = fi;
+          e = (e ? e + "　" : "") + "【答案】" + txt;
+          i++; continue;
+        }
+        const em = /^【解析】\s*[:：]?\s*(.+)$/.exec(t);
         if (em) { e = (e ? e + "　" : "") + em[1]; i++; continue; }
         if (/^【.{1,10}】/.test(t)) { i++; continue; } // 【文段出处】等
         if (/^\d{1,4}\s*[.．、]/.test(t)) break;        // 下一题
