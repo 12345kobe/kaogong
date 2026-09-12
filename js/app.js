@@ -153,26 +153,36 @@
           const label = qs.length ? (nm + "（" + qs.length + " 题）") : ("📖 " + nm + "（考点讲解）");
           const inner = UI.section(label);
           const ic = UI.el(`<div class="card"></div>`);
-          const btns = [];
-          if (s.theory) btns.push(`<button class="btn pdb-learn">📖 学考点</button>`);
-          if (qs.length) btns.push(`<button class="btn primary pdb-go">✍ 练习本考点</button>`);
           const needChk = qs.filter(q => q.needCheck || q.a == null || q.a < 0).length;
-          ic.appendChild(UI.el(`<div class="muted small">${qs.length ? "共 " + qs.length + " 题" : "本部分为纯知识点，无题目"}${needChk ? " · ⚠️ " + needChk + " 题答案待校对" : ""}</div>
-            ${btns.length ? `<div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap">${btns.join("")}</div>` : ""}`));
-          if (s.theory) ic.querySelector(".pdb-learn").onclick = () => openHtml(label, s.theory);
-          if (qs.length) {
+          // 用单根 div 包装状态条和按钮，避免 UI.el 只返回 firstElementChild 截断按钮
+          const statHtml = qs.length ? "共 " + qs.length + " 题" : "本部分为纯知识点，无题目";
+          const warnHtml = needChk ? " · ⚠️ " + needChk + " 题答案待校对" : "";
+          const btnHtml = [];
+          if (s.theory) btnHtml.push(`<button class="btn pdb-learn">📖 学考点</button>`);
+          if (qs.length) btnHtml.push(`<button class="btn primary pdb-go">✍ 练习本考点</button>`);
+          ic.appendChild(UI.el(`<div>
+            <div class="muted small">${statHtml}${warnHtml}</div>
+            ${btnHtml.length ? `<div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap">${btnHtml.join("")}</div>` : ""}
+          </div>`));
+          const learnBtn = ic.querySelector(".pdb-learn");
+          const goBtn = ic.querySelector(".pdb-go");
+          if (learnBtn) learnBtn.onclick = () => openHtml(label, s.theory);
+          if (qs.length && goBtn) {
             const go = () => {
               const sel = card.querySelector(".pdb-size");
               const n = sel ? parseInt(sel.value, 10) : 10;
-              openQuiz(bk.name + " · " + (s.name || ("第 " + (si + 1) + " 部分")), n > 0 ? qs.slice(0, n) : qs);
+              openQuiz(bk.name + " · " + nm, n > 0 ? qs.slice(0, n) : qs);
             };
-            ic.querySelector(".pdb-go").onclick = go;
+            goBtn.onclick = go;
             if (!firstGo) firstGo = go;
-            // 题目清单：每题 + 所属考点
+          }
+          // 题目清单：每题 + 所属考点
+          if (qs.length) {
             const list = UI.section("题目清单（含考点）");
             const items = qs.slice(0, 300).map((q, qi) => {
               const stem = String(q.q || "").replace(/\s+/g, " ").slice(0, 46);
-              return `<div class="pdb-qitem"><span class="pdb-qi">${qi + 1}.</span><span class="pdb-qt">${UI.esc(stem)}</span>${q.kp ? `<span class="pdb-kp">${UI.esc(String(q.kp).slice(0, 24))}</span>` : ""}</div>`;
+              const ans = q.multi ? ` · ${q.multi}` : (q.a >= 0 ? " · " + String.fromCharCode(65 + q.a) : "");
+              return `<div class="pdb-qitem"><span class="pdb-qi">${qi + 1}.</span><span class="pdb-qt">${UI.esc(stem)}<span class="muted small" style="margin-left:4px">${ans}</span></span>${q.kp ? `<span class="pdb-kp">${UI.esc(String(q.kp).slice(0, 24))}</span>` : ""}</div>`;
             }).join("");
             list.querySelector(".kg-det-b").appendChild(UI.el(`<div class="card"><div class="pdb-qlist">${items}</div></div>`));
             ic.appendChild(list);

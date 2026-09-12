@@ -550,13 +550,43 @@
       cur = null; inOpts = false;
     }
 
+    function looksLikeAnswer(s) {
+      s = String(s || "").trim();
+      if (!s) return false;
+      if (/[【\[]\s*(?:答案|解析)/.test(s)) return true;
+      if (/^(?:答案|解析)[：:]/.test(s)) return true;
+      if (/^[A-Ea-e]{1,6}(?:[\s,，、]+[A-Ea-e]){0,5}\s*$/.test(s)) return true;
+      // 文本答案：短、不含题干标志、不含下划线
+      if (s.length <= 24 && !/[____…？]/g.test(s) && !/^下列|^正确|^错误|^符合|^属于|^的是|^关于|^根据|^以下|^哪项|^哪一|^这题|^此题/.test(s) && /[\u4e00-\u9fa5]/.test(s)) return true;
+      return false;
+    }
+    function consumeAsAnswer(rest) {
+      if (!cur) return;
+      // 字母答案
+      const am = /^\s*([A-Ea-e]{1,6}(?:\s*[，,、]\s*[A-Ea-e]){0,5})\s*[】\]）)]?\s*(.*)$/.exec(rest);
+      if (am) {
+        setAns(am[1]);
+        if (am[2]) cur.e = smartJoin(cur.e, String(am[2]).replace(/^(?:解析|答案解析|【解析】|答案)\s*[：:]?\s*/, "").trim());
+        return;
+      }
+      // 文本答案：直接当 textAns（不要同时写 cur.e，避免 normQuestion 后重复）
+      cur.textAns = cur.textAns ? cur.textAns + "；" + rest : rest;
+    }
+
     plainLines(text).forEach(raw => {
       const qm = qRe.exec(raw);
       if (qm && !/^\d{1,4}\s*分/.test(raw) && !/^\d{1,4}\s*[．.]\s*$/.test(raw)) {
+        const num = parseInt(qm[1], 10);
+        const rest = String(qm[2] || "").trim();
+        // 同一题号再次出现且当前题已有选项 → 这行是答案/解析，不要开新题
+        if (cur && cur.num === num && cur.options.length >= 2 && looksLikeAnswer(rest)) {
+          consumeAsAnswer(rest);
+          return;
+        }
         flush();
-        cur = { num: parseInt(qm[1], 10), q: qm[2] || "", options: [], a: -1, e: "", aSet: false, kp: kp || "" };
+        cur = { num: num, q: rest, options: [], a: -1, e: "", aSet: false, kp: kp || "" };
         inOpts = false;
-        const onlyLetters = /^([A-Ea-e]{1,6})[\s．.。]*$/.exec(String(qm[2] || "").trim());
+        const onlyLetters = /^([A-Ea-e]{1,6})[\s．.。]*$/.exec(rest);
         if (onlyLetters) { setAns(onlyLetters[1]); return; }   // 「1.A」式答案速查
         return;
       }
@@ -620,7 +650,17 @@
     let needCheck = false;
     if (!(a >= 0 && a < opts.length)) { a = -1; needCheck = true; }
     let e = sanitizeText(q.e);
-    if (q.multi) e = "【答案】" + q.multi + "（多选）" + (e ? "　" + e : "");
+    if (q.multi) e = "【答案】" + q.multi + "（多选/双空）" + (e ? "　" + e : "");
+    // 文本型答案（填空题）：尝试 fuzzy 匹配选项；若命中则 a 修正，否则当解析展示
+    if (q.textAns && !e.includes("【答案】")) {
+      const idx = fuzzyMatchOption(opts, q.textAns);
+      if (idx >= 0) {
+        a = idx; needCheck = false;
+        e = "【答案】" + q.textAns + (e ? "　" + e : "");
+      } else {
+        e = "【答案】" + q.textAns + "（未匹配到选项，请核对）" + (e ? "　" + e : "");
+      }
+    }
     if (needCheck) e = "⚠️ 答案未能自动识别，需人工校对。" + (e ? "　" + e : "");
     const o = {
       q: stem, options: opts, a: a, e: e,
@@ -631,54 +671,105 @@
     if (q.multi) o.multi = q.multi;
     return o;
   }
+  /* 文本答案（如填空题）fuzzy 匹配到选项：统计答案关键词在选项中出现的覆盖率 */
+  function fuzzyMatchOption(opts, ans) {
+    if (!ans || !opts.length) return -1;
+    const clean = s => String(s || "").replace(/[\s,，、;；.。]/g, "");
+    const a = clean(ans);
+    if (!a) return -1;
+    let best = -1, bestScore = 0;
+    for (let i = 0; i < opts.length; i++) {
+      const o = clean(opts[i]);
+      if (!o) continue;
+      if (o === a || o.indexOf(a) >= 0 || a.indexOf(o) >= 0) return i;
+      const setA = new Set(a.split(""));
+      let hit = 0;
+      for (const ch of o) if (setA.has(ch)) hit++;
+      const score = hit / Math.max(setA.size, o.length);
+      if (score > bestScore) { bestScore = score; best = i; }
+    }
+    return bestScore >= 0.5 ? best : -1;
+  }
 
-  /* 文末「答案速查 / 参考答案」附录：1.A、1-5 ABCDE、1.A 2.B 3.C */
+  /* 文末「答案速查 / 参考答案」附录：1.A、1-5 ABCDE、1.A 2.B 3.C、1.普惠/创新/协同 */
   function parseAnswers(text) {
     const ansMap = {};
-    const pairRe = /(\d{1,4})\s*[\.．、，,)）]?\s*[：:]?\s*([A-Ea-e])(?![A-Za-z])/g;
-    plainLines(text).forEach(raw => {
-      let m = /^\s*(\d{1,4})\s*[-~—－]\s*(\d{1,4})\s*[：:．.、]?\s*([A-Ea-e \u3000]{2,80})\s*$/.exec(raw);
+    const lines = plainLines(text).filter(s => s && s.trim());
+    // 第一遍：严格只匹配字母答案（单选/多选），避免把题干当文本答案
+    const pairRe = /(\d{1,4})\s*[\.．、，,)）]?\s*[：:]?\s*([A-Ea-e]{1,6}(?:\s*[，,、]\s*[A-Ea-e]){0,5})(?=[\s,，.。;；]|$)/g;
+
+    lines.forEach(raw => {
+      // 1-5 ABCDE 连续题号答案
+      let m = /^\s*(\d{1,4})\s*[-~—－]\s*(\d{1,4})\s*[：:．.、]?\s*(.{2,80})\s*$/.exec(raw);
       if (m) {
         const from = parseInt(m[1], 10), to = parseInt(m[2], 10);
-        const letters = m[3].replace(/[\s\u3000]/g, "").toUpperCase();
-        for (let i = 0; i < letters.length && from + i <= to; i++) {
-          ansMap[from + i] = { a: letters.charCodeAt(i) - 65, e: "" };
+        const letters = String(m[3]).replace(/[\s\u3000,，、；;．.。]/g, "").toUpperCase();
+        let pos = 0;
+        for (let n = from; n <= to && pos < letters.length; n++, pos++) {
+          const L = letters[pos];
+          if (/^[A-E]$/.test(L)) applyAns(n, L, "");
         }
         return;
       }
-      const pairs = [];
-      let p;
+
+      const pairs = []; let p;
       pairRe.lastIndex = 0;
-      while ((p = pairRe.exec(raw)) !== null) pairs.push([parseInt(p[1], 10), p[2].toUpperCase()]);
+      while ((p = pairRe.exec(raw)) !== null) {
+        const n = parseInt(p[1], 10), val = p[2].toUpperCase();
+        if (!val) continue;
+        pairs.push([n, val]);
+      }
       if (!pairs.length) return;
-      const wholeOne = new RegExp("^\\s*\\d{1,4}\\s*[\\.．、，,)）]?\\s*[：:]?\\s*[A-Ea-e]{1,6}\\s*[。．.]?\\s*$").test(raw);
-      if (!wholeOne && pairs.length < 3) return;   // 单行多答案才认，避免误伤题干
-      pairs.forEach(([n, L]) => {
-        const idx = L.charCodeAt(0) - 65;
-        if (idx >= 0 && idx < 10) ansMap[n] = { a: idx, e: "" };
-      });
+      const wholeOne = /^\s*\d{1,4}\s*[\.．、，,)）]?\s*[：:]?\s*[A-Ea-e]{1,6}\s*$/.test(raw);
+      if (!wholeOne && pairs.length < 2) return; // 单行只有一个且不是整行 → 可能是题干里的"1. xxx"
+      pairs.forEach(([n, val]) => applyAns(n, val, ""));
     });
-    /* 第二遍：只认「1. A（解析…）」这种附录行，避免把题干当成解析收进来 */
-    const APPEND_RE = /^[【\[（(]?\s*([A-Ea-e]{1,6})(?![A-Za-z\u4e00-\u9fa5])\s*[】\]）)]?\s*([\s\S]*)$/;
+
+    // 第二遍：按行识别「1. B」/「1. 普惠、创新、协同」这种独立答案行
     let curNum = null;
-    plainLines(text).forEach(raw => {
+    lines.forEach(raw => {
       const m = /^\s*(\d{1,4})\s*[\.．、，,)）]\s*(.*)$/.exec(raw);
       if (m) {
         curNum = parseInt(m[1], 10);
-        const am = APPEND_RE.exec(String(m[2] || "").trim());
-        if (!am) { curNum = null; return; }              // 不是「编号+选项字母」→ 不当附录
-        const idx = am[1].toUpperCase().charCodeAt(0) - 65;
-        if (idx < 0 || idx > 9) { curNum = null; return; }
-        if (!ansMap[curNum]) ansMap[curNum] = { a: idx, e: "" };
-        let tail = String(am[2] || "").replace(/^[：:．.、，。]\s*/, "").replace(/^(?:解析|答案解析|【解析】)\s*[：:]?\s*/, "").trim();
-        if (/^\d{1,4}\s*[\.．、，,)）]/.test(tail)) tail = "";   // 后面还跟着「2.B」→ 不是解析
-        if (tail) ansMap[curNum].e = tail;
+        const rest = String(m[2] || "").trim();
+        // 字母答案：B / AB / B,C
+        const am = /^\s*([A-Ea-e]{1,6}(?:\s*[，,、]\s*[A-Ea-e]){0,5})\s*[】\]）)]?\s*(.*)$/.exec(rest);
+        if (am) { applyAns(curNum, am[1], ""); collectTail(curNum, am[2]); return; }
+        // 文本答案：很短、不含题干标志、不以选项字母开头
+        if (/^[^A-Za-z0-9\s]/.test(rest) || (rest.length <= 30 && !/[A-Ea-e]\s*[\.．、]/.test(rest) && /[\u4e00-\u9fa5]/.test(rest))) {
+          // 排除明显的题干
+          if (!/^下列|^正确|^错误|^符合|^属于|^的是|^关于|^根据|^以下|^哪项|^哪一|^这题|^此题/.test(rest)) {
+            applyAns(curNum, rest, ""); return;
+          }
+        }
+        curNum = null; return;
+      }
+      if (curNum != null && ansMap[curNum] && raw.length > 4) collectTail(curNum, raw);
+    });
+
+    function applyAns(n, val, tail) {
+      if (!n || !val) return;
+      val = String(val).trim().replace(/^[【\[（(]/, "").replace(/[】\]）)]$/, "").trim();
+      if (!val) return;
+      const upper = val.toUpperCase().replace(/\s*[，,、]\s*/g, "").replace(/\s+/g, "");
+      if (/^[A-E]{1,6}$/.test(upper)) {
+        const obj = ansMap[n] || (ansMap[n] = { a: upper.charCodeAt(0) - 65, e: "" });
+        obj.a = upper.charCodeAt(0) - 65;
+        if (upper.length > 1) obj.multi = upper;
         return;
       }
-      if (curNum != null && ansMap[curNum] && raw.length > 4) {
-        ansMap[curNum].e = smartJoin(ansMap[curNum].e, raw.replace(/^(?:答案解析|解析|答案)\s*[：:]\s*/, ""));
-      }
-    });
+      // 文本型答案（填空题）
+      const obj = ansMap[n] || (ansMap[n] = { a: -1, e: "" });
+      obj.textAns = (obj.textAns ? obj.textAns + "；" : "") + val;
+      obj.a = -1;
+    }
+    function collectTail(n, tail) {
+      tail = String(tail || "").replace(/^[：:．.、，。]\s*/, "").replace(/^(?:解析|答案解析|【解析】|答案)\s*[：:]?\s*/, "").trim();
+      if (/^\d{1,4}\s*[\.．、，,)）]/.test(tail)) return;
+      if (!tail) return;
+      const obj = ansMap[n]; if (!obj) return;
+      obj.e = obj.e ? smartJoin(obj.e, tail) : tail;
+    }
     return ansMap;
   }
 
@@ -760,10 +851,50 @@
     return chapters;
   }
 
+  /* 把混在正文里的答案行剥离，避免 parseQuestions 把它们当成新题 */
+  function stripAnswerLines(bodyLines, ansMap) {
+    if (!ansMap || !Object.keys(ansMap).length) return bodyLines;
+    const body = Array.isArray(bodyLines) ? bodyLines : plainLines(bodyLines);
+    const used = new Set();
+    return body.filter(ln => {
+      const s = String(ln || "").trim();
+      if (!s) return true;
+      const m = /^\s*(\d{1,4})\s*[\.．、,，)）]\s*(.*)$/.exec(s);
+      if (!m) return true;
+      const num = parseInt(m[1], 10);
+      const hit = ansMap[num];
+      if (!hit || used.has(num)) return true;
+      const rest = String(m[2] || "").trim();
+      if (rest.length > 80) return true;                 // 太长不像答案行
+      if (/^(?:下列|正确|错误|符合|属于|的是|关于|根据|以下|哪项|哪一|这题)/.test(rest)) return true; // 明显题干
+      // 字母答案：rest 仅字母（可带解析尾巴）
+      if (/^[A-Ea-e]{1,6}\b/.test(rest) && !/[\u4e00-\u9fa5]/.test(rest.split(/\s/)[0])) {
+        used.add(num); return false;
+      }
+      // 文本答案：和已识别的 textAns 高度相似，或内容很短且不含选项标志
+      const short = rest.replace(/\s/g, "");
+      const textAns = String(hit.textAns || "").replace(/\s/g, "");
+      if (textAns && (short.indexOf(textAns) >= 0 || textAns.indexOf(short) >= 0 || similarity(short, textAns) > 0.6)) {
+        used.add(num); return false;
+      }
+      if (!textAns && short.length <= 24 && !/[A-Ea-e]\s*[\.．、]/.test(rest) && /[\u4e00-\u9fa5]/.test(rest)) {
+        used.add(num); return false;
+      }
+      return true;
+    });
+  }
+  function similarity(a, b) {
+    if (!a || !b) return 0;
+    const setA = new Set(a.split("")), setB = new Set(b.split(""));
+    let inter = 0;
+    for (const ch of setA) if (setB.has(ch)) inter++;
+    return inter / Math.max(setA.size, setB.size);
+  }
+
   /* 节（供其它模块直接渲染）：{ name, theory(HTML), questions:[{q,options,a,e,kp}] } */
   function buildSections(pages, outline, extraAns) {
     const secs = [];
-    const docAns = {};
+    const docAns = {};           // 纯答案附录章收集到的答案（全局 fallback）
     let totalQ = 0;
 
     splitChapters(pages, outline).forEach(ch => {
@@ -775,22 +906,23 @@
 
         // ① 本章自带的答案附录（1.A / 1-5 ABCDE / 参考答案段）
         const chAns = parseAnswers(body.join("\n"));
-        // ② 纯答案附录章：几乎没有考点分组、全是答案行 → 只收答案，不成章
+        // parseQuestions 已能识别同题号重复出现的答案/解析行，故不再预剥离；
+        // 若某章纯为答案速查（无题干），splitKpBlocks 会把它归到 qtext，parseQuestions 因无选项而自然过滤掉。
         const kpInfo = splitKpBlocks(body);
         const hasQ = kpInfo.blocks.some(b => b.qtext.length);
         if (!hasQ && Object.keys(chAns).length >= 3) {
           for (const k in chAns) docAns[k] = chAns[k];
           return;
         }
-        for (const k in chAns) if (docAns[k] == null) docAns[k] = chAns[k];
 
         const chapterName = clampLen(sanitizeText(ch.name) || "全部题目", 30);
         const preHtml = toTheoryHtml(kpInfo.pre.join("\n"));
         const withQ = kpInfo.blocks.filter(b => b.qtext.length);
+        const chapterSecs = [];   // 本章产生的 section，先回填本章答案再并入全局
 
         // ③ 章首总述：单独成节（只有「学考点」）
         if (preHtml && withQ.length) {
-          secs.push({ name: chapterName, theory: preHtml, questions: [] });
+          chapterSecs.push({ name: chapterName, theory: preHtml, questions: [] });
         }
 
         let carry = preHtml ? [] : kpInfo.pre.slice();
@@ -808,41 +940,40 @@
           const CHUNK = 60;
           if (qs.length > CHUNK) {
             for (let i = 0; i < qs.length; i += CHUNK) {
-              secs.push({
+              chapterSecs.push({
                 name: clampLen(nm, 36) + "（" + (Math.floor(i / CHUNK) + 1) + "）",
                 theory: i === 0 ? theoryHtml : "",
                 questions: qs.slice(i, i + CHUNK)
               });
             }
           } else {
-            secs.push({ name: clampLen(nm, 40), theory: theoryHtml, questions: qs });
+            chapterSecs.push({ name: clampLen(nm, 40), theory: theoryHtml, questions: qs });
           }
           carry = [];
         });
         if (carry.length) {
           const html = toTheoryHtml(carry.join("\n"));
-          if (html) secs.push({ name: chapterName + "（考点）", theory: html, questions: [] });
+          if (html) chapterSecs.push({ name: chapterName + "（考点）", theory: html, questions: [] });
         }
+
+        // ④ 先按「本章答案 + 同题号」回填，避免不同章节的同号题互相污染
+        applyAnswerMap(chapterSecs, chAns);
+        // 本章答案没用完的，留作全局 fallback
+        const usedNums = new Set();
+        chapterSecs.forEach(s => (s.questions || []).forEach(q => { if (q.a >= 0) usedNums.add(q.num); }));
+        for (const k in chAns) if (!usedNums.has(+k) && docAns[k] == null) docAns[k] = chAns[k];
+
+        secs.push(...chapterSecs);
       } catch (e) {
         // 单章失败不影响整本
       }
     });
 
-    // ④ 回填答案：同文档附录 → 章节答案 → 额外的答案文件
+    // ⑤ 全局 fallback：纯答案附录章 + 额外的答案文件 → 回填仍未识别的题
     const fallback = Object.assign({}, docAns, extraAns || {});
-    if (Object.keys(fallback).length) {
-      secs.forEach(s => (s.questions || []).forEach(q => {
-        if (q.a >= 0 && q.a < q.options.length) return;
-        const hit = fallback[q.num];
-        if (!hit) return;
-        if (hit.a >= 0 && hit.a < q.options.length) {
-          q.a = hit.a; delete q.needCheck;
-          q.e = String(q.e || "").replace(/^⚠️\s*答案未能自动识别，需人工校对。\s*/, "");
-        }
-        if (hit.e && !q.e) q.e = hit.e;
-      }));
-    }
-    // ⑤ 兜底：整本一个考点都没切出来时，整体当一章解析
+    if (Object.keys(fallback).length) applyAnswerMap(secs, fallback);
+
+    // ⑥ 兜底：整本一个考点都没切出来时，整体当一章解析
     secs.forEach(s => { totalQ += (s.questions || []).length; });
     if (!secs.length) {
       const all = (pages || []).join("\n");
@@ -850,6 +981,22 @@
       secs.push({ name: "全部题目", theory: qs.length ? "" : toTheoryHtml(all), questions: qs });
     }
     return secs.filter(s => (s.theory && String(s.theory).trim()) || (s.questions && s.questions.length));
+  }
+
+  function applyAnswerMap(secs, ansMap) {
+    if (!ansMap || !Object.keys(ansMap).length) return;
+    secs.forEach(s => (s.questions || []).forEach(q => {
+      if (q.a >= 0 && q.a < q.options.length) return;
+      const hit = ansMap[q.num];
+      if (!hit) return;
+      if (hit.a >= 0 && hit.a < q.options.length) {
+        q.a = hit.a; delete q.needCheck;
+        q.e = String(q.e || "").replace(/^⚠️\s*答案未能自动识别，需人工校对。\s*/, "");
+      }
+      if (hit.multi) q.multi = hit.multi;
+      if (hit.textAns) q.textAns = hit.textAns;
+      if (hit.e && !q.e) q.e = hit.e;
+    }));
   }
 
   /* 兼容旧调用：整本成章后吸收答案附录 */
