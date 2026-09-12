@@ -696,6 +696,7 @@
   function parseAnswersCore(text) {
     const ansMap = {};
     const ordered = [];
+    const orderedRaw = [];
     const lines = plainLines(text).filter(x => x && x.trim());
     const pairRe = /(\d{1,4})\s*[\.．、，,)）]?\s*[：:]?\s*([A-Ea-e]{1,6}(?:\s*[，,、]\s*[A-Ea-e]){0,5})(?=[\s,，.。;；]|$)/g;
     function applyAns(n, val) {
@@ -708,12 +709,14 @@
         obj.a = upper.charCodeAt(0) - 65;
         if (upper.length > 1) obj.multi = upper;
         if (!obj.__o) { ordered.push(obj); obj.__o = true; }
+        orderedRaw.push({ n: n, a: obj.a, multi: obj.multi });
         return;
       }
       const obj = ansMap[n] || (ansMap[n] = { a: -1, e: "" });
       obj.textAns = (obj.textAns ? obj.textAns + "；" : "") + val;
       obj.a = -1;
       if (!obj.__o) { ordered.push(obj); obj.__o = true; }
+      orderedRaw.push({ n: n, a: -1, textAns: obj.textAns });
     }
     function collectTail(n, tail) {
       tail = String(tail || "").replace(/^[：:．.、，。]\s*/, "").replace(/^(?:解析|答案解析|【解析】|答案)\s*[：:]?\s*/, "").trim();
@@ -722,7 +725,8 @@
       const obj = ansMap[n]; if (!obj) return;
       obj.e = obj.e ? smartJoin(obj.e, tail) : tail;
     }
-    lines.forEach(raw => {
+    const handled = new Set();
+    lines.forEach((raw, li) => {
       const m = /^\s*(\d{1,4})\s*[-~—－]\s*(\d{1,4})\s*[：:．.、]?\s*(.{2,80})\s*$/.exec(raw);
       if (m) {
         const from = parseInt(m[1], 10), to = parseInt(m[2], 10);
@@ -732,6 +736,7 @@
           const L = letters[pos];
           if (/^[A-E]$/.test(L)) applyAns(n, L);
         }
+        handled.add(li);
         return;
       }
       const pairs = []; let p;
@@ -745,9 +750,11 @@
       const wholeOne = /^\s*\d{1,4}\s*[\.．、，,)）]?\s*[：:]?\s*[A-Ea-e]{1,6}\s*$/.test(raw);
       if (!wholeOne && pairs.length < 2) return;
       pairs.forEach(([n, val]) => applyAns(n, val));
+      handled.add(li);
     });
     let curNum = null;
-    lines.forEach(raw => {
+    lines.forEach((raw, li) => {
+      if (handled.has(li)) return;
       const m = /^\s*(\d{1,4})\s*[\.．、，,)）]\s*(.*)$/.exec(raw);
       if (m) {
         curNum = parseInt(m[1], 10);
@@ -764,10 +771,10 @@
       }
       if (curNum != null && ansMap[curNum] && raw.length > 4) collectTail(curNum, raw);
     });
-    return { map: ansMap, ordered: ordered };
+    return { map: ansMap, ordered: ordered, orderedRaw: orderedRaw };
   }
   function parseAnswers(text) { return parseAnswersCore(text).map; }
-  function parseAnswersOrdered(text) { return parseAnswersCore(text).ordered; }
+  function parseAnswersOrdered(text) { return parseAnswersCore(text).orderedRaw; }
 
   function buildAnswerBook(pages, outline) {
     if (!pages || !pages.length) return null;
@@ -775,7 +782,7 @@
     const chapters = chs.map(ch => {
       const core = parseAnswersCore(ch.text);
       const nm = normChapterName(ch.name);
-      return { name: ch.name, norm: nm.norm, ord: nm.ord, map: core.map, ordered: core.ordered };
+      return { name: ch.name, norm: nm.norm, ord: nm.ord, map: core.map, ordered: core.orderedRaw };
     }).filter(c => Object.keys(c.map).length);
     if (!chapters.length) return null;
     return { chapters: chapters, isStructured: chapters.length >= 2 };
@@ -806,12 +813,24 @@
     return { norm: s, ord: ord };
   }
 
+  function isAnswerApplicable(ans, q) {
+    if (!ans) return false;
+    if (ans.a >= 0 && ans.a < q.options.length) return true;
+    if (ans.multi) return true;
+    if (ans.textAns) return true;
+    return false;
+  }
   function applyAnswerSequentially(questions, ordered) {
     if (!ordered || !ordered.length) return;
     let ai = 0;
     for (let i = 0; i < questions.length && ai < ordered.length; i++) {
-      const q = questions[i], ans = ordered[ai];
+      const q = questions[i];
       if (q.a >= 0 && q.a < q.options.length) continue;
+      // 跳过明显不适合当前题的噪声条目（如选项只有 A-D 却出现 E），避免整体错位
+      let skipped = 0;
+      while (ai < ordered.length && skipped < 8 && !isAnswerApplicable(ordered[ai], q)) { ai++; skipped++; }
+      if (ai >= ordered.length) break;
+      const ans = ordered[ai];
       if (ans.a >= 0 && ans.a < q.options.length) {
         q.a = ans.a; delete q.needCheck;
         q.e = String(q.e || "").replace(/^⚠️\s*答案未能自动识别，需人工校对。\s*/, "");
@@ -903,7 +922,13 @@
           // 跨页：按页切分
           text = pages.slice(m.page, Math.max(end.page, m.page + 1)).join("\n");
         }
-        if (String(text).replace(/\s/g, "").length < (minLen || 20)) return;
+        if (String(text).replace(/\s/g, "").length < (minLen || 20)) {
+          // 太短（常见于文末「参考答案 1.A 2.B…」附录被误判成新章）：
+          // 不能直接丢弃，否则答案行会整段消失；并入上一章保留内容。
+          if (chapters.length) chapters[chapters.length - 1].text += "\n" + text;
+          else chapters.push({ name: m.name || ("第" + (i + 1) + "章"), text: text });
+          return;
+        }
         chapters.push({ name: m.name || ("第" + (i + 1) + "章"), text: text });
       });
     }
@@ -950,10 +975,34 @@
     return inter / Math.max(setA.size, setB.size);
   }
 
+  /* 从章节行里抽出「参考答案」附录：返回去掉附录后的正文行，附录行 push 进 sink */
+  function extractAppendix(lines, sink) {
+    for (let i = 0; i < lines.length; i++) {
+      const s0 = String(lines[i] || "").trim();
+      const m = /^(.*?)(参考答案|正确答案|答案与解析|参考答案及解析|答案速查)\s*$/.exec(s0);
+      if (m) {
+        const pre = (m[1] || "").trim();
+        if (pre) {
+          lines[i] = pre;
+          for (let k = i + 1; k < lines.length; k++) sink.push(lines[k]);
+          return lines.slice(0, i + 1);
+        }
+        for (let k = i; k < lines.length; k++) sink.push(lines[k]);
+        return lines.slice(0, i);
+      }
+      if (/^答\s*案\s*[:：]?\s*$/.test(s0)) {
+        for (let k = i + 1; k < lines.length; k++) sink.push(lines[k]);
+        return lines.slice(0, i);
+      }
+    }
+    return lines;
+  }
+
   /* 节（供其它模块直接渲染）：{ name, theory(HTML), questions:[{q,options,a,e,kp}] } */
   function buildSections(pages, outline, extraAnsBook) {
     const secs = [];
-    const docAns = {};           // 纯答案附录章收集到的答案（全局 fallback）
+    const docAnsOrdered = [];     // 纯答案附录章的答案，按文档顺序兜底
+    const appendixLines = [];     // 题本自带「参考答案」段的原始行（跨章节收集）
     const extUsed = (extraAnsBook && extraAnsBook.chapters) ? extraAnsBook.chapters.map(() => false) : [];
     let totalQ = 0;
 
@@ -963,15 +1012,21 @@
         if (!lines.length) return;
         let body = lines;
         if (isHeading(lines[0], {})) body = lines.slice(1);   // 去掉章标题本身
+        body = extractAppendix(body, appendixLines);          // 先剥离文末「参考答案」段
+        if (!body.length) return;
 
         // ① 本章自带的答案附录（1.A / 1-5 ABCDE / 参考答案段）
-        const chAns = parseAnswers(body.join("\n"));
+        const chAnsCore = parseAnswersCore(body.join("\n"));
+        const chAns = chAnsCore.map;
         // parseQuestions 已能识别同题号重复出现的答案/解析行，故不再预剥离；
         // 若某章纯为答案速查（无题干），splitKpBlocks 会把它归到 qtext，parseQuestions 因无选项而自然过滤掉。
         const kpInfo = splitKpBlocks(body);
         const hasQ = kpInfo.blocks.some(b => b.qtext.length);
-        if (!hasQ && Object.keys(chAns).length >= 3) {
-          for (const k in chAns) docAns[k] = chAns[k];
+        // 「没有选项行」且答案 ≥3 条 → 纯答案速查/附录章（可能有题号开头但无 A. B. 选项）
+        const optLike = body.filter(l => /^[A-Ea-e]\s*[\.．、,，)）]/.test(String(l))).length;
+        if ((!hasQ || !optLike) && Object.keys(chAns).length >= 3) {
+          // 纯答案附录章：保留顺序，后续按题序兜底回填
+          docAnsOrdered.push(...chAnsCore.orderedRaw);
           return;
         }
 
@@ -1027,10 +1082,8 @@
           if (pick < 0) for (let i = 0; i < extraAnsBook.chapters.length; i++) { if (!extUsed[i]) { pick = i; break; } }
           if (pick >= 0) { extUsed[pick] = true; applyAnswerMap(chapterSecs, extraAnsBook.chapters[pick].map); }
         }
-        // 本章答案没用完的，留作全局 fallback
-        const usedNums = new Set();
-        chapterSecs.forEach(s => (s.questions || []).forEach(q => { if (q.a >= 0) usedNums.add(q.num); }));
-        for (const k in chAns) if (!usedNums.has(+k) && docAns[k] == null) docAns[k] = chAns[k];
+        // 本章答案没用完的，不再按全局题号兜底，避免跨章污染；
+        // 统一走最后的「按题序顺序兜底」。
 
         secs.push(...chapterSecs);
       } catch (e) {
@@ -1038,28 +1091,37 @@
       }
     });
 
-    // ④c 外部答案文件兜底：结构化未匹配的章按同号补；无章节结构的纯答案速查按题序顺序匹配
-    if (extraAnsBook) {
-      if (extraAnsBook.isStructured) {
-        const qNames = new Set();
-        secs.forEach(s => qNames.add(String(s.name || "").replace(/\s*[（(]\d+[）)]$/, "")));
-        if (qNames.size <= 1) {
-          const allOrd = [];
-          extraAnsBook.chapters.forEach(c => c.ordered.forEach(o => allOrd.push(o)));
-          const allQ = [];
-          secs.forEach(s => (s.questions || []).forEach(q => allQ.push(q)));
-          applyAnswerSequentially(allQ, allOrd);
-        } else {
-          extraAnsBook.chapters.forEach((c, i) => { if (!extUsed[i]) applyAnswerMap(secs, c.map); });
-        }
-      } else {
-        const allQ = [];
-        secs.forEach(s => (s.questions || []).forEach(q => allQ.push(q)));
-        applyAnswerSequentially(allQ, extraAnsBook.chapters[0] ? extraAnsBook.chapters[0].ordered : []);
+    const allQ = [];
+    secs.forEach(s => (s.questions || []).forEach(q => allQ.push(q)));
+
+    // ④c 题本自带的「参考答案」附录：先按章节名/序号匹配 → 同号回填，再按题序兜底
+    if (appendixLines.length) {
+      const apBook = buildAnswerBook([appendixLines.join("\n")], null);
+      if (apBook && apBook.chapters && apBook.chapters.length) {
+        const used = apBook.chapters.map(() => false);
+        secs.forEach(sec => {
+          const chName = String(sec.name || "").split(" · ")[0].replace(/[（(](考点|\d+)[）)]$/, "");
+          const qn = normChapterName(chName);
+          let pick = -1;
+          if (qn.norm) apBook.chapters.forEach((c, i) => { if (!used[i] && c.norm && c.norm === qn.norm) pick = (pick < 0 ? i : pick); });
+          if (pick < 0 && qn.ord != null) apBook.chapters.forEach((c, i) => { if (!used[i] && c.ord != null && c.ord === qn.ord) pick = (pick < 0 ? i : pick); });
+          if (pick < 0) { for (let i = 0; i < apBook.chapters.length; i++) { if (!used[i]) { pick = i; break; } } }
+          if (pick >= 0) { used[pick] = true; applyAnswerMap([sec], apBook.chapters[pick].map); }
+        });
+        const apOrd = [];
+        apBook.chapters.forEach(c => c.ordered.forEach(o => apOrd.push(o)));
+        applyAnswerSequentially(allQ, apOrd);
       }
     }
-    // ⑤ 全局 fallback：同文件纯答案附录章收集到的答案 → 回填仍未识别的题
-    if (Object.keys(docAns).length) applyAnswerMap(secs, docAns);
+
+    // ④d 外部答案文件（与题本分开）：按「文档出现顺序」兜底
+    if (extraAnsBook && extraAnsBook.chapters && extraAnsBook.chapters.length) {
+      const extOrd = [];
+      extraAnsBook.chapters.forEach(c => c.ordered.forEach(o => extOrd.push(o)));
+      applyAnswerSequentially(allQ, extOrd);
+    }
+
+    if (docAnsOrdered.length) applyAnswerSequentially(allQ, docAnsOrdered);
 
     // ⑥ 兜底：整本一个考点都没切出来时，整体当一章解析
     secs.forEach(s => { totalQ += (s.questions || []).length; });
@@ -1236,7 +1298,6 @@
   window.__pdfBuildSections = buildSections;
   window.__buildAnswerBook = buildAnswerBook;
   window.__parseAnswersOrdered = parseAnswersOrdered;
-  window.__sanitizeText = sanitizeText;
 
   /* ================= 八、界面 ================= */
 
@@ -1326,7 +1387,7 @@
               ansBook = buildAnswerBook(ap, ar.outline);
               if (ansBook) {
                 const cnt = ansBook.chapters.reduce((s, c) => s + Object.keys(c.map).length, 0);
-                aNote = `，从答案文件解析出 ${cnt} 条答案（${ansBook.isStructured ? "按章节匹配" : "按题序匹配"}）`;
+                aNote = `，从答案文件解析出 ${cnt} 条答案（${ansBook.isStructured ? "章节+题序兜底" : "按题序匹配"}）`;
               } else {
                 aNote = `，答案文件未解析到可用答案`;
               }
