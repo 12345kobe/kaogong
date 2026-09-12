@@ -69,7 +69,8 @@
     lastResetDay: null,
     dailyPlan: {}, // 每日计划：{ 'YYYY-MM-DD': { items: [{id,module,type,text,done,createdAt,accuracy,minutes}], note:"" } }
     taskTimer: { task: "", startTs: 0, accumulated: 0, running: false, planId: null, targetMs: 0, laps: [], subject: "" }, // 上岸计时器（跨界面持续）；targetMs>0 为倒计时专注；laps 为分段记录；subject 为所选学科（用于按学科记时长/正确率）
-    customQuestions: {} // PDF 导入的自定义题库：{ 学科短名: [ {id,q,options,a,e,date,source} ] }
+    customQuestions: {}, // PDF 导入的自定义题库：{ 学科短名: [ {id,q,options,a,e,date,source} ] }
+    currentAffairs: [] // 时政记录：[ {id,date,title,createdAt,data:{news,essay,words,verbal,quiz}} ]
   };
 
   let state = null;
@@ -540,6 +541,9 @@
       out.quotesLib = mergeByField(out.quotesLib, b.quotesLib, "t");
       out.politics = out.politics || {};
       out.politics.questions = mergeByField(out.politics.questions, (b.politics || {}).questions, "q");
+
+      // 时政记录：按 id 去重追加（云端同步 / 备份导入都不丢）
+      out.currentAffairs = mergeArrById(out.currentAffairs, b.currentAffairs);
 
       // 范文用户标记 / 自编辑好词好句：phrases 本地非空优先；marks 按 phrase+type+color 合并去重
       out.essay.essaysEdit = out.essay.essaysEdit || {};

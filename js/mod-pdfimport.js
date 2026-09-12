@@ -1342,6 +1342,65 @@
       </div>`);
       root.appendChild(card);
 
+      /* ---------- 时政 / 申论材料：纯文字直接识别 → 存到「时政」模块 ---------- */
+      const curCard = UI.el(`<div class="card" style="margin-top:12px">
+        <h3>📝 时政 / 申论材料（直接粘贴文字）</h3>
+        <div class="muted small">
+          把每天整理的「时政汇总（⭐条目）· 申论时评+金句 · 时政词语 · 原创言语真题 · 原创时政单选」整段粘进来，自动分栏识别，
+          保存后<b>自动跳到左侧「时政」模块</b>，可查看资料、直接练题、导出 PDF（全部 / 错题）。
+        </div>
+        <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap;align-items:center">
+          <label class="muted small">日期</label>
+          <input type="date" id="curDate" value="${DB.today()}" style="width:160px"/>
+          <button class="btn ghost" id="curSample">填入示例格式</button>
+        </div>
+        <textarea id="curText" rows="8" style="width:100%;margin-top:8px" placeholder="第一部分：XXXX年X月X日公考标准时政汇总（星级重难点）&#10;国内时政&#10;⭐1. …"></textarea>
+        <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap;align-items:center">
+          <button class="btn primary" id="curGo">🔍 识别为时政资料</button>
+          <span class="muted small">识别 → 存「时政」模块 → 自动跳转</span>
+        </div>
+      </div>`);
+      root.appendChild(curCard);
+
+      const CUR_SAMPLE = [
+        "第一部分：2026年9月12日公考标准时政汇总（星级重难点）",
+        "国内时政",
+        "⭐1. 第十六次APEC能源部长会议在北京闭幕",
+        "会议正式确立普惠、创新、协同三大合作理念，倡议亚太各国深化清洁能源合作。",
+        "国际时政",
+        "⭐1. 习近平主席出席印度新德里金砖国家领导人第十八次会晤（9.12-9.13）",
+        "本次峰会聚焦大金砖合作提质升级，坚定立足全球南方阵营。",
+        "第二部分：申论标准时评+必背金句",
+        "申论时评主题：秉持多边协同理念 共筑绿色发展未来",
+        "当前世界变局加速演进，能源安全、生态治理、发展失衡成为全球性共性难题。",
+        "今日必背申论金句",
+        "1. 协同聚合力，绿色启新程，开放赢未来。",
+        "第三部分：时政专属词语释义 + 8道原创言语真题",
+        "1. 普惠（两字）：惠及全体、兼顾公平，多用于政策、国际合作、公共服务。",
+        "1. APEC能源会议倡导____、创新、协同的发展理念，破除区域合作____。（双空）",
+        "A.普惠 壁垒  B.公平 隔阂  C.共享 屏障  D.包容 鸿沟",
+        "【答案】A",
+        "【解析】官方固定表述“普惠、创新、协同”。",
+        "第四部分：8道原创时政单选（强迷惑性｜公考真题难度）",
+        "1. 2026年9月闭幕的第十六次APEC能源部长会议，确立的三大核心理念是（）",
+        "A.绿色、低碳、高效",
+        "B.普惠、创新、协同",
+        "C.开放、包容、共赢",
+        "D.创新、协调、绿色",
+        "【答案】B"
+      ].join("\n");
+      curCard.querySelector("#curSample").onclick = () => { curCard.querySelector("#curText").value = CUR_SAMPLE; };
+      curCard.querySelector("#curGo").onclick = () => {
+        const txt = curCard.querySelector("#curText").value.trim();
+        if (!txt) { UI.toast("请先粘贴文字"); return; }
+        if (!window.KGCurrent) { UI.toast("时政模块未加载，请刷新后重试"); return; }
+        try {
+          const rec = window.KGCurrent.importText(txt, curCard.querySelector("#curDate").value || DB.today());
+          UI.toast("已识别并保存到「时政」：" + rec.title);
+          location.hash = "#/current";
+        } catch (e) { UI.toast("识别失败：" + e.message); }
+      };
+
       const bookCard = UI.el(`<div class="card" style="margin-top:12px">
         <h3>📚 我的题册（可在各模块「我导入的题册」使用）</h3>
         <div class="muted small">点开题册 → 展开章节：有考点的先看考点，再分页刷题；练习会记录每题用时与正确率。</div>

@@ -496,6 +496,129 @@
         box.querySelector("#kw").oninput = e => list(e.target.value.trim());
         list("");
       }
+
+      /* ================= 行测5000题 · 言语理解与表达（上册真题 + 下册答案，按目录排版） ================= */
+      const BOOK5K = window.VERBAL_5000 || null;
+      if (BOOK5K && BOOK5K.chapters && BOOK5K.chapters.length) {
+        const allItems = [];
+        BOOK5K.chapters.forEach(c => (c.sections || []).forEach(s => allItems.push({ chapter: c.name, sec: s })));
+        const total5 = allItems.reduce((n, x) => n + ((x.sec.questions || []).length), 0);
+        const c5 = UI.el(`<div class="card" style="margin-top:16px">
+          <h3>📚 行测5000题 · 言语理解与表达（按目录排版）</h3>
+          <div class="muted small">
+            ${BOOK5K.chapters.length} 章 · ${allItems.length} 个考点 · <b>${total5}</b> 道真题（上册题干 + 下册答案/解析，一一对应）；
+            考点讲解保留原文，原书<b>划线重点已加粗</b>。练题会记录正确率、错题自动进「言语」错题本。
+          </div>
+          <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
+            <button class="btn primary" id="v5dir">📑 目录浏览</button>
+            <label class="fld" style="margin:0">随机</label>
+            <select id="v5n" style="width:96px">
+              ${[10, 20, 30].map(n => `<option ${n === 10 ? "selected" : ""}>${n}</option>`).join("")}
+            </select>
+            <button class="btn" id="v5rand">✍ 随机练题</button>
+            <button class="btn ghost" id="v5wrong">⬇ 导出错题PDF</button>
+          </div>
+          <div id="v5quiz" style="margin-top:12px"></div>
+        </div>`);
+        body.appendChild(c5);
+
+        function mapQ(q, secName) {
+          return { q: q.q, options: q.options, a: q.a, e: q.e || "", kp: secName };
+        }
+
+        function openDir() {
+          const box = UI.el(`<div>
+            <input id="v5kw" placeholder="搜索考点 / 题目关键词…" style="margin-bottom:10px;width:100%"/>
+            <div id="v5list" style="max-height:58vh;overflow:auto;display:flex;flex-direction:column;gap:6px"></div>
+          </div>`);
+          UI.modal({ title: "📑 行测5000题 · 目录（" + BOOK5K.chapters.length + " 章）", body: box, width: "720px",
+            actions: [{ label: "关闭", cls: "ghost", onClick: (m, c) => c() }] });
+          const chNames = BOOK5K.chapters.map(c => c.name);
+          let curCh = null;
+          function render(kw) {
+            const host = box.querySelector("#v5list");
+            if (kw) {
+              const hits = [];
+              BOOK5K.chapters.forEach(c => (c.sections || []).forEach(s => {
+                if (s.name.includes(kw) || (s.theory || "").includes(kw) || (s.questions || []).some(q => q.q.includes(kw))) {
+                  hits.push({ chapter: c.name, sec: s });
+                }
+              }));
+              host.innerHTML = hits.slice(0, 200).map((x, i) => `<button class="book-dir-item" data-h="${i}">
+                <b>${UI.esc(x.sec.name)}</b><span class="muted small">${UI.esc(x.chapter)} · ${(x.sec.questions || []).length} 题</span></button>`).join("") || `<div class="empty">无匹配</div>`;
+              host.querySelectorAll("[data-h]").forEach(b => b.onclick = () => openSec(hits[+b.dataset.h].chapter, hits[+b.dataset.h].sec));
+              return;
+            }
+            if (curCh == null) {
+              host.innerHTML = BOOK5K.chapters.map((c, i) => {
+                const nq = (c.sections || []).reduce((n, s) => n + ((s.questions || []).length), 0);
+                return `<button class="book-dir-item" data-c="${i}"><b>${UI.esc(c.name)}</b>
+                  <span class="muted small">${(c.sections || []).length} 个考点 · ${nq} 题</span></button>`;
+              }).join("");
+              host.querySelectorAll("[data-c]").forEach(b => b.onclick = () => { curCh = +b.dataset.c; render(""); });
+              return;
+            }
+            const c = BOOK5K.chapters[curCh];
+            const head = `<button class="book-dir-item" data-back="1"><b>← 返回章目录</b></button>
+              <div style="margin:6px 0;font-weight:700">${UI.esc(c.name)}</div>`;
+            host.innerHTML = head + (c.sections || []).map((s, i) => {
+              const nq = (s.questions || []).length;
+              return `<button class="book-dir-item" data-s="${i}"><b>${UI.esc(s.name)}</b>
+                <span class="muted small">${nq} 题${s.theory ? " · 有讲解" : ""}</span></button>`;
+            }).join("");
+            host.querySelector("[data-back]").onclick = () => { curCh = null; render(""); };
+            host.querySelectorAll("[data-s]").forEach(b => b.onclick = () => openSec(c.name, c.sections[+b.dataset.s]));
+          }
+          box.querySelector("#v5kw").oninput = e => render(e.target.value.trim());
+          render("");
+        }
+
+        function openSec(chapterName, sec) {
+          const qs = sec.questions || [];
+          const host = UI.el(`<div style="max-height:72vh;overflow:auto">
+            <div class="muted small">${UI.esc(chapterName)}</div>
+            ${sec.theory ? `<div class="pdb-theory" style="margin-top:8px">${sec.theory}</div>` : ""}
+            ${qs.length ? `<div style="margin:12px 0 6px;font-weight:700">题目（${qs.length}）</div>` : ""}
+            <div id="v5qs"></div>
+          </div>`);
+          UI.modal({
+            title: "📖 " + UI.esc(sec.name), body: host, width: "820px",
+            actions: [
+              qs.length ? { label: "✍ 练习本节", cls: "primary", onClick: (m, c) => { c(); practiceSec(sec); } } : null,
+              { label: "关闭", cls: "ghost", onClick: (m, c) => c() }
+            ].filter(Boolean)
+          });
+          host.querySelector("#v5qs").innerHTML = qs.map((q, i) => {
+            const ans = q.a >= 0 ? String.fromCharCode(65 + q.a) : "—";
+            return `<div class="v5-q" style="border-top:1px solid var(--line);padding:10px 0">
+              <div><b>${i + 1}. ${UI.esc(q.q)}</b></div>
+              <div style="margin:6px 0">${(q.options || []).map((o, oi) => {
+                const L = String.fromCharCode(65 + oi);
+                return `<div${q.a === oi ? ' style="color:var(--green);font-weight:700"' : ""}>${L}. ${UI.esc(o)}</div>`;
+              }).join("")}</div>
+              <div class="muted small">【答案】<b style="color:var(--green)">${ans}</b>${q.e ? `<details><summary>解析</summary><div style="white-space:pre-wrap;margin-top:6px">${UI.esc(q.e)}</div></details>` : ""}</div>
+            </div>`;
+          }).join("");
+        }
+
+        function practiceSec(sec) {
+          const qs = (sec.questions || []).map(q => mapQ(q, sec.name));
+          if (!qs.length) { UI.toast("本节没有题目"); return; }
+          window.Quiz.start(c5.querySelector("#v5quiz"), qs, SUBJECT, {});
+          c5.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+
+        c5.querySelector("#v5dir").onclick = () => openDir();
+        c5.querySelector("#v5rand").onclick = () => {
+          const n = +c5.querySelector("#v5n").value || 10;
+          const pool = [];
+          allItems.forEach(x => (x.sec.questions || []).forEach(q => { if (q.options && q.options.length >= 2) pool.push(mapQ(q, x.sec.name)); }));
+          if (!pool.length) { UI.toast("题库为空"); return; }
+          const arr = shuffle(pool).slice(0, Math.min(n, pool.length));
+          window.Quiz.start(c5.querySelector("#v5quiz"), arr, SUBJECT, {});
+        };
+        c5.querySelector("#v5wrong").onclick = () => window.PDF.exportWrong(SUBJECT);
+      }
     }
   };
 })();

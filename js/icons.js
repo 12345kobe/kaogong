@@ -25,6 +25,7 @@
     sync: wrap(`<path d="M7 16a9 9 0 0 1 15-5l2 2" stroke="${C}"/><path d="M25 16a9 9 0 0 1-15 5l-2-2" stroke="${M}"/><path d="M24 6v7h-7M8 26v-7h7" stroke="${Y}"/>`),
     settings: wrap(`<circle cx="16" cy="16" r="3.4" stroke="${C}"/><path d="M16 4.5l1.6 2.4 2.9-.6.6 2.9 2.8 1.2-1 2.9 1 2.9-2.8 1.2-.6 2.9-2.9-.6L16 27.5l-1.6-2.4-2.9.6-.6-2.9L8.1 21.5l1-2.9-1-2.9 2.8-1.2.6-2.9 2.9.6z" stroke="${M}"/>`),
     pdf: wrap(`<path d="M7 4h12l6 6v18H7z" stroke="${C}"/><path d="M14 4v6h6" stroke="${M}"/><path d="M11 17h10M11 21h8M11 25h6" stroke="${Y}"/><circle cx="25" cy="7" r="1.4" fill="${Y}" stroke="none"/>`),
+    current: wrap(`<path d="M6 5h16v22H6z" stroke="${C}"/><path d="M22 9h4v15a3 3 0 0 1-3 3H6" stroke="${M}"/><path d="M9 9h10M9 13h10M9 17h6" stroke="${Y}"/><path d="M17 21l1.6 1.4L22 19" stroke="${G}"/><circle cx="24" cy="7" r="1.6" fill="${Y}" stroke="none"/>`),
     ai: wrap(`<rect x="6" y="8" width="20" height="16" rx="4" stroke="${C}"/><path d="M16 8V4M12 4h8" stroke="${M}"/><circle cx="12" cy="16" r="1.6" fill="${Y}" stroke="none"/><circle cx="20" cy="16" r="1.6" fill="${Y}" stroke="none"/><path d="M12 20h8" stroke="${M}"/>`)
   };
 
