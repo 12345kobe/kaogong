@@ -78,10 +78,10 @@
         </div>
 
         <div class="card" style="margin-top:12px">
-          <h3>🔑 AI 令牌</h3>
-          <div class="muted small">AI 咨询需要你<b>自己的 GitHub 令牌</b>（PAT，需勾选 <b>models:read</b>）。令牌<b>只保存在本机浏览器</b>、不会上传云端，界面也<b>不会回显</b>已保存的内容。令牌不会写进代码，换设备/清缓存后需重新粘贴一次。</div>
+          <h3>🔑 AI 密钥</h3>
+          <div class="muted small">AI 咨询支持多个<b>免费服务商</b>（GitHub Models / Google Gemini / Groq / OpenRouter / 硅基流动 / 智谱 GLM / 本地 Ollama）。在「AI 咨询」右上角 <b>⚙</b> 里选服务商与模型；这里保存的是<b>当前所选服务商</b>的密钥。密钥<b>只保存在本机浏览器</b>、不上传云端、界面不回显，换设备需重新粘贴一次。</div>
           <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap;align-items:center">
-            <input id="aiTok" type="password" autocomplete="off" placeholder="长按粘贴 GitHub 个人访问令牌（PAT）" style="flex:1;min-width:200px"/>
+            <input id="aiTok" type="password" autocomplete="off" placeholder="粘贴当前服务商的 API Key / 令牌" style="flex:1;min-width:200px"/>
             <button class="btn primary" id="aiTokSave">保存</button>
             <button class="btn" id="aiTokTest">测试连接</button>
             <button class="btn ghost" id="aiTokClr">清除</button>

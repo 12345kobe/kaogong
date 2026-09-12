@@ -447,10 +447,21 @@
         kpCard.querySelector("#kpStats").innerHTML = `
           <div class="eb-stat"><span class="n">${st.seen}/${st.total}</span><span class="l">已复习 / 总数</span></div>
           <div class="eb-stat"><span class="n">${unrev}</span><span class="l">未复习</span></div>
-          <div class="eb-stat"><span class="n">${st.due}</span><span class="l">待复习(到期)</span></div>
+          <div class="eb-stat" id="kpDueStat" style="cursor:pointer" title="点击：学习 / 测试"><span class="n">${st.due}</span><span class="l">待复习(到期) · 点此</span></div>
           <div class="eb-stat"><span class="n">${st.mastered}</span><span class="l">已掌握</span></div>
           <div class="eb-stat"><span class="n">${st.accuracy}%</span><span class="l">正确率</span></div>
           <div class="eb-stat"><span class="n">${kpState.round || 1}</span><span class="l">轮次</span></div>`;
+        const dueEl = kpCard.querySelector("#kpDueStat");
+        if (dueEl) dueEl.onclick = () => {
+          const due = KP_ALL.filter(x => EBc.isDue(KP_GROUP, x.id));
+          window.KGReview.open({
+            title: "常识 · 常用知识点 · 待复习", subject: "常识", group: KP_GROUP,
+            items: due.map(x => ({ id: x.id, prompt: x.prompt, answer: x.answer })),
+            frontLabel: "知识点", backLabel: "答案",
+            emptyMsg: "当前没有到期待复习的常识知识点",
+            onExit: () => { renderKp(); }
+          });
+        };
       }
 
       renderKp();

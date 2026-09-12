@@ -64,9 +64,9 @@
 
   function getList() { return DB.state.wrongwords = DB.state.wrongwords || []; }
 
-  window.MODULES.wrongwords = {
-    title: "错词本", icon: "wrongwords",
-    render(body) {
+  /* 可复用：把错词本渲染进任意容器（言语理解模块的「词语释义练习」下面 / 独立的「错词本」导航） */
+  function renderWrongWords(host, opts) {
+      opts = opts || {};
       const list = getList();
 
       const card = UI.el(`<div class="card">
@@ -82,7 +82,7 @@
         </div>
         <div id="wwList" style="display:flex;flex-direction:column;gap:10px"></div>
       </div>`);
-      body.appendChild(card);
+      host.appendChild(card);
 
       function renderStats() {
         const arr = getList();
@@ -90,8 +90,26 @@
         const near = arr.filter(w => (w.correctStreak || 0) === 1).length;
         card.querySelector("#wwStats").innerHTML = `
           <div class="eb-stat"><span class="n">${arr.length}</span><span class="l">错词总数</span></div>
-          <div class="eb-stat"><span class="n">${due}</span><span class="l">待复习</span></div>
+          <div class="eb-stat" id="wwDueStat" style="cursor:pointer" title="点击：学习 / 测试"><span class="n">${due}</span><span class="l">待复习 · 点此</span></div>
           <div class="eb-stat"><span class="n">${near}</span><span class="l">答对1次(再1次消除)</span></div>`;
+        const dueEl = card.querySelector("#wwDueStat");
+        if (dueEl) dueEl.onclick = () => {
+          const list0 = getList().filter(w => (w.correctStreak || 0) === 0);
+          window.KGReview.open({
+            title: "错词本 · 待复习", subject: SUBJECT, group: "wrongwords",
+            items: list0.map(w => ({ id: w.word, prompt: w.word, answer: w.def || "", sub: w.ex || "" })),
+            frontLabel: "词语", backLabel: "释义",
+            emptyMsg: "当前没有待复习的错词",
+            onStudy: (items) => window.Flashcard.start({
+              title: "错词本 · 学习", group: "wrongwords", subject: SUBJECT,
+              items: items.map(x => ({ id: x.id, prompt: x.prompt, answer: x.answer })),
+              mode: "easy", frontLabel: "词语", backLabel: "释义", shuffle: true,
+              onExit: () => { renderList(); }
+            }),
+            onTest: () => { card.querySelector("#wwReview").click(); },
+            onExit: () => { renderList(); }
+          });
+        };
       }
 
       function renderList() {
@@ -192,6 +210,11 @@
       };
 
       renderList();
-    }
+  }
+
+  window.KGWrongWords = { render: renderWrongWords };
+  window.MODULES.wrongwords = {
+    title: "错词本", icon: "wrongwords",
+    render(body) { renderWrongWords(body, {}); }
   };
 })();

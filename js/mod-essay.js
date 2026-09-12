@@ -234,9 +234,20 @@
         nwCard.querySelector("#nwStats").innerHTML = `
           <div class="eb-stat"><span class="n">${st.seen}/${st.total}</span><span class="l">已复习 / 总数</span></div>
           <div class="eb-stat"><span class="n">${unrev}</span><span class="l">未复习</span></div>
-          <div class="eb-stat"><span class="n">${st.due}</span><span class="l">待复习(到期)</span></div>
+          <div class="eb-stat" id="nwDueStat" style="cursor:pointer" title="点击：学习 / 测试"><span class="n">${st.due}</span><span class="l">待复习(到期) · 点此</span></div>
           <div class="eb-stat"><span class="n">${st.mastered}</span><span class="l">已掌握</span></div>
           <div class="eb-stat"><span class="n">${st.accuracy}%</span><span class="l">正确率</span></div>`;
+        const dueEl = nwCard.querySelector("#nwDueStat");
+        if (dueEl) dueEl.onclick = () => {
+          const due = [];
+          NW.forEach(sec => sec.items.forEach(x => { if (EBe.isDue(NW_GROUP, x.id)) due.push({ id: x.id, prompt: x.scene, answer: x.term }); }));
+          window.KGReview.open({
+            title: "申论 · 规范词 · 待复习", subject: "申论", group: NW_GROUP,
+            items: due, frontLabel: "应用场景", backLabel: "规范词汇",
+            emptyMsg: "当前没有到期待复习的申论规范词",
+            onExit: () => { renderNwStats(); }
+          });
+        };
       }
       renderNwStats();
 

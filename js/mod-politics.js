@@ -46,7 +46,7 @@
         <div class="eb-stats">
           <div class="eb-stat"><span class="n">${stats.total}</span><span class="l">总知识点</span></div>
           <div class="eb-stat"><span class="n">${stats.seen}</span><span class="l">已复习</span></div>
-          <div class="eb-stat"><span class="n">${stats.due}</span><span class="l">待复习</span></div>
+          <div class="eb-stat" id="ebDueStat" style="cursor:pointer" title="点击：学习 / 测试"><span class="n">${stats.due}</span><span class="l">待复习 · 点此</span></div>
           <div class="eb-stat"><span class="n">${stats.mastered}</span><span class="l">已掌握</span></div>
           <div class="eb-stat"><span class="n">${stats.accuracy}%</span><span class="l">总正确率</span></div>
         </div>
@@ -70,6 +70,19 @@
     const todayEl = hostCard.querySelector("#ebToday");
     if (!daily.length) todayEl.innerHTML = `<div class="empty">暂无可复习知识点</div>`;
     daily.forEach((p, i) => todayEl.appendChild(buildKPItem(p, i + 1, /*clickable*/ true)));
+
+    // 「待复习」数字可点：弹出到期清单 + 学习 / 测试
+    const dueEl = hostCard.querySelector("#ebDueStat");
+    if (dueEl) dueEl.onclick = () => {
+      const due = points.filter(p => EB.isDue(GROUP, p.id));
+      window.KGReview.open({
+        title: "政治 · 知识点 · 待复习", subject: "政治", group: GROUP,
+        items: due.map(p => ({ id: p.id, prompt: p.title, answer: p.l1 || p.body || p.jiexi || "" })),
+        frontLabel: "知识点", backLabel: "答案",
+        emptyMsg: "当前没有到期待复习的政治知识点",
+        onExit: () => { renderKnowledgeDashboard(body, hostCard); }
+      });
+    };
 
     // 课时列表
     const lessonsEl = hostCard.querySelector("#ebLessons");

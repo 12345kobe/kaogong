@@ -274,6 +274,12 @@
       </div>`);
       body.appendChild(wdCard);
 
+      /* 错词本：并入「言语理解」模块，就放在「词语释义练习」下面 */
+      const wwSec = UI.section("📗 错词本（词语释义）", { open: true });
+      body.appendChild(wwSec);
+      try { window.KGWrongWords.render(wwSec.querySelector(".kg-det-b"), {}); }
+      catch (e) { wwSec.querySelector(".kg-det-b").innerHTML = `<div class="card empty">错词本加载失败：${UI.esc(e.message)}</div>`; }
+
       function renderWdStats() {
         const st = EBv.getStats(WD_GROUP);
         const unrev = Math.max(0, st.total - st.seen);
@@ -281,12 +287,22 @@
         wdCard.querySelector("#wdStats").innerHTML = `
           <div class="eb-stat"><span class="n">${st.seen}/${st.total}</span><span class="l">已复习 / 总词数</span></div>
           <div class="eb-stat"><span class="n">${unrev}</span><span class="l">未复习</span></div>
-          <div class="eb-stat" id="wdDueStat" style="cursor:pointer" title="点击开始到期复习"><span class="n">${st.due}</span><span class="l">待复习(到期) · 点击复习</span></div>
+          <div class="eb-stat" id="wdDueStat" style="cursor:pointer" title="点击：学习 / 测试"><span class="n">${st.due}</span><span class="l">待复习(到期) · 点此</span></div>
           <div class="eb-stat"><span class="n">${st.accuracy}%</span><span class="l">正确率</span></div>
           <div class="eb-stat"><span class="n">${wdState.round || 1}</span><span class="l">轮次</span></div>
           <div class="eb-stat"><span class="n">${ww}</span><span class="l">错词本</span></div>`;
         const ds = wdCard.querySelector("#wdDueStat");
-        if (ds) ds.onclick = () => startDueReview();
+        if (ds) ds.onclick = () => {
+          const due = dueWordList();
+          window.KGReview.open({
+            title: "言语 · 词语释义 · 待复习", subject: "言语", group: WD_GROUP,
+            items: due.slice(0, 200).map(w => ({ id: w.word, prompt: w.word, answer: idiomMeaning(w.def) || w.def })),
+            frontLabel: "词语", backLabel: "释义",
+            emptyMsg: "当前没有到期待复习的词，先练一组新词吧",
+            onTest: () => startDueReview(),
+            onExit: () => renderWdStats()
+          });
+        };
       }
 
       /* 到期复习：点「待复习(到期)」直接开一组到期词（不推进新词顺序指针） */

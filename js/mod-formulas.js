@@ -388,9 +388,20 @@
         fcCard.querySelector("#fcStats").innerHTML = `
           <div class="eb-stat"><span class="n">${st.seen}/${st.total}</span><span class="l">已复习 / 总数</span></div>
           <div class="eb-stat"><span class="n">${unrev}</span><span class="l">未复习</span></div>
-          <div class="eb-stat"><span class="n">${st.due}</span><span class="l">待复习(到期)</span></div>
+          <div class="eb-stat" id="fcDueStat" style="cursor:pointer" title="点击：学习 / 测试"><span class="n">${st.due}</span><span class="l">待复习(到期) · 点此</span></div>
           <div class="eb-stat"><span class="n">${st.mastered}</span><span class="l">已掌握</span></div>
           <div class="eb-stat"><span class="n">${st.accuracy}%</span><span class="l">正确率</span></div>`;
+        const dueEl = fcCard.querySelector("#fcDueStat");
+        if (dueEl) dueEl.onclick = () => {
+          const due = ALL_ITEMS.filter(x => EBf.isDue("formula", x.prompt));
+          window.KGReview.open({
+            title: "资料分析 · 速算 · 待复习", subject: "资料", group: "formula",
+            items: due.map(x => ({ id: x.prompt, prompt: x.prompt, answer: x.answer })),
+            frontLabel: "题目", backLabel: "答案",
+            emptyMsg: "当前没有到期待复习的速算条目",
+            onExit: () => { renderFcStats(); }
+          });
+        };
       }
 
       /* 学习：展示该模块全部「题目 = 答案」 */
