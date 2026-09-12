@@ -486,7 +486,13 @@
       kpCard.querySelector("#kpNext").onclick = () => { renderKp(); UI.toast("已换一组"); };
       kpCard.querySelector("#kpExp").onclick = () => {
         if (!kpItems.length) { UI.toast("暂无内容可导出"); return; }
-        const html = kpItems.map((it, i) => `<div class="item"><b>${i + 1}. ${UI.esc(it.prompt)}</b><div class="muted small">答：${UI.esc(it.answer)}</div></div>`).join("");
+        let html = kpItems.map((it, i) => `<div class="item"><b>${i + 1}. ${UI.esc(it.prompt)}</b><div class="muted small">答：${UI.esc(it.answer)}</div></div>`).join("");
+        const notes = UI.Notes.get(SUBJECT, "common_main");
+        if (notes && notes.strokes && notes.strokes.length) {
+          const W = notes.vw || 720;
+          html = `<div style="position:relative;width:${W}px">${html}${UI.Notes.overlayHtml(notes)}</div>`;
+        }
+        html += UI.Attachments.toHtml(SUBJECT, "common_main");
         window.PDF.exportHtml("常识 · 常用知识点（第" + (kpState.round || 1) + "轮 · " + DB.today() + "）", html);
       };
       kpCard.querySelector("#kpReset").onclick = () => {
@@ -502,6 +508,7 @@
           return { primary: it.prompt, secondary: "答：" + it.answer };
         });
       };
+      try { body.appendChild(UI.notebook(SUBJECT, "common_main", body)); } catch (e) {}
     }
   };
 })();

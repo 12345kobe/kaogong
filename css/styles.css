@@ -21,7 +21,7 @@
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%}
 body{
-  font-family:var(--kg-user-font, var(--font-body));
+  font-family:var(--font-body);
   background:radial-gradient(1200px 600px at 80% -10%,#1a2350 0%,var(--bg) 55%) fixed;
   color:var(--txt);
   font-size:15px;
@@ -29,7 +29,7 @@ body{
 }
 /* 标题 / UI 控件统一用黑体；大标题黑体加粗；正文（body）用楷体 */
 h1,h2,h3,h4,.page-title,#pageTitle,.card>h3,.nav-item,.btn,.chip,.badge,.tag,.todo b,.eb-stat .n,.pct,.modal-title,.qd-chk,.fc-big,.countdown-num,.brand-logo span{
-  font-family:var(--kg-user-font, var(--font-head));
+  font-family:var(--font-head);
 }
 h1,#pageTitle,.page-title,.fc-big,.countdown-num{ font-weight:700; }
 #app{display:flex;height:100vh;overflow:hidden}
@@ -414,6 +414,19 @@ body.light .hw-tools{background:rgba(255,255,255,.92);border-color:#d6dce6}
 body.light .hw-tool{background:#fff;color:#0f1828;border-color:#d6dce6}
 body.light .hw-tool.active{background:#e6fbfa;border-color:var(--cyan)}
 body.light .hw-tool.done{color:#fff}
+.hw-hint{position:absolute;left:10px;right:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 8px);text-align:center;color:var(--txt-dim);font-size:12px;pointer-events:none;z-index:121}
+.hw-sep{width:1px;height:24px;background:var(--line);margin:0 3px}
+body.light .hw-hint{color:#5a6b86}
+
+/* ===== 笔记卡 / 附件（图片·PDF） ===== */
+.kg-notebook .kg-att-grid{display:flex;flex-wrap:wrap;gap:10px;margin-top:4px}
+.kg-att{position:relative;width:120px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel2)}
+.kg-att img{width:100%;height:88px;object-fit:cover;display:block}
+.kg-att-pdf{width:100%;height:88px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--cyan);font-size:12px;cursor:pointer;padding:6px;text-align:center;word-break:break-all;line-height:1.35}
+.kg-att-n{font-size:11px;padding:4px 6px;color:var(--txt-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kg-att-x{position:absolute;top:4px;right:4px;width:22px;height:22px;border:none;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;cursor:pointer;font-size:12px;line-height:1}
+.kg-att-btn{display:inline-flex;align-items:center;gap:4px;cursor:pointer}
+.kg-anno-ov{}
 
 /* ===== 每日政治理论知识点 ===== */
 .kp-item{border:1px solid var(--line);border-radius:10px;margin-bottom:8px;overflow:hidden;background:var(--bg2)}

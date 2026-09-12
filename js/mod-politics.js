@@ -399,6 +399,7 @@
       const mutiCard = UI.el(`<div class="card" style="margin-top:16px"></div>`);
       body.appendChild(mutiCard);
       if (window.MODULES.muti) window.MODULES.muti.renderMuti(mutiCard);
+      try { body.appendChild(UI.notebook(SUBJECT, "politics_main", body)); } catch (e) {}
     }
   };
 })();

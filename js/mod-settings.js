@@ -26,8 +26,14 @@
   }
   function applyFont(stack) {
     try {
-      if (stack) document.documentElement.style.setProperty("--kg-user-font", stack);
-      else document.documentElement.style.removeProperty("--kg-user-font");
+      // 覆盖全站字体变量，让标题/正文/卡片/输入框全部统一切换（含移动端）
+      if (stack) {
+        document.documentElement.style.setProperty("--font-body", stack);
+        document.documentElement.style.setProperty("--font-head", stack);
+      } else {
+        document.documentElement.style.removeProperty("--font-body");
+        document.documentElement.style.removeProperty("--font-head");
+      }
     } catch (e) {}
   }
   function keyOfStack(stack) {

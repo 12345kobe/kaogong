@@ -716,6 +716,7 @@
               <div class="muted small">【答案】<b style="color:var(--green)">${ans}</b>${q.e ? `<details><summary>解析</summary><div style="white-space:pre-wrap;margin-top:6px">${UI.esc(q.e)}</div></details>` : ""}</div>
             </div>`;
           }).join("");
+          try { host.appendChild(UI.notebook(SUBJECT, "theory_" + chapterName + "_" + sec.name, host)); } catch (e) {}
         }
 
         c5.querySelector("#v5dir").onclick = () => openDir();

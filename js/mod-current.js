@@ -439,6 +439,7 @@
       function viewRecord(rec) {
         if (!rec) return;
         const box = UI.el(`<div style="max-height:70vh;overflow:auto">${recordHtml(rec, true)}</div>`);
+        box.appendChild(UI.notebook(SUBJECT, "rec_" + rec.id, box));
         UI.modal({
           title: "📖 " + (rec.title || "时政资料"), body: box, width: "780px",
           actions: [
@@ -462,7 +463,15 @@
       }
 
       function exportPdf(rec, withAnswer) {
-        const html = recordHtml(rec, withAnswer);
+        const rid = "rec_" + rec.id;
+        let html = recordHtml(rec, withAnswer);
+        // 若写了手写痕迹，按捕获时的内容宽度包裹并叠加矢量覆盖层（位置不偏移）
+        const notes = UI.Notes.get(SUBJECT, rid);
+        if (notes && notes.strokes && notes.strokes.length) {
+          const W = notes.vw || 720;
+          html = `<div style="position:relative;width:${W}px">${html}${UI.Notes.overlayHtml(notes)}</div>`;
+        }
+        html += UI.Attachments.toHtml(SUBJECT, rid);
         window.PDF.exportHtml((rec.title || "时政复习") + (withAnswer ? "（含答案）" : ""), html);
         UI.toast("已生成PDF，请在打印窗口选择「另存为 PDF」");
       }

@@ -464,6 +464,7 @@
       });
 
       renderFcStats();
+      try { body.appendChild(UI.notebook(storeKey, storeKey + "_main", body)); } catch (e) {}
     }
   };
 

@@ -389,10 +389,14 @@
     DB.load();
     loadNav();
     Theme.init();
-    // 应用用户已保存的界面字体（设置里选的）
+    // 应用用户已保存的界面字体（设置里选的）：覆盖 --font-body / --font-head，
+    // 绝大多数文本元素都引用这两个变量，故全站（含移动端）统一生效
     try {
       const f = localStorage.getItem("kg_font");
-      if (f) document.documentElement.style.setProperty("--kg-user-font", f);
+      if (f) {
+        document.documentElement.style.setProperty("--font-body", f);
+        document.documentElement.style.setProperty("--font-head", f);
+      }
     } catch (e) {}
     // 启用语音转文字浮动按钮（不支持的浏览器自动跳过）
     if (window.KGVoice && window.KGVoice.supported) {

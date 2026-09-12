@@ -79,7 +79,7 @@
       quotesCard.querySelector("#swap").onclick = () => { curSeed = Math.floor(Math.random() * 99999); curQuotes = renderQuotes(curSeed); };
       quotesCard.querySelector("#pdf").onclick = () => {
         const html = curQuotes.map(q => `<div class="item">“${UI.esc(q.t)}” <span class="chip">${UI.esc(q.theme)}</span></div>`).join("");
-        window.PDF.exportHtml("申论 · 每日金句", html);
+        window.PDF.exportHtml("申论 · 每日金句", html + UI.Attachments.toHtml("申论", "essay_main"));
       };
       const jjMap = {};
       window.BANKS.ESSAY_QUOTES.forEach(q => { jjMap[q.t] = q; });
@@ -168,7 +168,7 @@
           const id = qdState.picks[ti]; const arr = THEMED[th] || []; const q = arr.find(x => x.id === id) || arr[0];
           html += `<div class="item"><span class="chip">${UI.esc(th)}</span> “${UI.esc(q ? q.t : '')}”${q && q.author ? ' <span class="muted small">——' + UI.esc(q.author) + '</span>' : ''}</div>`;
         });
-        window.PDF.exportHtml("申论 · 每日名言积累（" + qdToday + "）", html);
+        window.PDF.exportHtml("申论 · 每日名言积累（" + qdToday + "）", html + UI.Attachments.toHtml("申论", "essay_main"));
       };
       renderQd();
       const qdMap = {};
@@ -354,7 +354,7 @@
           });
           html += `</tbody></table>`;
         });
-        window.PDF.exportHtml("申论 · 各领域规范词（全 " + NW.reduce((a, s) => a + s.items.length, 0) + " 条）", html);
+        window.PDF.exportHtml("申论 · 各领域规范词（全 " + NW.reduce((a, s) => a + s.items.length, 0) + " 条）", html + UI.Attachments.toHtml("申论", "essay_main"));
       };
       const nwMap = {};
       NW.forEach(s => s.items.forEach(x => nwMap[x.id] = { term: x.term, scene: x.scene, section: s.section }));
@@ -364,6 +364,9 @@
           return { primary: "应用场景：" + it.scene, secondary: "规范词汇：" + it.term + "（" + it.section + "）" };
         });
       };
+
+      // 通用笔记：手写 + 附件（图片/PDF），挂在申论积累页底部
+      try { body.appendChild(UI.notebook("申论", "essay_main", body)); } catch (e) {}
     }
   };
 })();

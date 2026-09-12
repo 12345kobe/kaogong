@@ -187,7 +187,7 @@
 
       questions.forEach((qq, qi) => {
         const qid = hashId(subject + "|" + qq.q);
-        const hasNote = !!(DB.state.notes && DB.state.notes[subject] && DB.state.notes[subject][qid] && DB.state.notes[subject][qid].length);
+        const hasNote = UI.Notes.has(subject, qid);
         const card = UI.el(`<div class="quiz-q" data-done="0" data-qi="${qi}">
           <div class="q-head">
             <span class="tag">第 ${qi + 1} 题</span>
@@ -199,11 +199,13 @@
           <div class="exp" style="display:none"></div></div>`);
         const optsWrap = card.querySelector(".opts");
 
-        card.querySelector(".pen-btn").onclick = () => UI.Handwriting.open(subject, qid, qq.q, () => {
-          const has = !!(DB.state.notes && DB.state.notes[subject] && DB.state.notes[subject][qid] && DB.state.notes[subject][qid].length);
-          const b = card.querySelector(".pen-btn");
-          b.classList.toggle("has", has);
-          b.textContent = "✏️" + (has ? "•" : "");
+        card.querySelector(".pen-btn").onclick = () => UI.Handwriting.open({
+          subject, id: qid, anchor: card, onChange: () => {
+            const has = UI.Notes.has(subject, qid);
+            const b = card.querySelector(".pen-btn");
+            b.classList.toggle("has", has);
+            b.textContent = "✏️" + (has ? "•" : "");
+          }
         });
 
         qq.options.forEach((o, i) => {
