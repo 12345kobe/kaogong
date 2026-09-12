@@ -526,15 +526,64 @@
           return { q: q.q, options: q.options, a: q.a, e: q.e || "", kp: secName };
         }
 
+        const DONE_KEY = "verbal5000_theory";
+        const LH = window.LearnedHistory;
+        function secKey(chName, sec) { return chName + "::" + (sec.name || ""); }
+        function isDone(chName, sec) { return !!(LH && LH.isLearned(DONE_KEY, secKey(chName, sec))); }
+        function markDone(chName, sec) {
+          if (!LH) { UI.toast("学习记录组件未加载"); return; }
+          LH.record(DONE_KEY, [secKey(chName, sec)]);
+          UI.toast("已标记学完：" + (sec.name || ""));
+        }
+        function qsOf(sec) { return (sec.questions || []).map(q => mapQ(q, sec.name)); }
+
+        /* 从当前弹窗的「每次题量」取数量：0 = 全部 */
+        function readCnt(box) {
+          const el = box && box.querySelector("#v5cnt");
+          if (!el) return 10;
+          const v = el.value;
+          return v === "0" ? Infinity : (parseInt(v, 10) || 10);
+        }
+        function startQuiz(qs, label, modal, box) {
+          qs = (qs || []).filter(q => q && q.options && q.options.length >= 2);
+          if (!qs.length) { UI.toast("没有可练的题目"); return; }
+          const n = readCnt(box);
+          const arr = shuffle(qs).slice(0, Math.min(n, qs.length));
+          if (modal && modal.close) modal.close();
+          window.Quiz.start(c5.querySelector("#v5quiz"), arr, SUBJECT, {});
+          c5.scrollIntoView({ behavior: "smooth", block: "start" });
+          UI.toast("开始练习 " + arr.length + " 题" + (label ? "：" + label : ""));
+        }
+
         function openDir() {
           const box = UI.el(`<div>
-            <input id="v5kw" placeholder="搜索考点 / 题目关键词…" style="margin-bottom:10px;width:100%"/>
-            <div id="v5list" style="max-height:58vh;overflow:auto;display:flex;flex-direction:column;gap:6px"></div>
+            <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+              <label class="fld" style="margin:0">每次题量</label>
+              <select id="v5cnt" style="width:112px">
+                <option value="10" selected>10 题</option>
+                <option value="20">20 题</option>
+                <option value="30">30 题</option>
+                <option value="50">50 题</option>
+                <option value="0">全部</option>
+              </select>
+              <button class="btn" id="v5allrand">🎲 整本随机练题</button>
+              <span class="muted small">共 ${total5} 题 · 每章/每考点都可单独练</span>
+            </div>
+            <input id="v5kw" placeholder="搜索章节 / 考点 / 题目关键词…" style="margin-bottom:10px;width:100%"/>
+            <div id="v5list" style="max-height:56vh;overflow:auto;display:flex;flex-direction:column;gap:6px"></div>
           </div>`);
-          UI.modal({ title: "📑 行测5000题 · 目录（" + BOOK5K.chapters.length + " 章）", body: box, width: "720px",
-            actions: [{ label: "关闭", cls: "ghost", onClick: (m, c) => c() }] });
-          const chNames = BOOK5K.chapters.map(c => c.name);
-          let curCh = null;
+          const modal = UI.modal({
+            title: "📑 行测5000题 · 目录（" + BOOK5K.chapters.length + " 章）", body: box, width: "780px",
+            actions: [{ label: "关闭", cls: "ghost", onClick: (m, c) => c() }]
+          });
+          let expanded = -1;
+
+          function chQuestions(c) {
+            const out = [];
+            (c.sections || []).forEach(s => (s.questions || []).forEach(q => { if (q.options && q.options.length >= 2) out.push(mapQ(q, s.name)); }));
+            return out;
+          }
+
           function render(kw) {
             const host = box.querySelector("#v5list");
             if (kw) {
@@ -544,47 +593,99 @@
                   hits.push({ chapter: c.name, sec: s });
                 }
               }));
-              host.innerHTML = hits.slice(0, 200).map((x, i) => `<button class="book-dir-item" data-h="${i}">
-                <b>${UI.esc(x.sec.name)}</b><span class="muted small">${UI.esc(x.chapter)} · ${(x.sec.questions || []).length} 题</span></button>`).join("") || `<div class="empty">无匹配</div>`;
-              host.querySelectorAll("[data-h]").forEach(b => b.onclick = () => openSec(hits[+b.dataset.h].chapter, hits[+b.dataset.h].sec));
+              host.innerHTML = hits.slice(0, 200).map((x, i) => `<div class="book-dir-item" style="cursor:default">
+                <b style="flex:1">${UI.esc(x.sec.name)}</b>
+                <span class="muted small">${UI.esc(x.chapter)} · ${(x.sec.questions || []).length} 题</span>
+                <button class="btn primary" data-hit-go="${i}" style="margin-left:8px">✍ 练题</button>
+                <button class="btn" data-hit-read="${i}">📖 学</button>
+              </div>`).join("") || `<div class="empty">无匹配</div>`;
+              host.querySelectorAll("[data-hit-go]").forEach(b => b.onclick = () => startQuiz(qsOf(hits[+b.dataset.hitGo].sec), hits[+b.dataset.hitGo].sec.name, modal, box));
+              host.querySelectorAll("[data-hit-read]").forEach(b => b.onclick = () => openSec(hits[+b.dataset.hitRead].chapter, hits[+b.dataset.hitRead].sec));
               return;
             }
-            if (curCh == null) {
-              host.innerHTML = BOOK5K.chapters.map((c, i) => {
-                const nq = (c.sections || []).reduce((n, s) => n + ((s.questions || []).length), 0);
-                return `<button class="book-dir-item" data-c="${i}"><b>${UI.esc(c.name)}</b>
-                  <span class="muted small">${(c.sections || []).length} 个考点 · ${nq} 题</span></button>`;
-              }).join("");
-              host.querySelectorAll("[data-c]").forEach(b => b.onclick = () => { curCh = +b.dataset.c; render(""); });
-              return;
-            }
-            const c = BOOK5K.chapters[curCh];
-            const head = `<button class="book-dir-item" data-back="1"><b>← 返回章目录</b></button>
-              <div style="margin:6px 0;font-weight:700">${UI.esc(c.name)}</div>`;
-            host.innerHTML = head + (c.sections || []).map((s, i) => {
-              const nq = (s.questions || []).length;
-              return `<button class="book-dir-item" data-s="${i}"><b>${UI.esc(s.name)}</b>
-                <span class="muted small">${nq} 题${s.theory ? " · 有讲解" : ""}</span></button>`;
+
+            let html = BOOK5K.chapters.map((c, i) => {
+              const nSec = (c.sections || []).length;
+              const nq = (c.sections || []).reduce((n, s) => n + ((s.questions || []).length), 0);
+              const open = expanded === i;
+              let row = `<div class="book-dir-item" style="cursor:pointer;align-items:flex-start;flex-direction:column;gap:6px">
+                <div class="row" data-head="${i}" style="width:100%;gap:8px;align-items:center;flex-wrap:wrap">
+                  <b style="flex:1">${open ? "▾ " : "▸ "}${UI.esc(c.name)}</b>
+                  <span class="muted small">${nSec} 个考点 · ${nq} 题</span>
+                  <button class="btn primary" data-ch-go="${i}">▶ 整章练题</button>
+                  <button class="btn ghost" data-ch-read="${i}">📖 学讲解</button>
+                </div>`;
+              if (open) {
+                row += `<div style="width:100%;padding-left:10px;display:flex;flex-direction:column;gap:6px;margin-top:4px">` +
+                  (c.sections || []).map((s, si) => {
+                    const sq = (s.questions || []).length;
+                    const done = isDone(c.name, s);
+                    return `<div class="row" style="width:100%;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px dashed var(--line);padding-top:6px">
+                      <span style="flex:1;min-width:160px"><b>${UI.esc(s.name)}</b> <span class="muted small">${sq} 题</span></span>
+                      ${sq ? `<button class="btn" data-s-go="${si}">✍ 练 ${sq} 题</button>` : ""}
+                      ${s.theory ? `<button class="btn ghost" data-s-read="${si}">📖 学</button>` : ""}
+                      ${s.theory ? `<button class="btn ${done ? "primary" : "ghost"}" data-s-done="${si}">${done ? "✓ 已学完" : "标记已学完"}</button>` : ""}
+                    </div>`;
+                  }).join("") + `</div>`;
+              }
+              row += `</div>`;
+              return row;
             }).join("");
-            host.querySelector("[data-back]").onclick = () => { curCh = null; render(""); };
-            host.querySelectorAll("[data-s]").forEach(b => b.onclick = () => openSec(c.name, c.sections[+b.dataset.s]));
+            host.innerHTML = html;
+            // 展开/收起章（只绑到标题行，避免点章节内容误收起）
+            host.querySelectorAll("[data-head]").forEach(b => b.onclick = (e) => {
+              if (e.target.closest("button")) return; // 按钮单独处理
+              expanded = (expanded === +b.dataset.head) ? -1 : +b.dataset.head;
+              render("");
+            });
+            host.querySelectorAll("[data-ch-go]").forEach(b => b.onclick = (e) => { e.stopPropagation(); startQuiz(chQuestions(BOOK5K.chapters[+b.dataset.chGo]), BOOK5K.chapters[+b.dataset.chGo].name, modal, box); });
+            host.querySelectorAll("[data-ch-read]").forEach(b => b.onclick = (e) => { e.stopPropagation(); const c = BOOK5K.chapters[+b.dataset.chRead]; const first = (c.sections || []).find(s => s.theory) || (c.sections || [])[0]; if (first) openSec(c.name, first); });
+            host.querySelectorAll("[data-s-go]").forEach(b => b.onclick = (e) => {
+              e.stopPropagation();
+              const c = BOOK5K.chapters[expanded];
+              startQuiz(qsOf(c.sections[+b.dataset.sGo]), c.sections[+b.dataset.sGo].name, modal, box);
+            });
+            host.querySelectorAll("[data-s-read]").forEach(b => b.onclick = (e) => { e.stopPropagation(); openSec(BOOK5K.chapters[expanded].name, BOOK5K.chapters[expanded].sections[+b.dataset.sRead]); });
+            host.querySelectorAll("[data-s-done]").forEach(b => b.onclick = (e) => {
+              e.stopPropagation();
+              const c = BOOK5K.chapters[expanded], s = c.sections[+b.dataset.sDone];
+              markDone(c.name, s); render("");
+            });
           }
+
           box.querySelector("#v5kw").oninput = e => render(e.target.value.trim());
+          box.querySelector("#v5allrand").onclick = () => {
+            const pool = [];
+            allItems.forEach(x => (x.sec.questions || []).forEach(q => { if (q.options && q.options.length >= 2) pool.push(mapQ(q, x.sec.name)); }));
+            startQuiz(pool, "整本随机", modal, box);
+          };
           render("");
         }
 
         function openSec(chapterName, sec) {
           const qs = sec.questions || [];
           const host = UI.el(`<div style="max-height:72vh;overflow:auto">
-            <div class="muted small">${UI.esc(chapterName)}</div>
+            <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+              <span class="muted small">${UI.esc(chapterName)}</span>
+              ${qs.length ? `<label class="fld" style="margin:0">每次题量</label>
+              <select id="v5cnt" style="width:104px">
+                <option value="10" selected>10 题</option>
+                <option value="20">20 题</option>
+                <option value="30">30 题</option>
+                <option value="0">全部</option>
+              </select>` : ""}
+            </div>
             ${sec.theory ? `<div class="pdb-theory" style="margin-top:8px">${sec.theory}</div>` : ""}
             ${qs.length ? `<div style="margin:12px 0 6px;font-weight:700">题目（${qs.length}）</div>` : ""}
             <div id="v5qs"></div>
           </div>`);
-          UI.modal({
+          const done = isDone(chapterName, sec);
+          const modal2 = UI.modal({
             title: "📖 " + UI.esc(sec.name), body: host, width: "820px",
             actions: [
-              qs.length ? { label: "✍ 练习本节", cls: "primary", onClick: (m, c) => { c(); practiceSec(sec); } } : null,
+              sec.theory ? { label: done ? "✓ 已学完" : "标记已学完", cls: done ? "ghost" : "primary", keepOpen: false,
+                onClick: (m, c) => { markDone(chapterName, sec); c(); } } : null,
+              qs.length ? { label: "✍ 练习本节", cls: "primary", onClick: (m, c) => { c(); startQuiz(qsOf(sec), sec.name, null, host); } } : null,
               { label: "关闭", cls: "ghost", onClick: (m, c) => c() }
             ].filter(Boolean)
           });
@@ -599,13 +700,6 @@
               <div class="muted small">【答案】<b style="color:var(--green)">${ans}</b>${q.e ? `<details><summary>解析</summary><div style="white-space:pre-wrap;margin-top:6px">${UI.esc(q.e)}</div></details>` : ""}</div>
             </div>`;
           }).join("");
-        }
-
-        function practiceSec(sec) {
-          const qs = (sec.questions || []).map(q => mapQ(q, sec.name));
-          if (!qs.length) { UI.toast("本节没有题目"); return; }
-          window.Quiz.start(c5.querySelector("#v5quiz"), qs, SUBJECT, {});
-          c5.scrollIntoView({ behavior: "smooth", block: "start" });
         }
 
         c5.querySelector("#v5dir").onclick = () => openDir();

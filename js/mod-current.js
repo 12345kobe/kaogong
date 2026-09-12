@@ -200,8 +200,8 @@
     const b4 = block(4);
     res.quiz = parseQuestions(b4, "时政单选");
 
-    // 标题
-    res.title = res.date ? (res.date + " 时政复习") : "时政复习";
+    // 标题（默认「日期 + 时政」，保存后可在列表里改名）
+    res.title = (res.date || DB.today()) + " 时政";
     return res;
   }
 
@@ -209,7 +209,7 @@
   function addRecord(data, date, title) {
     const rec = {
       id: DB.uid(), date: date || data.date || DB.today(),
-      title: title || data.title || (DB.today() + " 时政复习"),
+      title: title || data.title || ((date || data.date || DB.today()) + " 时政"),
       createdAt: Date.now(), data: data
     };
     store().push(rec);
@@ -226,6 +226,12 @@
     return false;
   }
   function setDate(id, date) { const r = getRecord(id); if (r) { r.date = date; DB.save(); } }
+  function setTitle(id, title) {
+    const r = getRecord(id); if (!r) return;
+    const t = String(title == null ? "" : title).trim();
+    r.title = t || (r.date || DB.today()) + " 时政";
+    DB.save();
+  }
   function allQuestions(rec) {
     if (!rec) return [];
     return []
@@ -301,7 +307,7 @@
   /* ================= 五、模块 UI ================= */
   window.KGCurrent = {
     parse: parseCurrentText, importText, list: listRecords, get: getRecord,
-    remove: removeRecord, setDate: setDate, allQuestions: allQuestions,
+    remove: removeRecord, setDate: setDate, setTitle: setTitle, allQuestions: allQuestions,
     recordHtml: recordHtml, subject: SUBJECT
   };
 
@@ -384,7 +390,7 @@
           const words = (r.data.words || []).length;
           return `<div class="cur-item" data-id="${r.id}">
             <div class="cur-item-h">
-              <b>${esc(r.title)}</b>
+              <input class="ct" value="${esc(r.title)}" title="可修改名称" style="flex:1;min-width:180px;font-weight:700"/>
               <span class="muted small">${esc(r.date)} · 时政 ${news} 条 · 词语 ${words} 个 · 题 ${qn} 道</span>
             </div>
             <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px">
@@ -400,6 +406,7 @@
         host.querySelectorAll(".cur-item").forEach(it => {
           const id = it.dataset.id, rec = getRecord(id);
           it.querySelector(".cd").onchange = e => { setDate(id, e.target.value); UI.toast("已修改日期"); };
+          it.querySelector(".ct").onchange = e => { setTitle(id, e.target.value); UI.toast("已修改名称"); };
           it.querySelector(".c-view").onclick = () => viewRecord(rec);
           const go = it.querySelector(".c-go");
           if (go) go.onclick = () => practice(rec);
