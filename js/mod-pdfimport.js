@@ -692,26 +692,48 @@
   }
 
   /* 文末「答案速查 / 参考答案」附录：1.A、1-5 ABCDE、1.A 2.B 3.C、1.普惠/创新/协同 */
-  function parseAnswers(text) {
-    const ansMap = {};
-    const lines = plainLines(text).filter(s => s && s.trim());
-    // 第一遍：严格只匹配字母答案（单选/多选），避免把题干当文本答案
-    const pairRe = /(\d{1,4})\s*[\.．、，,)）]?\s*[：:]?\s*([A-Ea-e]{1,6}(?:\s*[，,、]\s*[A-Ea-e]){0,5})(?=[\s,，.。;；]|$)/g;
 
+  function parseAnswersCore(text) {
+    const ansMap = {};
+    const ordered = [];
+    const lines = plainLines(text).filter(x => x && x.trim());
+    const pairRe = /(\d{1,4})\s*[\.．、，,)）]?\s*[：:]?\s*([A-Ea-e]{1,6}(?:\s*[，,、]\s*[A-Ea-e]){0,5})(?=[\s,，.。;；]|$)/g;
+    function applyAns(n, val) {
+      if (!n || !val) return;
+      val = String(val).trim().replace(/^[【\[（(]/, "").replace(/[】\]）)]$/, "").trim();
+      if (!val) return;
+      const upper = val.toUpperCase().replace(/\s*[，,、]\s*/g, "").replace(/\s+/g, "");
+      if (/^[A-E]{1,6}$/.test(upper)) {
+        const obj = ansMap[n] || (ansMap[n] = { a: upper.charCodeAt(0) - 65, e: "" });
+        obj.a = upper.charCodeAt(0) - 65;
+        if (upper.length > 1) obj.multi = upper;
+        if (!obj.__o) { ordered.push(obj); obj.__o = true; }
+        return;
+      }
+      const obj = ansMap[n] || (ansMap[n] = { a: -1, e: "" });
+      obj.textAns = (obj.textAns ? obj.textAns + "；" : "") + val;
+      obj.a = -1;
+      if (!obj.__o) { ordered.push(obj); obj.__o = true; }
+    }
+    function collectTail(n, tail) {
+      tail = String(tail || "").replace(/^[：:．.、，。]\s*/, "").replace(/^(?:解析|答案解析|【解析】|答案)\s*[：:]?\s*/, "").trim();
+      if (/^\d{1,4}\s*[\.．、，,)）]/.test(tail)) return;
+      if (!tail) return;
+      const obj = ansMap[n]; if (!obj) return;
+      obj.e = obj.e ? smartJoin(obj.e, tail) : tail;
+    }
     lines.forEach(raw => {
-      // 1-5 ABCDE 连续题号答案
-      let m = /^\s*(\d{1,4})\s*[-~—－]\s*(\d{1,4})\s*[：:．.、]?\s*(.{2,80})\s*$/.exec(raw);
+      const m = /^\s*(\d{1,4})\s*[-~—－]\s*(\d{1,4})\s*[：:．.、]?\s*(.{2,80})\s*$/.exec(raw);
       if (m) {
         const from = parseInt(m[1], 10), to = parseInt(m[2], 10);
         const letters = String(m[3]).replace(/[\s\u3000,，、；;．.。]/g, "").toUpperCase();
         let pos = 0;
         for (let n = from; n <= to && pos < letters.length; n++, pos++) {
           const L = letters[pos];
-          if (/^[A-E]$/.test(L)) applyAns(n, L, "");
+          if (/^[A-E]$/.test(L)) applyAns(n, L);
         }
         return;
       }
-
       const pairs = []; let p;
       pairRe.lastIndex = 0;
       while ((p = pairRe.exec(raw)) !== null) {
@@ -721,56 +743,84 @@
       }
       if (!pairs.length) return;
       const wholeOne = /^\s*\d{1,4}\s*[\.．、，,)）]?\s*[：:]?\s*[A-Ea-e]{1,6}\s*$/.test(raw);
-      if (!wholeOne && pairs.length < 2) return; // 单行只有一个且不是整行 → 可能是题干里的"1. xxx"
-      pairs.forEach(([n, val]) => applyAns(n, val, ""));
+      if (!wholeOne && pairs.length < 2) return;
+      pairs.forEach(([n, val]) => applyAns(n, val));
     });
-
-    // 第二遍：按行识别「1. B」/「1. 普惠、创新、协同」这种独立答案行
     let curNum = null;
     lines.forEach(raw => {
       const m = /^\s*(\d{1,4})\s*[\.．、，,)）]\s*(.*)$/.exec(raw);
       if (m) {
         curNum = parseInt(m[1], 10);
         const rest = String(m[2] || "").trim();
-        // 字母答案：B / AB / B,C
         const am = /^\s*([A-Ea-e]{1,6}(?:\s*[，,、]\s*[A-Ea-e]){0,5})\s*[】\]）)]?\s*(.*)$/.exec(rest);
-        if (am) { applyAns(curNum, am[1], ""); collectTail(curNum, am[2]); return; }
-        // 文本答案：很短、不含题干标志、不以选项字母开头
+        if (am) { applyAns(curNum, am[1]); collectTail(curNum, am[2]); return; }
         if (/^[^A-Za-z0-9\s]/.test(rest) || (rest.length <= 30 && !/[A-Ea-e]\s*[\.．、]/.test(rest) && /[\u4e00-\u9fa5]/.test(rest))) {
-          // 排除明显的题干
-          if (!/^下列|^正确|^错误|^符合|^属于|^的是|^关于|^根据|^以下|^哪项|^哪一|^这题|^此题/.test(rest)) {
-            applyAns(curNum, rest, ""); return;
+          // 排除题干：含问号、或以"是/包括/有哪些/指的是/为什么/如何/怎样/什么/哪些/吗"等提示词结尾
+          if (!/[？?]/.test(rest) && !/(是|包括|有哪些|指的是|为什么|如何|怎样|什么|哪些|吗)$/.test(rest) && !/^下列|^正确|^错误|^符合|^属于|^的是|^关于|^根据|^以下|^哪项|^哪一|^这题|^此题/.test(rest)) {
+            applyAns(curNum, rest); return;
           }
         }
         curNum = null; return;
       }
       if (curNum != null && ansMap[curNum] && raw.length > 4) collectTail(curNum, raw);
     });
+    return { map: ansMap, ordered: ordered };
+  }
+  function parseAnswers(text) { return parseAnswersCore(text).map; }
+  function parseAnswersOrdered(text) { return parseAnswersCore(text).ordered; }
 
-    function applyAns(n, val, tail) {
-      if (!n || !val) return;
-      val = String(val).trim().replace(/^[【\[（(]/, "").replace(/[】\]）)]$/, "").trim();
-      if (!val) return;
-      const upper = val.toUpperCase().replace(/\s*[，,、]\s*/g, "").replace(/\s+/g, "");
-      if (/^[A-E]{1,6}$/.test(upper)) {
-        const obj = ansMap[n] || (ansMap[n] = { a: upper.charCodeAt(0) - 65, e: "" });
-        obj.a = upper.charCodeAt(0) - 65;
-        if (upper.length > 1) obj.multi = upper;
-        return;
+  function buildAnswerBook(pages, outline) {
+    if (!pages || !pages.length) return null;
+    const chs = splitChapters(pages, outline, 4);
+    const chapters = chs.map(ch => {
+      const core = parseAnswersCore(ch.text);
+      const nm = normChapterName(ch.name);
+      return { name: ch.name, norm: nm.norm, ord: nm.ord, map: core.map, ordered: core.ordered };
+    }).filter(c => Object.keys(c.map).length);
+    if (!chapters.length) return null;
+    return { chapters: chapters, isStructured: chapters.length >= 2 };
+  }
+
+  function cnToNum(s) {
+    const map = { "一":1,"二":2,"三":3,"四":4,"五":5,"六":6,"七":7,"八":8,"九":9,"十":10,"百":100,"千":1000 };
+    if (/^\d+$/.test(s)) return parseInt(s, 10);
+    let total = 0, cur = 0;
+    for (const ch of String(s)) {
+      if (map[ch] == null) return total || cur;
+      if (map[ch] >= 100) { total += (cur || 1) * map[ch]; cur = 0; }
+      else if (map[ch] === 10) { total += (cur || 1) * 10; cur = 0; }
+      else cur += map[ch];
+    }
+    return total + cur;
+  }
+  function normChapterName(name) {
+    let s = String(name || "").replace(/\s+/g, "").toLowerCase();
+    let ord = null;
+    const om = /第\s*([0-9]+|[一二三四五六七八九十百千]+)\s*[章篇节部分]/.exec(s);
+    if (om) { ord = cnToNum(om[1]); s = s.replace(om[0], ""); }
+    s = s.replace(/^[一二三四五六七八九十百千]+\s*[、.．]\s*/, "")
+         .replace(/^[（(][一二三四五六七八九十]+[)）]\s*/, "")
+         .replace(/^(考点|知识点|章节|部分)[:：]?/, "")
+         .replace(/[:：]/g, "").replace(/^[·•\-—]/, "")
+         .replace(/[\(（].*?[\)）]/g, "");
+    return { norm: s, ord: ord };
+  }
+
+  function applyAnswerSequentially(questions, ordered) {
+    if (!ordered || !ordered.length) return;
+    let ai = 0;
+    for (let i = 0; i < questions.length && ai < ordered.length; i++) {
+      const q = questions[i], ans = ordered[ai];
+      if (q.a >= 0 && q.a < q.options.length) continue;
+      if (ans.a >= 0 && ans.a < q.options.length) {
+        q.a = ans.a; delete q.needCheck;
+        q.e = String(q.e || "").replace(/^⚠️\s*答案未能自动识别，需人工校对。\s*/, "");
       }
-      // 文本型答案（填空题）
-      const obj = ansMap[n] || (ansMap[n] = { a: -1, e: "" });
-      obj.textAns = (obj.textAns ? obj.textAns + "；" : "") + val;
-      obj.a = -1;
+      if (ans.multi) q.multi = ans.multi;
+      if (ans.textAns) q.textAns = ans.textAns;
+      if (ans.e && !q.e) q.e = ans.e;
+      ai++;
     }
-    function collectTail(n, tail) {
-      tail = String(tail || "").replace(/^[：:．.、，。]\s*/, "").replace(/^(?:解析|答案解析|【解析】|答案)\s*[：:]?\s*/, "").trim();
-      if (/^\d{1,4}\s*[\.．、，,)）]/.test(tail)) return;
-      if (!tail) return;
-      const obj = ansMap[n]; if (!obj) return;
-      obj.e = obj.e ? smartJoin(obj.e, tail) : tail;
-    }
-    return ansMap;
   }
 
   /* ================= 六、切章 + 切考点 ================= */
@@ -803,13 +853,13 @@
   }
 
   /* pages(按页文本数组) + 书签 → 章 [{name, text}] */
-  function splitChapters(pages, outline) {
+  function splitChapters(pages, outline, minLen) {
     pages = pages || [];
     const marks = [];
     if (outline && outline.length >= 2) {
       outline.forEach(o => {
         const t = cleanTitle(o.title);
-        if (t && o.page >= 0 && o.page < pages.length) marks.push({ name: t, page: o.page });
+        if (t && o.page >= 0 && o.page < pages.length) marks.push({ name: t, page: o.page, line: 0 });
       });
     }
     if (marks.length < 2) {
@@ -820,7 +870,7 @@
           const s = String(lines[li] || "").trim();
           if (!s) continue;
           if (isHeading(s, { atPageStart: li <= 1, prevEnd: /[。！？”」…]$/.test(prev) })) {
-            marks.push({ name: cleanTitle(s), page: pi });
+            marks.push({ name: cleanTitle(s), page: pi, line: li });
           }
           prev = s;
         }
@@ -830,10 +880,10 @@
     for (let i = 0; i < marks.length; i++) {
       const m = marks[i], last = uniq[uniq.length - 1];
       if (!last) { uniq.push(m); continue; }
-      if (last.name === m.name) { last.page = Math.max(last.page, m.page); continue; }
-      if (last.page === m.page) {
-        if (STRONG_HEAD.test(m.name) && !STRONG_HEAD.test(last.name)) last.name = m.name;
-        continue;
+      // 同一页同一行（重复/兜底）才合并或升级，避免把同页里不同章标题吞掉
+      if (last.page === m.page && last.line === m.line) {
+        if (last.name === m.name) { last.page = Math.max(last.page, m.page); continue; }
+        if (STRONG_HEAD.test(m.name) && !STRONG_HEAD.test(last.name)) { last.name = m.name; continue; }
       }
       uniq.push(m);
     }
@@ -842,9 +892,18 @@
       chapters.push({ name: "全部题目", text: pages.join("\n") });
     } else {
       uniq.forEach((m, i) => {
-        const end = (i + 1 < uniq.length) ? uniq[i + 1].page : pages.length;
-        const text = pages.slice(m.page, Math.max(end, m.page + 1)).join("\n");
-        if (String(text).replace(/\s/g, "").length < 20) return;
+        const end = (i + 1 < uniq.length) ? uniq[i + 1] : null;
+        let text;
+        if (!end) {
+          text = String(pages[m.page] || "").split("\n").slice(m.line).join("\n") || pages.slice(m.page).join("\n");
+        } else if (end.page === m.page && end.line > m.line) {
+          // 同页多章：按行切分（单页答案速查/单页多章书籍的关键修复）
+          text = String(pages[m.page] || "").split("\n").slice(m.line, end.line).join("\n");
+        } else {
+          // 跨页：按页切分
+          text = pages.slice(m.page, Math.max(end.page, m.page + 1)).join("\n");
+        }
+        if (String(text).replace(/\s/g, "").length < (minLen || 20)) return;
         chapters.push({ name: m.name || ("第" + (i + 1) + "章"), text: text });
       });
     }
@@ -892,12 +951,13 @@
   }
 
   /* 节（供其它模块直接渲染）：{ name, theory(HTML), questions:[{q,options,a,e,kp}] } */
-  function buildSections(pages, outline, extraAns) {
+  function buildSections(pages, outline, extraAnsBook) {
     const secs = [];
     const docAns = {};           // 纯答案附录章收集到的答案（全局 fallback）
+    const extUsed = (extraAnsBook && extraAnsBook.chapters) ? extraAnsBook.chapters.map(() => false) : [];
     let totalQ = 0;
 
-    splitChapters(pages, outline).forEach(ch => {
+    splitChapters(pages, outline).forEach((ch, qi) => {
       try {
         const lines = plainLines(ch.text);
         if (!lines.length) return;
@@ -958,6 +1018,15 @@
 
         // ④ 先按「本章答案 + 同题号」回填，避免不同章节的同号题互相污染
         applyAnswerMap(chapterSecs, chAns);
+        // ④b 外部答案文件（与题本分开）按章节名/序号/位置匹配后，按同号回填本章
+        if (extraAnsBook && extraAnsBook.isStructured) {
+          const qn = normChapterName(chapterName);
+          let pick = -1;
+          if (qn.norm) extraAnsBook.chapters.forEach((c, i) => { if (!extUsed[i] && c.norm && c.norm === qn.norm) pick = (pick < 0 ? i : pick); });
+          if (pick < 0 && qn.ord != null) extraAnsBook.chapters.forEach((c, i) => { if (!extUsed[i] && c.ord != null && c.ord === qn.ord) pick = (pick < 0 ? i : pick); });
+          if (pick < 0) for (let i = 0; i < extraAnsBook.chapters.length; i++) { if (!extUsed[i]) { pick = i; break; } }
+          if (pick >= 0) { extUsed[pick] = true; applyAnswerMap(chapterSecs, extraAnsBook.chapters[pick].map); }
+        }
         // 本章答案没用完的，留作全局 fallback
         const usedNums = new Set();
         chapterSecs.forEach(s => (s.questions || []).forEach(q => { if (q.a >= 0) usedNums.add(q.num); }));
@@ -969,9 +1038,28 @@
       }
     });
 
-    // ⑤ 全局 fallback：纯答案附录章 + 额外的答案文件 → 回填仍未识别的题
-    const fallback = Object.assign({}, docAns, extraAns || {});
-    if (Object.keys(fallback).length) applyAnswerMap(secs, fallback);
+    // ④c 外部答案文件兜底：结构化未匹配的章按同号补；无章节结构的纯答案速查按题序顺序匹配
+    if (extraAnsBook) {
+      if (extraAnsBook.isStructured) {
+        const qNames = new Set();
+        secs.forEach(s => qNames.add(String(s.name || "").replace(/\s*[（(]\d+[）)]$/, "")));
+        if (qNames.size <= 1) {
+          const allOrd = [];
+          extraAnsBook.chapters.forEach(c => c.ordered.forEach(o => allOrd.push(o)));
+          const allQ = [];
+          secs.forEach(s => (s.questions || []).forEach(q => allQ.push(q)));
+          applyAnswerSequentially(allQ, allOrd);
+        } else {
+          extraAnsBook.chapters.forEach((c, i) => { if (!extUsed[i]) applyAnswerMap(secs, c.map); });
+        }
+      } else {
+        const allQ = [];
+        secs.forEach(s => (s.questions || []).forEach(q => allQ.push(q)));
+        applyAnswerSequentially(allQ, extraAnsBook.chapters[0] ? extraAnsBook.chapters[0].ordered : []);
+      }
+    }
+    // ⑤ 全局 fallback：同文件纯答案附录章收集到的答案 → 回填仍未识别的题
+    if (Object.keys(docAns).length) applyAnswerMap(secs, docAns);
 
     // ⑥ 兜底：整本一个考点都没切出来时，整体当一章解析
     secs.forEach(s => { totalQ += (s.questions || []).length; });
@@ -1146,6 +1234,8 @@
   window.__pdfExtractText = extractText;
   window.__pdfTheoryToHtml = theoryToHtml;
   window.__pdfBuildSections = buildSections;
+  window.__buildAnswerBook = buildAnswerBook;
+  window.__parseAnswersOrdered = parseAnswersOrdered;
   window.__sanitizeText = sanitizeText;
 
   /* ================= 八、界面 ================= */
@@ -1227,13 +1317,19 @@
           reparseRow.style.display = "flex";
 
           let aNote = "";
-          let answerMap = {};
+          let ansBook = null;
           const af = aIn.files && aIn.files[0];
           if (af) {
             try {
               const ar = await fileToPages(af);
-              answerMap = parseAnswers(sanitizeText((ar.pages || []).join("\n")));
-              aNote = `，从答案文件解析出 ${Object.keys(answerMap).length} 条答案`;
+              const ap = (ar.pages || []).map(sanitizeText);
+              ansBook = buildAnswerBook(ap, ar.outline);
+              if (ansBook) {
+                const cnt = ansBook.chapters.reduce((s, c) => s + Object.keys(c.map).length, 0);
+                aNote = `，从答案文件解析出 ${cnt} 条答案（${ansBook.isStructured ? "按章节匹配" : "按题序匹配"}）`;
+              } else {
+                aNote = `，答案文件未解析到可用答案`;
+              }
             } catch (e) { aNote = `，答案文件解析失败：${esc(e.message)}`; }
           }
           if (String(qText).replace(/\s/g, "").length < 40) {
@@ -1241,7 +1337,7 @@
             goBtn.disabled = false;
             return;
           }
-          buildDraft(pages, r.outline, answerMap);
+          buildDraft(pages, r.outline, ansBook);
           const stat = countStat(draft);
           setStatus(`✓ 提取 ${qText.length} 字符${r.outline ? "（按 PDF 目录分组）" : "（按内容标题分组）"}，共 <b>${draft.sections.length}</b> 个考点块 / <b>${stat.q}</b> 道题${stat.bad ? `（其中 <b style="color:var(--red)">${stat.bad}</b> 题答案待校对）` : ""}${aNote}。请核对后保存。`);
         } catch (e) {
@@ -1258,7 +1354,7 @@
       };
       card.querySelector("#pdfReparse").onclick = () => {
         try {
-          buildDraft([sanitizeText(rawTa.value || "")], null, {});
+          buildDraft([sanitizeText(rawTa.value || "")], null, null);
           const stat = countStat(draft);
           setStatus(`识别到 <b>${draft.sections.length}</b> 个考点块 / <b>${stat.q}</b> 道题${stat.bad ? `（<b style="color:var(--red)">${stat.bad}</b> 题答案待校对）` : ""}，请核对后保存。`);
         } catch (e) { setStatus(`<span style="color:var(--red)">识别失败：${esc(e.message)}</span>`); }
@@ -1273,8 +1369,8 @@
         return { q: q, bad: bad };
       }
 
-      function buildDraft(pages, outline, answerMap) {
-        let secs = buildSections(pages && pages.length ? pages : [""], outline, answerMap);
+      function buildDraft(pages, outline, ansBook) {
+        let secs = buildSections(pages && pages.length ? pages : [""], outline, ansBook);
         secs = absorbAnswerSections(secs);
         if (!secs.length) secs = [{ name: "全部题目", theory: "", questions: [] }];
         draft = {
