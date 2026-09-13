@@ -262,17 +262,14 @@
       renderTodo(); renderProg();
     },
 
-    /* ===== 全屏手写 / 荧光笔 / 橡皮擦 标注覆盖层 =====
+    /* ===== 全屏手写板（截图同款） =====
        UI.Handwriting.open({subject, id, title, anchor, onChange})
-         - anchor：要锚定的内容容器（坐标归一化到它，导出 PDF 时位置不偏移）；不传则按整屏
-         - 工具：✎手写 / 🖍荧光笔 / 🧽橡皮擦 / ↶撤回 / ↷重做 / 🗑清除 / 颜色 / ✓保存
+         - 工具栏：✕ 关闭 | ✎ 钢笔（默认） | 橡皮擦 | ↶ 撤回 | ↷ 重做 | 🗑 清空
          - 笔迹按 normalized 坐标存 DB.state.notes[subject][id]，跨设备还原
-       UI.Notes.get/set/has/toSvg  —— 通用存取与导出矢量
-       UI.Attachments.section/addFiles/gridHtml  —— 通用图片/PDF 附件笔记
-       UI.notebook(subject,id,anchor) —— 一键挂载「手写 + 附件」笔记卡 */
+       UI.Notes.get/set/has/overlayHtml  —— 通用存取与导出 SVG */
     Handwriting: {
       open(opts) {
-        const subject = opts.subject, id = opts.id, title = opts.title || "手写标注", anchor = opts.anchor || null;
+        const subject = opts.subject, id = opts.id, anchor = opts.anchor || null;
         const onChange = opts.onChange;
         const DB = window.DB;
         const notesRoot = DB.state.notes = DB.state.notes || {};
@@ -281,30 +278,20 @@
         if (!notes) notes = { vw: 0, vh: 0, strokes: [] };
         if (!notes.strokes) notes.strokes = [];
         let redo = [];
-        let tool = "pen";                 // pen | hl | erase
-        let cur = null, drawing = false;  // cur.points 为屏幕像素坐标（所见即所得）
-        let color = "#ff6b4a", penW = 3.2, hlW = 20;
-        let selected = null, drag = null, lastPx = null;
+        let tool = "pen";                 // pen | erase
+        let cur = null, drawing = false;  // cur.points 为屏幕像素坐标
+        const color = "#ff6b4a", penW = 3.4, eraseW = 24;
 
         const overlay = el(`<div class="hw-overlay">
           <div class="hw-tools">
-            <button class="hw-tool close" title="关闭">✕</button>
+            <button class="hw-tool close" title="关闭并保存">✕</button>
             <button class="hw-tool t-pen active" data-tool="pen" title="手写笔">✎</button>
-            <button class="hw-tool t-hl" data-tool="hl" title="荧光笔（横线/竖线自动规整）">🖍</button>
-            <button class="hw-tool t-erase" data-tool="erase" title="橡皮擦（擦掉手写字迹）">🧽</button>
-            <button class="hw-tool undo" title="撤回一笔">↶</button>
-            <button class="hw-tool redo" title="重做（恢复刚撤回的笔画）">↷</button>
-            <button class="hw-tool clear" title="清除全部">🗑</button>
-            <span class="hw-sep"></span>
-            <button class="hw-tool color active" data-c="#ff6b4a" style="color:#ff6b4a" title="红">●</button>
-            <button class="hw-tool color" data-c="#34e7e4" style="color:#34e7e4" title="青">●</button>
-            <button class="hw-tool color" data-c="#ffd166" style="color:#ffd166" title="黄">●</button>
-            <button class="hw-tool color" data-c="#7CFFB2" style="color:#7CFFB2" title="绿">●</button>
-            <button class="hw-tool color" data-c="#ffffff" style="color:#ffffff" title="白">●</button>
+            <button class="hw-tool t-erase" data-tool="erase" title="橡皮擦">🧽</button>
+            <button class="hw-tool undo" title="撤回上一笔">↶</button>
+            <button class="hw-tool redo" title="重做上一笔">↷</button>
+            <button class="hw-tool clear" title="清空全部">🗑</button>
           </div>
-          <div class="hw-hint">在页面上直接书写 · ✎手写 / 🖍荧光笔 / 🧽橡皮擦 · ↶撤回 ↷重做 · 完成后点右下角「完成 ✓ 保存」</div>
           <canvas class="hw-layer"></canvas>
-          <button class="hw-done-fab">完成 ✓ 保存</button>
         </div>`);
         document.body.appendChild(overlay);
 
@@ -316,7 +303,6 @@
         const offCanvas = document.createElement("canvas");
         const offCtx = offCanvas.getContext("2d", { alpha: true });
 
-        // 两套尺寸：screen = canvas 实际显示大小；norm = 锚定内容大小（用于 PDF 不偏移）
         let screenW = 0, screenH = 0, normW = 1, normH = 1;
         let anchorRect = null;
         function refreshMetrics() {
@@ -357,13 +343,6 @@
           return { x: e.clientX - r.left, y: e.clientY - r.top };
         }
         function drawStroke(ctx, st) {
-          if (st.type === "hl") {
-            const p = toScreen(st.x, st.y);
-            const w = st.w * normW, h = st.h * normH;
-            ctx.save(); ctx.globalAlpha = 0.42; ctx.fillStyle = st.color || "#ffd166";
-            ctx.fillRect(p.x, p.y, Math.max(2, w), Math.max(2, h));
-            ctx.restore(); return;
-          }
           if (!st.points || st.points.length < 2) return;
           ctx.strokeStyle = st.color || color; ctx.lineWidth = st.width || penW;
           ctx.lineCap = "round"; ctx.lineJoin = "round";
@@ -378,92 +357,49 @@
         function blit() {
           mainCtx.clearRect(0, 0, screenW, screenH);
           mainCtx.drawImage(offCanvas, 0, 0, screenW, screenH);
-          if (tool === "hl" && selected) drawSelection(mainCtx, selected);
-        }
-        function drawSelection(ctx, st) {
-          const p = toScreen(st.x, st.y);
-          const w = st.w * normW, h = st.h * normH;
-          ctx.save(); ctx.strokeStyle = "#34e7e4"; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
-          ctx.strokeRect(p.x, p.y, w, h); ctx.setLineDash([]);
-          [[p.x, p.y], [p.x + w, p.y], [p.x, p.y + h], [p.x + w, p.y + h]].forEach(pt => { ctx.beginPath(); ctx.fillStyle = "#34e7e4"; ctx.arc(pt[0], pt[1], 8, 0, 7); ctx.fill(); });
-          ctx.restore();
         }
         function drawCurrent(ctx) {
-          if (!cur) return;
+          if (!cur || cur.points.length < 2) return;
           if (tool === "pen") {
             ctx.strokeStyle = color; ctx.lineWidth = penW; ctx.lineCap = "round"; ctx.lineJoin = "round";
             ctx.beginPath();
             cur.points.forEach((p, idx) => idx === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
             ctx.stroke();
           } else if (tool === "erase") {
-            ctx.strokeStyle = "rgba(255,107,74,.5)"; ctx.lineWidth = hlW; ctx.lineCap = "round"; ctx.lineJoin = "round";
-            ctx.setLineDash([6, 5]);
+            ctx.strokeStyle = "rgba(255,255,255,.35)"; ctx.lineWidth = eraseW; ctx.lineCap = "round"; ctx.lineJoin = "round";
+            ctx.setLineDash([5, 5]);
             ctx.beginPath();
             cur.points.forEach((p, idx) => idx === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
             ctx.stroke(); ctx.setLineDash([]);
-          } else if (tool === "hl") {
-            const hl = makeHighlight(cur.points);
-            if (hl) {
-              const p = toScreen(hl.x, hl.y);
-              const w = hl.w * normW, h = hl.h * normH;
-              ctx.save(); ctx.globalAlpha = 0.42; ctx.fillStyle = color;
-              ctx.fillRect(p.x, p.y, w, h); ctx.restore();
-            }
           }
         }
-        function makeHighlight(pts) {
-          if (!pts || pts.length < 2) return null;
-          const a = pts[0], b = pts[pts.length - 1];
-          const dx = b.x - a.x, dy = b.y - a.y;
-          const len = Math.hypot(dx, dy);
-          if (len < 10) return null;
-          const ang = Math.atan2(dy, dx) * 180 / Math.PI;
-          let ax = a.x, ay = a.y, bx = b.x, by = b.y;
-          if (Math.abs(ang) <= 18 || Math.abs(ang) >= 162) {     // 接近水平 → 规整横线
-            ay = by = (a.y + b.y) / 2 - hlW / 2;
-          } else if (Math.abs(ang) >= 72 && Math.abs(ang) <= 108) { // 接近垂直 → 规整竖线
-            ax = bx = (a.x + b.x) / 2 - hlW / 2;
-          }
-          const rx = Math.min(ax, bx), ry = Math.min(ay, by);
-          const rw = Math.max(10, Math.abs(bx - ax)), rh = Math.max(10, Math.abs(by - ay));
-          const n1 = toNorm(rx, ry), n2 = toNorm(rx + rw, ry + rh);
-          return { type: "hl", color: color, x: n1.x, y: n1.y, w: Math.max(0.001, n2.x - n1.x), h: Math.max(0.001, n2.y - n1.y) };
+        function distToSeg(P, A, B) {
+          const l2 = (A.x - B.x) ** 2 + (A.y - B.y) ** 2;
+          if (l2 === 0) return Math.hypot(P.x - A.x, P.y - A.y);
+          let t = ((P.x - A.x) * (B.x - A.x) + (P.y - A.y) * (B.y - A.y)) / l2;
+          t = Math.max(0, Math.min(1, t));
+          return Math.hypot(P.x - (A.x + t * (B.x - A.x)), P.y - (A.y + t * (B.y - A.y)));
         }
-        function bboxOf(st) {
-          if (st.type === "hl") { const p = toScreen(st.x, st.y); return { x: p.x, y: p.y, w: st.w * normW, h: st.h * normH }; }
-          let minx = 1e9, miny = 1e9, maxx = -1e9, maxy = -1e9;
-          st.points.forEach(p => { const s = toScreen(p.x, p.y); if (s.x < minx) minx = s.x; if (s.y < miny) miny = s.y; if (s.x > maxx) maxx = s.x; if (s.y > maxy) maxy = s.y; });
-          return { x: minx, y: miny, w: maxx - minx, h: maxy - miny };
-        }
-        function eraseStrokes(pts) {
+        function eraseByPoints(pts) {
           if (!pts || pts.length < 2) return;
-          let minx = 1e9, miny = 1e9, maxx = -1e9, maxy = -1e9;
-          pts.forEach(p => { if (p.x < minx) minx = p.x; if (p.y < miny) miny = p.y; if (p.x > maxx) maxx = p.x; if (p.y > maxy) maxy = p.y; });
-          const eb = { x: minx, y: miny, w: maxx - minx, h: maxy - miny };
-          const inter = (a, b) => !(a.x > b.x + b.w || a.x + a.w < b.x || a.y > b.y + b.h || a.y + a.h < b.y);
-          notes.strokes = notes.strokes.filter(st => !inter(bboxOf(st), eb));
-        }
-        function hitHighlight(st, px, py) {
-          const p = toScreen(st.x, st.y);
-          const x = p.x, y = p.y, w = st.w * normW, h = st.h * normH;
-          const near = (X, Y, r) => Math.hypot(px - X, py - Y) <= r;
-          if (near(x, y, 14)) return "c1";
-          if (near(x + w, y, 14)) return "c2";
-          if (near(x, y + h, 14)) return "c3";
-          if (near(x + w, y + h, 14)) return "c4";
-          if (px >= x - 8 && px <= x + w + 8 && py >= y - 8 && py <= y + h + 8) return "move";
-          return null;
+          const threshold = eraseW * 0.55;
+          notes.strokes = notes.strokes.filter(st => {
+            if (!st.points || st.points.length < 2) return false;
+            const spts = st.points.map(p => toScreen(p.x, p.y));
+            for (let i = 0; i < pts.length; i++) {
+              for (let j = 0; j < spts.length - 1; j++) {
+                if (distToSeg(pts[i], spts[j], spts[j + 1]) < threshold) return false;
+              }
+            }
+            return true;
+          });
         }
         function commitStroke() {
           if (!cur) { drawing = false; return; }
           if (tool === "pen" && cur.points.length >= 2) {
-            const pts = cur.points.map(p => toNorm(p.x, p.y));
-            notes.strokes.push({ type: "pen", color: color, width: penW, points: pts });
-          } else if (tool === "hl") {
-            const hl = makeHighlight(cur.points);
-            if (hl) { notes.strokes.push(hl); selected = hl; }
+            notes.strokes.push({ type: "pen", color: color, width: penW, points: cur.points.map(p => toNorm(p.x, p.y)) });
           } else if (tool === "erase" && cur.points.length >= 2) {
-            eraseStrokes(cur.points);
+            eraseByPoints(cur.points);
           }
           redo = []; cur = null; drawing = false;
           renderToOffscreen(); blit();
@@ -472,89 +408,28 @@
         canvas.addEventListener("pointerdown", e => {
           e.preventDefault();
           if (e.button > 0) return;
-          const p = absolute(e);
-          if (tool === "hl" && selected) {
-            const ht = hitHighlight(selected, p.x, p.y);
-            if (ht) {
-              drag = { mode: ht, st: selected };
-              if (ht !== "move") {
-                const p0 = toScreen(selected.x, selected.y);
-                const w = selected.w * normW, h = selected.h * normH;
-                const corners = { c1: [p0.x + w, p0.y + h], c2: [p0.x, p0.y + h], c3: [p0.x + w, p0.y], c4: [p0.x, p0.y] };
-                drag.fixed = corners[ht];
-              }
-              lastPx = p; return;
-            }
-          }
-          drawing = true; cur = { points: [p] };
+          drawing = true; cur = { points: [absolute(e)] };
           try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
         }, { passive: false });
         canvas.addEventListener("pointermove", e => {
           e.preventDefault();
-          const p = absolute(e);
-          if (drag) {
-            if (drag.mode === "move") {
-              selected.x += (p.x - lastPx.x) / normW;
-              selected.y += (p.y - lastPx.y) / normH;
-            } else {
-              const fx = drag.fixed[0], fy = drag.fixed[1];
-              const n1 = toNorm(Math.min(fx, p.x), Math.min(fy, p.y));
-              const n2 = toNorm(Math.max(fx, p.x), Math.max(fy, p.y));
-              selected.x = n1.x; selected.y = n1.y;
-              selected.w = Math.max(0.001, n2.x - n1.x);
-              selected.h = Math.max(0.001, n2.y - n1.y);
-            }
-            lastPx = p; renderToOffscreen(); blit(); return;
-          }
           if (!drawing || !cur) return;
-          cur.points.push(p);
-          renderToOffscreen(); blit(); drawCurrent(mainCtx);
+          cur.points.push(absolute(e));
+          blit(); drawCurrent(mainCtx);
         }, { passive: false });
         const endStroke = e => {
           if (e) e.preventDefault();
-          if (drag) { drag = null; lastPx = null; return; }
           if (!drawing) return;
           commitStroke();
         };
         canvas.addEventListener("pointerup", endStroke, { passive: false });
         canvas.addEventListener("pointercancel", endStroke, { passive: false });
 
-        // 工具栏（bind 对缺失元素安全 no-op，避免单个按钮改名导致整个手写打不开）
-        function bind(sel, fn) { const el2 = overlay.querySelector(sel); if (el2) el2.onclick = fn; }
-        bind(".hw-tool.close", () => { document.body.style.overflow = prevBodyOverflow; window.removeEventListener("resize", sizeCanvas); if (window.visualViewport) window.visualViewport.removeEventListener("resize", sizeCanvas); overlay.remove(); });
-        bind(".hw-done-fab", saveAndClose);
-        bind(".hw-tool.done", saveAndClose);
-        overlay.querySelector(".hw-tool.undo").onclick = () => {
-          if (!notes.strokes.length) return;
-          redo.push(notes.strokes.pop()); selected = null;
-          renderToOffscreen(); blit();
-        };
-        overlay.querySelector(".hw-tool.redo").onclick = () => {
-          if (!redo.length) return;
-          notes.strokes.push(redo.pop());
-          renderToOffscreen(); blit();
-        };
-        overlay.querySelector(".hw-tool.clear").onclick = () => {
-          notes.strokes = []; redo = []; selected = null;
-          renderToOffscreen(); blit();
-        };
-        overlay.querySelectorAll(".hw-tool.color").forEach(b => {
-          b.onclick = () => {
-            overlay.querySelectorAll(".hw-tool.color").forEach(x => x.classList.remove("active"));
-            b.classList.add("active");
-            color = b.dataset.c;
-            if (tool === "hl" && selected) { selected.color = color; renderToOffscreen(); blit(); }
-          };
-        });
-        overlay.querySelectorAll("[data-tool]").forEach(b => {
-          b.onclick = () => {
-            tool = b.dataset.tool; selected = null;
-            overlay.querySelectorAll("[data-tool]").forEach(x => x.classList.remove("active"));
-            b.classList.add("active");
-            blit();
-          };
-        });
-
+        function setTool(name) {
+          tool = name;
+          overlay.querySelectorAll("[data-tool]").forEach(b => b.classList.toggle("active", b.dataset.tool === name));
+          canvas.style.cursor = name === "erase" ? "cell" : "crosshair";
+        }
         function saveAndClose() {
           if (notes.strokes.length) notesRoot[subject][id] = notes; else delete notesRoot[subject][id];
           DB.save(); if (onChange) onChange();
@@ -564,12 +439,28 @@
           overlay.remove();
         }
 
+        overlay.querySelector(".hw-tool.close").onclick = saveAndClose;
+        overlay.querySelector(".hw-tool.undo").onclick = () => {
+          if (!notes.strokes.length) return;
+          redo.push(notes.strokes.pop());
+          renderToOffscreen(); blit();
+        };
+        overlay.querySelector(".hw-tool.redo").onclick = () => {
+          if (!redo.length) return;
+          notes.strokes.push(redo.pop());
+          renderToOffscreen(); blit();
+        };
+        overlay.querySelector(".hw-tool.clear").onclick = () => {
+          if (!notes.strokes.length) { UI.toast("没有笔迹可清空"); return; }
+          UI.confirm("确定清空全部手写笔迹？").then(ok => { if (!ok) return; notes.strokes = []; redo = []; renderToOffscreen(); blit(); });
+        };
+        overlay.querySelectorAll("[data-tool]").forEach(b => b.onclick = () => setTool(b.dataset.tool));
+
         sizeCanvas();
         window.addEventListener("resize", sizeCanvas);
         if (window.visualViewport) window.visualViewport.addEventListener("resize", sizeCanvas);
       }
     },
-
     /* ===== 通用笔记：存取手写矢量 + 导出 SVG + 附件（图片/PDF） ===== */
     Notes: {
       get(subject, id) {
