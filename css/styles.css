@@ -785,7 +785,6 @@ body.light #kgVoiceInline .kg-voice-lang{ background:#fff; color:#0f1828 }
 body.light .pdf-q{ background:#fff }
 
 /* ===== AI 咨询 ===== */
-.ai-msgs{ max-height:52vh; overflow:auto; display:flex; flex-direction:column; gap:10px; padding:4px }
 .ai-msg{ border-radius:12px; padding:10px 12px; max-width:92%; line-height:1.7; font-size:14px; white-space:normal }
 .ai-msg.user{ align-self:flex-end; background:rgba(52,231,228,.15); border:1px solid rgba(52,231,228,.4) }
 .ai-msg.bot{ align-self:flex-start; background:var(--panel2); border:1px solid var(--line) }
@@ -809,13 +808,15 @@ body.light .kg-det{ background:#fff }
 body.light .kg-det-s:hover{ background:#f3f6fb }
 
 /* ===== AI 咨询：整屏对话（占屏 80% 以上） ===== */
-.ai-wrap{ display:flex; flex-direction:column; height:calc(100vh - 104px); min-height:420px }
+/* AI 咨询：整屏固定布局（页面不滚动，只有消息区滚动） */
+body.ai-mode #content{ padding:0; overflow:hidden }
+.ai-wrap{ display:flex; flex-direction:column; height:100%; min-height:0 }
 .ai-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border-bottom:1px solid var(--line); flex:0 0 auto }
 .ai-head-t{ font-weight:700; font-size:16px }
 .ai-head-sub{ font-weight:400; font-size:12px; color:var(--txt-dim); margin-left:6px }
 .ai-head-r{ display:flex; gap:8px }
-.ai-msgs{ flex:1 1 auto; overflow-y:auto; padding:12px; -webkit-overflow-scrolling:touch }
-.ai-dock{ flex:0 0 auto; border-top:1px solid var(--line); padding:10px 12px calc(10px + env(safe-area-inset-bottom)) }
+.ai-msgs{ flex:1 1 auto; overflow-y:auto; padding:12px; -webkit-overflow-scrolling:touch; min-height:0 }
+.ai-dock{ flex:0 0 auto; border-top:1px solid var(--line); padding:10px 12px calc(10px + env(safe-area-inset-bottom)); background:var(--panel) }
 .ai-dock #aiInput{ width:100%; resize:none }
 .ai-dock-row{ display:flex; align-items:center; gap:8px; margin-top:8px }
 .ai-spacer{ flex:1 }
