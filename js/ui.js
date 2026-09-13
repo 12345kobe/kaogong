@@ -519,10 +519,11 @@
         canvas.addEventListener("pointerup", endStroke, { passive: false });
         canvas.addEventListener("pointercancel", endStroke, { passive: false });
 
-        // 工具栏
-        overlay.querySelector(".hw-tool.close").onclick = () => { document.body.style.overflow = prevBodyOverflow; window.removeEventListener("resize", sizeCanvas); if (window.visualViewport) window.visualViewport.removeEventListener("resize", sizeCanvas); overlay.remove(); };
-        overlay.querySelector(".hw-done-fab").onclick = saveAndClose;
-        overlay.querySelector(".hw-tool.done").onclick = saveAndClose;
+        // 工具栏（bind 对缺失元素安全 no-op，避免单个按钮改名导致整个手写打不开）
+        function bind(sel, fn) { const el2 = overlay.querySelector(sel); if (el2) el2.onclick = fn; }
+        bind(".hw-tool.close", () => { document.body.style.overflow = prevBodyOverflow; window.removeEventListener("resize", sizeCanvas); if (window.visualViewport) window.visualViewport.removeEventListener("resize", sizeCanvas); overlay.remove(); });
+        bind(".hw-done-fab", saveAndClose);
+        bind(".hw-tool.done", saveAndClose);
         overlay.querySelector(".hw-tool.undo").onclick = () => {
           if (!notes.strokes.length) return;
           redo.push(notes.strokes.pop()); selected = null;
