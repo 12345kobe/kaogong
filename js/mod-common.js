@@ -416,6 +416,7 @@
         </div>
       </div>`);
       body.appendChild(kpCard);
+      try { UI.floatingAnno("常识", "common_kp", kpCard); } catch (e) {}
 
       let kpItems = [];
 

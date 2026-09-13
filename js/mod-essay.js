@@ -63,6 +63,7 @@
         box.innerHTML = html;
         const comBody = box.querySelector(".kg-com-body");
         box.appendChild(UI.notebook("申论", "essay_commentary_" + rec.id, comBody));
+        try { UI.floatingAnno("申论", "essay_commentary_" + rec.id, comBody); } catch (e) {}
         UI.modal({
           title: "📰 申论时评 · " + rec.date,
           body: box, width: "860px",
@@ -104,6 +105,7 @@
         </div>
         <div id="quotes"></div></div>`);
       addSec("🌟 每日金句（大作文素材）", quotesCard);
+      try { UI.floatingAnno("申论", "essay_jinju", quotesCard); } catch (e) {}
 
       function daySeed() {
         const d = new Date(); const start = new Date(d.getFullYear(), 0, 0);
@@ -340,6 +342,7 @@
           </div>`).join("");
         });
         box.innerHTML = `<div style="max-height:60vh;overflow:auto;display:flex;flex-direction:column;gap:8px">${html}</div>`;
+        try { UI.floatingAnno("申论", "essay_norm_study", box); } catch (e) {}
         UI.modal({
           title: sec ? ("规范词学习 · " + sec.section) : "规范词学习 · 全部板块",
           body: box, width: "760px",

@@ -729,6 +729,7 @@
           if (!el.hasAttribute("data-oi")) el.setAttribute("data-oi", String(i));
         });
         bindSelection(eb);
+        try { UI.floatingAnno("申论", "essay_fanwen_" + idx, eb); } catch (e) {}
 
         const mkClear = body.querySelector("#mkClear");
         if (mkClear) mkClear.onclick = () => {

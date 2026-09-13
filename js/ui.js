@@ -662,6 +662,33 @@
       wrap.querySelector(".kg-att-file").onchange = e => { UI.Attachments.addFiles(subject, id, e.target.files); e.target.value = ""; renderGrid(); };
       renderGrid(); refreshOverlay();
       return wrap;
+    },
+
+    /* 左下角悬浮标注按钮：点击进入笔记模式（手写见解），笔迹直接覆盖在内容上。
+       UI.floatingAnno(subject, id, anchor) —— anchor 为要标记的阅读内容容器；
+       按钮作为 anchor 的子节点（随容器一起销毁），position:fixed 悬浮在左下角。 */
+    floatingAnno(subject, id, anchor) {
+      if (!anchor) return null;
+      if (anchor.querySelector && anchor.querySelector(".kg-anno-fab")) return null; // 防重复挂载
+      const DB = window.DB;
+      const btn = el(`<button class="kg-anno-fab" title="标记笔记 · 写下你的见解">✍<span class="kg-anno-dot" style="display:none">•</span></button>`);
+      anchor.appendChild(btn);
+      function refreshDot() {
+        const has = UI.Notes.has(subject, id);
+        const dot = btn.querySelector(".kg-anno-dot");
+        if (dot) dot.style.display = has ? "inline" : "none";
+        btn.classList.toggle("has", has);
+      }
+      function refreshOverlay() { try { UI.Notes.inlineOverlay(anchor, subject, id); } catch (e) {} }
+      btn.onclick = () => {
+        UI.Handwriting.open({
+          subject, id, anchor,
+          onChange: () => { refreshOverlay(); refreshDot(); }
+        });
+      };
+      refreshDot();
+      if (UI.Notes.has(subject, id)) refreshOverlay();
+      return btn;
     }
   };
 

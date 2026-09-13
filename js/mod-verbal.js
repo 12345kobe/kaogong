@@ -485,6 +485,7 @@
           host.querySelector("#next").onclick = () => { if (wi < words.length - 1) { wi++; renderWord(); } };
         }
         renderWord();
+        try { UI.floatingAnno("言语", "verbal_book_" + bookGroups.indexOf(g), host); } catch (e) {}
         // 停留满 5 秒记本组全部词复习 +1（保留原打卡功能）
         bookTimer = setTimeout(() => {
           words.forEach(w => { revG[w.word] = (revG[w.word] || 0) + 1; });

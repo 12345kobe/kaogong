@@ -69,8 +69,71 @@
     render(body) {
       DB.state.favorites = DB.state.favorites || {};
       body.innerHTML = "";
-      const header = UI.el(`<div class="card"><h2>⭐ 收藏题目</h2><div class="muted small">答题时点击题目右上角的「☆」即可收藏；再次点击取消。</div></div>`);
+      const header = UI.el(`<div class="card"><h2>⭐ 收藏题目</h2><div class="muted small" style="margin-bottom:8px">答题时点击题目右上角的「☆」即可收藏；再次点击取消。</div>
+        <div class="row" style="gap:8px;margin-top:6px"><button class="btn primary" id="favBatch">📚 批量练题</button></div></div>`);
       body.appendChild(header);
+      header.querySelector("#favBatch").onclick = () => startBatch();
+
+      /* 批量练题：默认 10 题（可选 5–20），练题/背题模式（默认练题），带提交按钮 */
+      function startBatch() {
+        const all = [];
+        SUBJECTS.forEach(s => (DB.state.favorites[s] || []).forEach(it => all.push({ q: it.q, options: it.options, a: it.a, e: it.e, subject: it.subject || s, qid: it.qid })));
+        if (!all.length) { UI.toast("还没有收藏的题目，去答题时点 ☆ 收藏吧"); return; }
+        const mask = UI.el(`<div class="modal-mask"><div class="modal" style="max-width:480px">
+          <h3>⭐ 收藏批量练题</h3>
+          <div class="muted small" style="margin:6px 0">共 ${all.length} 道收藏题，选择本次题量与模式。</div>
+          <div style="margin:14px 0">
+            <label class="muted small">题量（5–20）</label>
+            <input type="range" min="5" max="20" value="10" id="bN" style="width:100%">
+            <div style="text-align:center;font-size:22px;font-weight:800;margin-top:4px" id="bNv">10 题</div>
+          </div>
+          <div class="row" style="gap:8px;margin:10px 0;align-items:center">
+            <span class="muted small">模式</span>
+            <button class="qm-chip on" id="bP">📝 练题</button>
+            <button class="qm-chip" id="bM">📖 背题</button>
+          </div>
+          <div class="muted small" style="margin-top:4px">练题＝答完再交卷；背题＝选完即看答案。错题仍自动进对应科目错题本。</div>
+          <div class="row" style="justify-content:flex-end;gap:8px;margin-top:14px">
+            <button class="btn ghost" id="bCancel">取消</button>
+            <button class="btn primary" id="bStart">开始练习</button>
+          </div>
+        </div></div>`);
+        document.body.appendChild(mask);
+        let mode = "practice";
+        const nInput = mask.querySelector("#bN");
+        const nVal = mask.querySelector("#bNv");
+        nInput.oninput = () => nVal.textContent = nInput.value + " 题";
+        mask.querySelector("#bP").onclick = () => { mode = "practice"; mask.querySelector("#bP").classList.add("on"); mask.querySelector("#bM").classList.remove("on"); };
+        mask.querySelector("#bM").onclick = () => { mode = "memorize"; mask.querySelector("#bM").classList.add("on"); mask.querySelector("#bP").classList.remove("on"); };
+        mask.querySelector("#bCancel").onclick = () => mask.remove();
+        mask.onclick = e => { if (e.target === mask) mask.remove(); };
+        mask.querySelector("#bStart").onclick = () => {
+          const n = Math.max(5, Math.min(20, parseInt(nInput.value, 10) || 10));
+          const take = Math.min(n, all.length);
+          const pool = all.slice();
+          for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = pool[i]; pool[i] = pool[j]; pool[j] = t; }
+          const picked = pool.slice(0, take);
+          mask.remove();
+          runBatchQuiz(picked, mode, take, all.length);
+        };
+      }
+      function runBatchQuiz(picked, mode, take, total) {
+        const mask = UI.el(`<div class="modal-mask"><div class="modal" style="max-width:880px;max-height:92vh;overflow:auto">
+          <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
+            <h3 style="margin:0">⭐ 收藏练题（${take}/${total}）</h3>
+            <button class="btn ghost" id="bBack">返回收藏</button>
+          </div>
+          <div class="fav-quiz"></div>
+        </div></div>`);
+        document.body.appendChild(mask);
+        mask.querySelector("#bBack").onclick = () => { mask.remove(); MODULES.favorites.render(body); };
+        mask.onclick = e => { if (e.target === mask) { mask.remove(); MODULES.favorites.render(body); } };
+        try {
+          window.Quiz.start(mask.querySelector(".fav-quiz"), picked, "收藏", { mode: mode, noStats: true, onDone: () => {} });
+        } catch (e) {
+          mask.querySelector(".fav-quiz").innerHTML = `<div class="card empty">练习启动失败：${UI.esc(e.message)}</div>`;
+        }
+      }
       let total = 0;
       SUBJECTS.forEach(subject => {
         const items = DB.state.favorites[subject] = DB.state.favorites[subject] || [];

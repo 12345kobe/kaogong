@@ -525,6 +525,18 @@ body.light .hw-palette{background:rgba(255,255,255,.98);border-color:#d6dce6}
   box-shadow:0 8px 24px rgba(52,231,228,.35);cursor:pointer;-webkit-tap-highlight-color:transparent}
 .focus-fab:active{transform:scale(.96)}
 
+/* ===== 左下角悬浮标注按钮（标记学习点笔记） ===== */
+.kg-anno-fab{position:fixed;left:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 16px);z-index:70;
+  width:46px;height:46px;border-radius:50%;border:2px solid var(--cyan);
+  background:rgba(20,29,59,.9);color:var(--cyan);font-size:20px;line-height:1;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:visible;
+  box-shadow:0 6px 18px rgba(0,0,0,.4);-webkit-tap-highlight-color:transparent}
+.kg-anno-fab:active{transform:scale(.94)}
+.kg-anno-fab.has{border-color:var(--yellow);color:var(--yellow)}
+.kg-anno-fab .kg-anno-dot{position:absolute;top:-4px;right:-2px;font-size:14px;color:var(--yellow);text-shadow:0 0 4px rgba(0,0,0,.6)}
+body.light .kg-anno-fab{background:rgba(255,255,255,.95);border-color:var(--cyan)}
+body.light .kg-anno-fab.has{border-color:#d9a400;color:#d9a400}
+
 /* ===== 上岸计时器 · 分段记录（仿 iPhone 秒表） ===== */
 .lap-btn{min-width:96px;font-weight:800;background:linear-gradient(135deg,#9b6cff,#34e7e4);color:#0f1430;border:none}
 .lap-btn:disabled{opacity:.4;cursor:not-allowed;background:var(--panel2);color:var(--txt-dim);border:1px solid var(--line)}

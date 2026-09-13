@@ -18,6 +18,9 @@
   const Quiz = {
     start(container, questions, subject, opts) {
       opts = opts || {};
+      const noStats = !!opts.noStats;
+      // 进入答题时隐藏所有悬浮标注按钮，避免与「交卷」按钮在左下角重叠
+      try { document.querySelectorAll(".kg-anno-fab").forEach(f => { f.style.display = "none"; }); } catch (e) {}
       // 模式：优先 opts.mode，否则全局设置，默认 practice（练题）
       const mode = opts.mode || (DB.state.settings && DB.state.settings.quizMode) || "practice";
       if (Quiz._handler) { try { document.removeEventListener("keydown", Quiz._handler); } catch (e) {} Quiz._handler = null; }
@@ -173,7 +176,7 @@
         }
         exp.innerHTML = html;
         if (!right) {
-          recordWrong(subject, qq, ua);
+          recordWrong(qq.subject || subject, qq, ua);
           const askWrap = UI.el(`<div class="qz-ask"><button class="btn ghost sm ask-ai">🤖 没看懂？询问 AI</button></div>`);
           exp.appendChild(askWrap);
           askWrap.querySelector(".ask-ai").onclick = () => askAI(qq, ua);
@@ -268,23 +271,21 @@
         const correct = results.filter(r => r && r.right).length;
         const totalSec = Math.floor((Date.now() - quizStart) / 1000);
         const pct = questions.length ? Math.round(correct / questions.length * 100) : 0;
-        // 学习时长
-        try {
-          const mins = Math.max(1, Math.round(totalSec / 60));
-          DB.addTimerMinutes(subject, mins);
-          DB.addSubjectSession(subject, mins);
-          DB.autoPlanRecord("quiz", subject, { text: subject + "刷题 " + questions.length + " 题 · 正确率 " + pct + "%", pct: pct, count: questions.length });
-        } catch (e) {}
-        // 累计正确率（统一走 DB.recordAccuracy，subjectShort 归一，保证与学习统计一一对应）
-        try {
-          DB.recordAccuracy(subject, correct, questions.length);
-        } catch (e) {}
-        try {
-          DB.state.accuracy = DB.state.accuracy || [];
-          DB.state.accuracy.push({ date: DB.today(), subject: DB.subjectShort(subject), pct: pct });
-          if (DB.state.accuracy.length > 500) DB.state.accuracy = DB.state.accuracy.slice(-500);
-          DB.save();
-        } catch (e) {}
+        if (!noStats) {
+          // 学习时长
+          try {
+            const mins = Math.max(1, Math.round(totalSec / 60));
+            DB.addTimerMinutes(subject, mins);
+            DB.addSubjectSession(subject, mins);
+            DB.autoPlanRecord("quiz", subject, { text: subject + "刷题 " + questions.length + " 题 · 正确率 " + pct + "%", pct: pct, count: questions.length });
+          } catch (e) {}
+          // 正确率（混合科目收藏题按各自科目分别累计，避免污染单一学科统计）
+          try {
+            const mixed = questions.some(q => q.subject && q.subject !== subject);
+            if (mixed) questions.forEach((qq, qi) => { const r = results[qi]; if (r) DB.recordAccuracy(qq.subject || subject, r.right ? 1 : 0, 1); });
+            else DB.recordAccuracy(subject, correct, questions.length);
+          } catch (e) {}
+        }
         const breakdown = questions.map((qq, qi) => {
           const t = qTimes[qi] ? fmt(qTimes[qi] / 1000) : "—";
           return `<div class="qz-row"><span>第 ${qi + 1} 题</span><span class="${qTimes[qi] ? "" : "muted"}">${t}</span></div>`;

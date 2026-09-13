@@ -200,6 +200,7 @@
       UI.toast("已记录为完成复习，明日再来 ✨");
       setTimeout(() => renderDetail(host, p), 100);
     };
+    try { UI.floatingAnno("政治", "politics_kp_" + p.id, host.querySelector(".kp-body")); } catch (e) {}
   }
 
   /* 答题：复用 Quiz.start */
@@ -370,6 +371,7 @@
         <div class="kp-body" style="margin-top:8px">${renderBody(p.body, p.highlights)}</div>
         <div id="pstat" class="muted small" style="margin-top:8px">已复习 ${rev[p.id] || 0} 次</div>`;
       pdetail.querySelector("#pback").onclick = () => openLesson({ idx: p.lessonIdx, title: lsTitle });
+      try { UI.floatingAnno("政治", "politics_p_" + p.id, pdetail.querySelector(".kp-body")); } catch (e) {}
       dwellCancel = startDwell(30000, () => {
         rev[p.id] = (rev[p.id] || 0) + 1;
         DB.save();
