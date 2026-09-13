@@ -402,7 +402,7 @@ body.light .good-words{background:#f4f7fc}
 /* ===== 全屏手写标注画板 ===== */
 .hw-overlay{position:fixed;inset:0;z-index:10000;background:rgba(10,14,30,.72);touch-action:none;-webkit-user-select:none;user-select:none}
 body.light .hw-overlay{background:rgba(244,247,252,.82)}
-.hw-layer{position:absolute;inset:0;display:block;touch-action:none;cursor:crosshair;background:transparent}
+.hw-layer{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:crosshair;background:transparent}
 .hw-tools{position:fixed;top:0;left:0;right:0;z-index:10001;display:flex;gap:6px;align-items:center;padding:8px 10px;padding-top:calc(env(safe-area-inset-top,0px) + 8px);background:rgba(20,29,59,.97);border-bottom:1px solid var(--line);overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 body.light .hw-tools{background:rgba(255,255,255,.98);border-bottom-color:#d6dce6}
 .hw-tools::-webkit-scrollbar{height:0;display:none}
