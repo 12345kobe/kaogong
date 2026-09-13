@@ -110,7 +110,16 @@
   function setTemp(v) { try { localStorage.setItem(LS_TEMP, String(v)); } catch (e) {} }
 
   let pending = ""; // 外部（如答题页「询问AI」）预填内容
-  function ask(text) { pending = text || ""; location.hash = "#/ai"; }
+  function ask(text) {
+    pending = text || "";
+    // 关闭所有打开的模态框（收藏/资料/言语等刷题弹窗）。否则 location.hash 切换后
+    // AI 模块会渲染在弹窗背后，视觉上「没跳走」，用户以为还停留在原位置。
+    try {
+      const root = document.getElementById("modalRoot");
+      if (root) { while (root.firstChild) root.removeChild(root.firstChild); }
+    } catch (e) {}
+    location.hash = "#/ai";
+  }
 
   /* ===== 调用（OpenAI 兼容，按当前服务商） ===== */
   async function chat(messages, o) {
@@ -263,7 +272,7 @@
           }
           return `<div class="ai-msg ${m.role === "user" ? "user" : "bot"}">
             <div class="ai-who">${m.role === "user" ? "我" : "AI"}</div>
-            <div class="ai-text">${esc(m.content).replace(/\n/g, "<br>")}${html}</div>
+            <div class="ai-text">${UI.md(m.content)}${html}</div>
           </div>`;
         }).join("");
         msgs.scrollTop = msgs.scrollHeight;

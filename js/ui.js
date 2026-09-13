@@ -6,8 +6,73 @@
   function el(html) { const d = document.createElement("div"); d.innerHTML = html.trim(); return d.firstElementChild; }
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
+  /* 轻量 Markdown -> HTML 渲染器：先转义防 XSS，再处理常用语法。
+     支持：```代码块``` #~###### 标题、> 引用、-/* 无序列表、1. 有序列表、--- 分隔线、
+     **加粗**、*斜体*、__加粗__、_斜体_、~~删除线~~、`行内代码`、[文字](链接)。 */
+  function md(src) {
+    const raw = String(src == null ? "" : src).replace(/\r\n/g, "\n");
+    const lines = raw.split("\n");
+    const out = [];
+    let listType = null, listBuf = [];
+    function flushList() {
+      if (listType) {
+        out.push(`<${listType}>` + listBuf.map(li => `<li>${inline(li)}</li>`).join("") + `</${listType}>`);
+        listType = null; listBuf = [];
+      }
+    }
+    function inline(t) {
+      // 先做 HTML 转义防 XSS，再替换内联标记（**加粗** / *斜体* / `代码` / 链接 等）
+      t = esc(t);
+      t = t.replace(/`([^`]+)`/g, (m, c) => `<code>${c}</code>`);
+      t = t.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+      t = t.replace(/__([^_]+)__/g, "<strong>$1</strong>");
+      t = t.replace(/\*([^*\s][^*]*?)\*/g, "<em>$1</em>");
+      t = t.replace(/(^|[\s(])_([^_]+)_(?=[\s).,!?]|$)/g, "$1<em>$2</em>");
+      t = t.replace(/~~([^~]+)~~/g, "<del>$1</del>");
+      t = t.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|\/[^\s)]*|#[^\s)]*)\)/g, (m, txt, url) =>
+        `<a href="${url}" target="_blank" rel="noopener">${txt}</a>`);
+      return t;
+    }
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      const fence = /^```(.*)$/.exec(line);
+      if (fence) {
+        const buf = []; i++;
+        while (i < lines.length && !/^```/.test(lines[i])) { buf.push(lines[i]); i++; }
+        i++; flushList();
+        out.push(`<pre><code>${buf.map(esc).join("\n")}</code></pre>`);
+        continue;
+      }
+      const h = /^(#{1,6})\s+(.*)$/.exec(line);
+      if (h) { flushList(); const lv = h[1].length; out.push(`<h${lv}>${inline(h[2])}</h${lv}>`); i++; continue; }
+      if (/^\s*(---|\*\*\*|___)\s*$/.test(line)) { flushList(); out.push("<hr>"); i++; continue; }
+      const bq = /^>\s?(.*)$/.exec(line);
+      if (bq) {
+        flushList();
+        const buf = [];
+        while (i < lines.length) { const m = /^>\s?(.*)$/.exec(lines[i]); if (!m) break; buf.push(m[1]); i++; }
+        out.push(`<blockquote>${inline(buf.join("<br>"))}</blockquote>`);
+        continue;
+      }
+      const ul = /^\s*[-*+]\s+(.*)$/.exec(line);
+      const ol = /^\s*\d+\.\s+(.*)$/.exec(line);
+      if (ul || ol) {
+        const ty = ul ? "ul" : "ol";
+        if (listType && listType !== ty) flushList();
+        listType = ty; listBuf.push(ul ? ul[1] : ol[1]); i++; continue;
+      }
+      if (/^\s*$/.test(line)) { flushList(); i++; continue; }
+      flushList();
+      out.push(`<p>${inline(line)}</p>`);
+      i++;
+    }
+    flushList();
+    return out.join("");
+  }
+
   const UI = {
-    el, esc,
+    el, esc, md,
     toast(msg) {
       const t = el(`<div class="toast">${esc(msg)}</div>`);
       document.getElementById("toastRoot").appendChild(t);
