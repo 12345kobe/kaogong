@@ -236,7 +236,18 @@
   function getRecord(id) { return store().find(r => r.id === id) || null; }
   function removeRecord(id) {
     const arr = store(); const i = arr.findIndex(r => r.id === id);
-    if (i >= 0) { arr.splice(i, 1); DB.save(); return true; }
+    if (i >= 0) {
+      arr.splice(i, 1);
+      // 清理申论素材中来自本条记录的金句
+      DB.state.essay = DB.state.essay || {};
+      DB.state.essay.userQuotes = (DB.state.essay.userQuotes || []).filter(q => q.source !== id);
+      // 清理本条记录相关的笔记/附件
+      try { delete (DB.state.notes["时政"] || {})["rec_" + id]; } catch (e) {}
+      try { delete (DB.state.attachments["时政"] || {})["rec_" + id]; } catch (e) {}
+      try { delete (DB.state.notes["申论"] || {})["essay_commentary_" + id]; } catch (e) {}
+      try { delete (DB.state.attachments["申论"] || {})["essay_commentary_" + id]; } catch (e) {}
+      DB.save(); return true;
+    }
     return false;
   }
   function setDate(id, date) { const r = getRecord(id); if (r) { r.date = date; DB.save(); } }
@@ -315,6 +326,21 @@
     const hasAny = data.news.length || (data.essay.paras || []).length || data.words.length || data.verbal.length || data.quiz.length;
     if (!hasAny) throw new Error("没有识别到可用的时政内容（需要含「第X部分」或 ⭐ 时政条目）");
     const rec = addRecord(data, date || data.date, title);
+    // 把「必背金句」追加到申论大作文素材，避免重复
+    const eq = data.essay || {};
+    if ((eq.quotes || []).length) {
+      DB.state.essay = DB.state.essay || {};
+      DB.state.essay.userQuotes = DB.state.essay.userQuotes || [];
+      const existing = new Set(DB.state.essay.userQuotes.map(q => (q.date || "") + "|" + q.t));
+      eq.quotes.forEach(q => {
+        const key = (rec.date || "") + "|" + q;
+        if (!existing.has(key)) {
+          DB.state.essay.userQuotes.push({ t: q, theme: eq.topic || "时政", date: rec.date, source: rec.id });
+          existing.add(key);
+        }
+      });
+      DB.save();
+    }
     return rec;
   }
 
@@ -347,7 +373,10 @@
           <span class="muted small">识别后自动跳到本页列表，可直接查看/练题</span>
         </div>
       </div>`);
-      body.appendChild(card);
+      // 粘贴区默认折叠，记录区默认展开
+      const pasteSec = UI.section("📝 粘贴时政材料", { open: false });
+      pasteSec.querySelector(".kg-det-b").appendChild(card);
+      body.appendChild(pasteSec);
 
       const SAMPLE = [
         "第一部分：2026年9月12日公考标准时政汇总（星级重难点）",
@@ -391,7 +420,9 @@
 
       /* —— 列表 —— */
       const lc = UI.el(`<div class="card" style="margin-top:14px"><h3>📅 我的时政记录</h3><div id="curList"></div></div>`);
-      body.appendChild(lc);
+      const recSec = UI.section("📅 我的时政记录", { open: true });
+      recSec.querySelector(".kg-det-b").appendChild(lc);
+      body.appendChild(recSec);
       function renderList() { renderRecords(lc.querySelector("#curList")); }
       renderList();
 

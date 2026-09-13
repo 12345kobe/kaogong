@@ -46,6 +46,55 @@
       progEditor("xiaoti", "小题", prog.querySelector("#xt"));
       progEditor("dagongwen", "大作文", prog.querySelector("#dgw"));
 
+      // 申论时评（来自当天时政识别）
+      function todayCommentary() {
+        if (!window.KGCurrent) return null;
+        return window.KGCurrent.list().find(r => r.date === DB.today() && r.data && r.data.essay && ((r.data.essay.paras || []).length || r.data.essay.topic));
+      }
+      function openCommentary(rec) {
+        const box = UI.el(`<div style="max-height:70vh;overflow:auto"></div>`);
+        let html = `<div class="kg-com-body" style="position:relative;padding:12px;line-height:1.8">`;
+        html += `<h2>${UI.esc(rec.data.essay.topic || rec.title)}</h2>`;
+        (rec.data.essay.paras || []).forEach(p => { html += `<p>${UI.esc(p)}</p>`; });
+        if ((rec.data.essay.quotes || []).length) {
+          html += `<h3>必背金句</h3><ol>` + rec.data.essay.quotes.map(q => `<li>${UI.esc(q)}</li>`).join("") + `</ol>`;
+        }
+        html += `</div>`;
+        box.innerHTML = html;
+        const comBody = box.querySelector(".kg-com-body");
+        box.appendChild(UI.notebook("申论", "essay_commentary_" + rec.id, comBody));
+        UI.modal({
+          title: "📰 申论时评 · " + rec.date,
+          body: box, width: "860px",
+          actions: [
+            { label: "⬇ 导出PDF", cls: "ghost", onClick: () => exportCommentaryPdf(rec, comBody) },
+            { label: "关闭", cls: "ghost", onClick: (m, c) => c() }
+          ]
+        });
+      }
+      function exportCommentaryPdf(rec, comBody) {
+        const rid = "essay_commentary_" + rec.id;
+        let html = comBody.innerHTML;
+        const notes = UI.Notes.get("申论", rid);
+        if (notes && notes.strokes && notes.strokes.length) {
+          const W = notes.vw || comBody.clientWidth || 720;
+          html = `<div style="position:relative;width:${W}px">${html}${UI.Notes.overlayHtml(notes)}</div>`;
+        }
+        html += UI.Attachments.toHtml("申论", rid);
+        window.PDF.exportHtml("申论时评 · " + (rec.data.essay.topic || rec.title), html);
+      }
+      const comRec = todayCommentary();
+      const comCard = UI.el(`<div class="card"><h3>📰 申论时评</h3>
+        ${comRec
+          ? `<div class="muted small">${UI.esc(comRec.data.essay.topic || comRec.title)} · ${comRec.date}</div>
+             <div class="row" style="margin-top:10px;gap:8px">
+               <button class="btn primary" id="comOpen">📖 查看并手写标注</button>
+             </div>`
+          : `<div class="empty">暂无今日时评，请去「时政」模块粘贴识别。</div>`}
+      </div>`);
+      if (comRec) comCard.querySelector("#comOpen").onclick = () => openCommentary(comRec);
+      addSec("📰 申论时评", comCard, true);
+
       // 每日金句
       const quotesCard = UI.el(`<div class="card"><h3>🌟 每日金句（大作文素材）</h3>
         <div class="row" style="margin-bottom:8px">
@@ -66,11 +115,25 @@
         for (let i = arr.length - 1; i > 0; i--) { s = (s * 9301 + 49297) % 233280; const j = Math.floor(s / 233280 * (i + 1));[arr[i], arr[j]] = [arr[j], arr[i]]; }
         return arr.slice(0, n);
       }
+      function todayUserQuotes() {
+        return ((DB.state.essay && DB.state.essay.userQuotes) || []).filter(q => q.date === DB.today());
+      }
       function renderQuotes(seed) {
         const qs = pick(5, seed);
-        quotesCard.querySelector("#quotes").innerHTML = qs.map(q => `<div class="todo" style="flex-direction:column;align-items:flex-start">
+        const uq = todayUserQuotes();
+        const parts = [];
+        if (uq.length) {
+          parts.push(`<div class="muted small" style="margin-bottom:6px">📌 今日时政必背金句</div>`);
+          parts.push(uq.map(q => `<div class="todo" style="flex-direction:column;align-items:flex-start">
+            <div style="font-size:15px">“${UI.esc(q.t)}”</div>
+            <span class="chip">${UI.esc(q.theme || "时政")}</span></div>`).join(""));
+          parts.push(`<div class="muted small" style="margin:12px 0 6px">🎲 每日推荐金句</div>`);
+          window.LearnedHistory.record("essay_jinju", uq.map(q => q.t));
+        }
+        parts.push(qs.map(q => `<div class="todo" style="flex-direction:column;align-items:flex-start">
           <div style="font-size:15px">“${UI.esc(q.t)}”</div>
-          <span class="chip">适用主题：${UI.esc(q.theme)}</span></div>`).join("");
+          <span class="chip">适用主题：${UI.esc(q.theme)}</span></div>`).join(""));
+        quotesCard.querySelector("#quotes").innerHTML = parts.join("");
         window.LearnedHistory.record("essay_jinju", qs.map(q => q.t)); // 记录当天看过的金句（按先后、去重）
         return qs;
       }
@@ -78,16 +141,23 @@
       let curQuotes = renderQuotes(curSeed);
       quotesCard.querySelector("#swap").onclick = () => { curSeed = Math.floor(Math.random() * 99999); curQuotes = renderQuotes(curSeed); };
       quotesCard.querySelector("#pdf").onclick = () => {
-        const html = curQuotes.map(q => `<div class="item">“${UI.esc(q.t)}” <span class="chip">${UI.esc(q.theme)}</span></div>`).join("");
+        const uq = todayUserQuotes();
+        let html = "";
+        if (uq.length) {
+          html += `<div class="subhead">📌 今日时政必背金句</div>` + uq.map(q => `<div class="item">“${UI.esc(q.t)}” <span class="chip">${UI.esc(q.theme || "时政")}</span></div>`).join("");
+        }
+        html += `<div class="subhead">🎲 每日推荐金句</div>` + curQuotes.map(q => `<div class="item">“${UI.esc(q.t)}” <span class="chip">${UI.esc(q.theme)}</span></div>`).join("");
         window.PDF.exportHtml("申论 · 每日金句", html + UI.Attachments.toHtml("申论", "essay_main"));
       };
       const jjMap = {};
       window.BANKS.ESSAY_QUOTES.forEach(q => { jjMap[q.t] = q; });
+      (DB.state.essay.userQuotes || []).forEach(q => { jjMap[q.t] = q; });
       quotesCard.querySelector("#jinjuLearned").onclick = () => {
         window.LearnedHistory.record("essay_jinju", curQuotes.map(q => q.t));
+        window.LearnedHistory.record("essay_jinju", todayUserQuotes().map(q => q.t));
         window.LearnedHistory.open("essay_jinju", "申论 · 每日金句", (id) => {
           const q = jjMap[id]; if (!q) return null;
-          return { primary: "“" + q.t + "”", secondary: "适用主题：" + q.theme };
+          return { primary: "“" + q.t + "”", secondary: "适用主题：" + (q.theme || "时政") };
         });
       };
 
