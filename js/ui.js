@@ -278,11 +278,11 @@
         const notesRoot = DB.state.notes = DB.state.notes || {};
         notesRoot[subject] = notesRoot[subject] || {};
         let notes = notesRoot[subject][id] ? JSON.parse(JSON.stringify(notesRoot[subject][id])) : null;
-        if (!notes) notes = { vw: anchor ? anchor.clientWidth : window.innerWidth, vh: anchor ? (anchor.scrollHeight || anchor.clientHeight) : window.innerHeight, strokes: [] };
+        if (!notes) notes = { vw: 0, vh: 0, strokes: [] };
         if (!notes.strokes) notes.strokes = [];
         let redo = [];
         let tool = "pen";                 // pen | hl | erase
-        let cur = null, drawing = false;  // cur.points 为像素坐标
+        let cur = null, drawing = false;  // cur.points 为屏幕像素坐标（所见即所得）
         let color = "#ff6b4a", penW = 3.2, hlW = 20;
         let selected = null, drag = null, lastPx = null;
 
@@ -316,66 +316,76 @@
         const offCanvas = document.createElement("canvas");
         const offCtx = offCanvas.getContext("2d", { alpha: true });
 
-        function viewSize() {
-          if (anchor) return { w: anchor.clientWidth, h: anchor.scrollHeight || anchor.clientHeight, dpr: window.devicePixelRatio || 1 };
-          return { w: window.innerWidth, h: window.innerHeight, dpr: window.devicePixelRatio || 1 };
-        }
-        function absolute(e) {
+        // 两套尺寸：screen = canvas 实际显示大小；norm = 锚定内容大小（用于 PDF 不偏移）
+        let screenW = 0, screenH = 0, normW = 1, normH = 1;
+        let anchorRect = null;
+        function refreshMetrics() {
+          const r = canvas.getBoundingClientRect();
+          screenW = r.width; screenH = r.height;
           if (anchor) {
-            const r = anchor.getBoundingClientRect();
-            return { x: e.clientX - r.left + anchor.scrollLeft, y: e.clientY - r.top + anchor.scrollTop };
+            anchorRect = anchor.getBoundingClientRect();
+            normW = Math.max(1, anchor.clientWidth || screenW);
+            normH = Math.max(1, (anchor.scrollHeight || anchor.clientHeight || screenH));
+          } else {
+            anchorRect = null; normW = Math.max(1, screenW); normH = Math.max(1, screenH);
           }
-          return { x: e.clientX, y: e.clientY };
+          notes.vw = normW; notes.vh = normH;
         }
+        function toNorm(px, py) {
+          if (anchorRect) return { x: (px - anchorRect.left) / normW, y: (py - anchorRect.top + (anchor ? anchor.scrollTop : 0)) / normH };
+          return { x: px / normW, y: py / normH };
+        }
+        function toScreen(nx, ny) {
+          if (anchorRect) return { x: nx * normW + anchorRect.left, y: ny * normH + anchorRect.top - (anchor ? anchor.scrollTop : 0) };
+          return { x: nx * normW, y: ny * normH };
+        }
+
         function sizeCanvas() {
-          const v = viewSize(), dpr = v.dpr;
-          canvas.width = Math.max(1, Math.round(v.w * dpr));
-          canvas.height = Math.max(1, Math.round(v.h * dpr));
-          canvas.style.width = v.w + "px";
-          canvas.style.height = v.h + "px";
+          refreshMetrics();
+          const dpr = window.devicePixelRatio || 1;
+          canvas.width = Math.max(1, Math.round(screenW * dpr));
+          canvas.height = Math.max(1, Math.round(screenH * dpr));
+          canvas.style.width = screenW + "px";
+          canvas.style.height = screenH + "px";
           offCanvas.width = canvas.width; offCanvas.height = canvas.height;
           mainCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
           offCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-          notes.vw = v.w; notes.vh = v.h;
           renderToOffscreen(); blit();
         }
+        function absolute(e) {
+          const r = canvas.getBoundingClientRect();
+          return { x: e.clientX - r.left, y: e.clientY - r.top };
+        }
         function drawStroke(ctx, st) {
-          const v = viewSize();
           if (st.type === "hl") {
-            ctx.save();
-            ctx.globalAlpha = 0.42;
-            ctx.fillStyle = st.color || "#ffd166";
-            ctx.fillRect(st.x * v.w, st.y * v.h, Math.max(2, st.w * v.w), Math.max(2, st.h * v.h));
-            ctx.restore();
-            return;
+            const p = toScreen(st.x, st.y);
+            const w = st.w * normW, h = st.h * normH;
+            ctx.save(); ctx.globalAlpha = 0.42; ctx.fillStyle = st.color || "#ffd166";
+            ctx.fillRect(p.x, p.y, Math.max(2, w), Math.max(2, h));
+            ctx.restore(); return;
           }
           if (!st.points || st.points.length < 2) return;
-          ctx.strokeStyle = st.color || color;
-          ctx.lineWidth = st.width || penW;
+          ctx.strokeStyle = st.color || color; ctx.lineWidth = st.width || penW;
           ctx.lineCap = "round"; ctx.lineJoin = "round";
           ctx.beginPath();
-          st.points.forEach((p, idx) => { const x = p.x * v.w, y = p.y * v.h; idx === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); });
+          st.points.forEach((p, idx) => { const s = toScreen(p.x, p.y); idx === 0 ? ctx.moveTo(s.x, s.y) : ctx.lineTo(s.x, s.y); });
           ctx.stroke();
         }
         function renderToOffscreen() {
-          const v = viewSize();
-          offCtx.clearRect(0, 0, v.w, v.h);
+          offCtx.clearRect(0, 0, screenW, screenH);
           notes.strokes.forEach(st => drawStroke(offCtx, st));
         }
         function blit() {
-          const v = viewSize();
-          mainCtx.clearRect(0, 0, v.w, v.h);
-          mainCtx.drawImage(offCanvas, 0, 0, v.w, v.h);
+          mainCtx.clearRect(0, 0, screenW, screenH);
+          mainCtx.drawImage(offCanvas, 0, 0, screenW, screenH);
           if (tool === "hl" && selected) drawSelection(mainCtx, selected);
         }
         function drawSelection(ctx, st) {
-          const v = viewSize();
-          const x = st.x * v.w, y = st.y * v.h, w = st.w * v.w, h = st.h * v.h;
-          ctx.save();
-          ctx.strokeStyle = "#34e7e4"; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
-          ctx.strokeRect(x, y, w, h);
-          ctx.setLineDash([]);
-          [[x, y], [x + w, y], [x, y + h], [x + w, y + h]].forEach(p => { ctx.beginPath(); ctx.fillStyle = "#34e7e4"; ctx.arc(p[0], p[1], 8, 0, 7); ctx.fill(); });
+          const p = toScreen(st.x, st.y);
+          const w = st.w * normW, h = st.h * normH;
+          ctx.save(); ctx.strokeStyle = "#34e7e4"; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
+          ctx.strokeRect(p.x, p.y, w, h); ctx.setLineDash([]);
+          [[p.x, p.y], [p.x + w, p.y], [p.x, p.y + h], [p.x + w, p.y + h]].forEach(pt => { ctx.beginPath(); ctx.fillStyle = "#34e7e4"; ctx.arc(pt[0], pt[1], 8, 0, 7); ctx.fill(); });
           ctx.restore();
         }
         function drawCurrent(ctx) {
@@ -394,9 +404,10 @@
           } else if (tool === "hl") {
             const hl = makeHighlight(cur.points);
             if (hl) {
-              const v = viewSize();
+              const p = toScreen(hl.x, hl.y);
+              const w = hl.w * normW, h = hl.h * normH;
               ctx.save(); ctx.globalAlpha = 0.42; ctx.fillStyle = color;
-              ctx.fillRect(hl.x * v.w, hl.y * v.h, hl.w * v.w, hl.h * v.h); ctx.restore();
+              ctx.fillRect(p.x, p.y, w, h); ctx.restore();
             }
           }
         }
@@ -413,16 +424,15 @@
           } else if (Math.abs(ang) >= 72 && Math.abs(ang) <= 108) { // 接近垂直 → 规整竖线
             ax = bx = (a.x + b.x) / 2 - hlW / 2;
           }
-          const v = viewSize();
           const rx = Math.min(ax, bx), ry = Math.min(ay, by);
           const rw = Math.max(10, Math.abs(bx - ax)), rh = Math.max(10, Math.abs(by - ay));
-          return { type: "hl", color: color, x: rx / v.w, y: ry / v.h, w: rw / v.w, h: rh / v.h };
+          const n1 = toNorm(rx, ry), n2 = toNorm(rx + rw, ry + rh);
+          return { type: "hl", color: color, x: n1.x, y: n1.y, w: Math.max(0.001, n2.x - n1.x), h: Math.max(0.001, n2.y - n1.y) };
         }
         function bboxOf(st) {
-          const v = viewSize();
-          if (st.type === "hl") return { x: st.x * v.w, y: st.y * v.h, w: st.w * v.w, h: st.h * v.h };
+          if (st.type === "hl") { const p = toScreen(st.x, st.y); return { x: p.x, y: p.y, w: st.w * normW, h: st.h * normH }; }
           let minx = 1e9, miny = 1e9, maxx = -1e9, maxy = -1e9;
-          st.points.forEach(p => { const x = p.x * v.w, y = p.y * v.h; if (x < minx) minx = x; if (y < miny) miny = y; if (x > maxx) maxx = x; if (y > maxy) maxy = y; });
+          st.points.forEach(p => { const s = toScreen(p.x, p.y); if (s.x < minx) minx = s.x; if (s.y < miny) miny = s.y; if (s.x > maxx) maxx = s.x; if (s.y > maxy) maxy = s.y; });
           return { x: minx, y: miny, w: maxx - minx, h: maxy - miny };
         }
         function eraseStrokes(pts) {
@@ -434,8 +444,8 @@
           notes.strokes = notes.strokes.filter(st => !inter(bboxOf(st), eb));
         }
         function hitHighlight(st, px, py) {
-          const v = viewSize();
-          const x = st.x * v.w, y = st.y * v.h, w = st.w * v.w, h = st.h * v.h;
+          const p = toScreen(st.x, st.y);
+          const x = p.x, y = p.y, w = st.w * normW, h = st.h * normH;
           const near = (X, Y, r) => Math.hypot(px - X, py - Y) <= r;
           if (near(x, y, 14)) return "c1";
           if (near(x + w, y, 14)) return "c2";
@@ -447,7 +457,7 @@
         function commitStroke() {
           if (!cur) { drawing = false; return; }
           if (tool === "pen" && cur.points.length >= 2) {
-            const pts = cur.points.map(p => ({ x: p.x / viewSize().w, y: p.y / viewSize().h }));
+            const pts = cur.points.map(p => toNorm(p.x, p.y));
             notes.strokes.push({ type: "pen", color: color, width: penW, points: pts });
           } else if (tool === "hl") {
             const hl = makeHighlight(cur.points);
@@ -468,9 +478,9 @@
             if (ht) {
               drag = { mode: ht, st: selected };
               if (ht !== "move") {
-                const v = viewSize();
-                const x = selected.x * v.w, y = selected.y * v.h, w = selected.w * v.w, h = selected.h * v.h;
-                const corners = { c1: [x + w, y + h], c2: [x, y + h], c3: [x + w, y], c4: [x, y] };
+                const p0 = toScreen(selected.x, selected.y);
+                const w = selected.w * normW, h = selected.h * normH;
+                const corners = { c1: [p0.x + w, p0.y + h], c2: [p0.x, p0.y + h], c3: [p0.x + w, p0.y], c4: [p0.x, p0.y] };
                 drag.fixed = corners[ht];
               }
               lastPx = p; return;
@@ -483,16 +493,16 @@
           e.preventDefault();
           const p = absolute(e);
           if (drag) {
-            const v = viewSize();
             if (drag.mode === "move") {
-              selected.x += (p.x - lastPx.x) / v.w;
-              selected.y += (p.y - lastPx.y) / v.h;
+              selected.x += (p.x - lastPx.x) / normW;
+              selected.y += (p.y - lastPx.y) / normH;
             } else {
               const fx = drag.fixed[0], fy = drag.fixed[1];
-              const rx = Math.min(fx, p.x), ry = Math.min(fy, p.y);
-              selected.x = rx / v.w; selected.y = ry / v.h;
-              selected.w = Math.max(10, Math.abs(p.x - fx)) / v.w;
-              selected.h = Math.max(10, Math.abs(p.y - fy)) / v.h;
+              const n1 = toNorm(Math.min(fx, p.x), Math.min(fy, p.y));
+              const n2 = toNorm(Math.max(fx, p.x), Math.max(fy, p.y));
+              selected.x = n1.x; selected.y = n1.y;
+              selected.w = Math.max(0.001, n2.x - n1.x);
+              selected.h = Math.max(0.001, n2.y - n1.y);
             }
             lastPx = p; renderToOffscreen(); blit(); return;
           }
