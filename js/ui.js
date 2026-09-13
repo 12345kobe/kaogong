@@ -301,10 +301,10 @@
             <button class="hw-tool color" data-c="#ffd166" style="color:#ffd166" title="黄">●</button>
             <button class="hw-tool color" data-c="#7CFFB2" style="color:#7CFFB2" title="绿">●</button>
             <button class="hw-tool color" data-c="#ffffff" style="color:#ffffff" title="白">●</button>
-            <button class="hw-tool done" title="保存并关闭">✓</button>
           </div>
-          <div class="hw-hint">在内容上直接书写 · ✎手写 / 🖍荧光笔（横线竖线自动规整，点选后可拖动调位置、拉角调长短）/ 🧽橡皮擦 · ↶撤回 ↷重做</div>
+          <div class="hw-hint">在页面上直接书写 · ✎手写 / 🖍荧光笔 / 🧽橡皮擦 · ↶撤回 ↷重做 · 完成后点右下角「完成 ✓ 保存」</div>
           <canvas class="hw-layer"></canvas>
+          <button class="hw-done-fab">完成 ✓ 保存</button>
         </div>`);
         document.body.appendChild(overlay);
 
@@ -520,7 +520,8 @@
         canvas.addEventListener("pointercancel", endStroke, { passive: false });
 
         // 工具栏
-        overlay.querySelector(".hw-tool.close").onclick = saveAndClose;
+        overlay.querySelector(".hw-tool.close").onclick = () => { document.body.style.overflow = prevBodyOverflow; window.removeEventListener("resize", sizeCanvas); if (window.visualViewport) window.visualViewport.removeEventListener("resize", sizeCanvas); overlay.remove(); };
+        overlay.querySelector(".hw-done-fab").onclick = saveAndClose;
         overlay.querySelector(".hw-tool.done").onclick = saveAndClose;
         overlay.querySelector(".hw-tool.undo").onclick = () => {
           if (!notes.strokes.length) return;
@@ -558,11 +559,13 @@
           DB.save(); if (onChange) onChange();
           document.body.style.overflow = prevBodyOverflow;
           window.removeEventListener("resize", sizeCanvas);
+          if (window.visualViewport) window.visualViewport.removeEventListener("resize", sizeCanvas);
           overlay.remove();
         }
 
         sizeCanvas();
         window.addEventListener("resize", sizeCanvas);
+        if (window.visualViewport) window.visualViewport.addEventListener("resize", sizeCanvas);
       }
     },
 
