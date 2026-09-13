@@ -188,11 +188,20 @@
       questions.forEach((qq, qi) => {
         const qid = hashId(subject + "|" + qq.q);
         const hasNote = UI.Notes.has(subject, qid);
+        const favList = DB.state.favorites[subject] = DB.state.favorites[subject] || [];
+        function isFav() { return favList.some(f => f.qid === qid); }
+        function refreshFavBtn() {
+          const b = card.querySelector(".star-btn");
+          const on = isFav();
+          b.classList.toggle("on", on);
+          b.textContent = on ? "★" : "☆";
+        }
         const card = UI.el(`<div class="quiz-q" data-done="0" data-qi="${qi}">
           <div class="q-head">
             <span class="tag">第 ${qi + 1} 题</span>
             <span class="q-time muted small" style="margin-left:auto"></span>
             <button class="pen-btn ${hasNote ? "has" : ""}" title="手写标注（Apple Pencil）">✏️${hasNote ? "•" : ""}</button>
+            <button class="star-btn ${isFav() ? "on" : ""}" title="收藏题目">${isFav() ? "★" : "☆"}</button>
           </div>
           <div class="q">${nl2br(qq.q)}</div>
           <div class="opts"></div>
@@ -200,13 +209,19 @@
         const optsWrap = card.querySelector(".opts");
 
         card.querySelector(".pen-btn").onclick = () => UI.Handwriting.open({
-          subject, id: qid, anchor: card, onChange: () => {
+          subject, id: qid, anchor: card, fresh: true, onChange: () => {
             const has = UI.Notes.has(subject, qid);
             const b = card.querySelector(".pen-btn");
             b.classList.toggle("has", has);
             b.textContent = "✏️" + (has ? "•" : "");
           }
         });
+        card.querySelector(".star-btn").onclick = () => {
+          const idx = favList.findIndex(f => f.qid === qid);
+          if (idx >= 0) { favList.splice(idx, 1); UI.toast("已取消收藏"); }
+          else { favList.push({ qid, q: qq.q, options: qq.options.slice(), a: qq.a, e: qq.e || "", subject, addedAt: Date.now() }); UI.toast("已收藏题目"); }
+          DB.save(); refreshFavBtn();
+        };
 
         qq.options.forEach((o, i) => {
           const b = UI.el(`<button class="opt">${A(i)}. ${nl2br(o)}</button>`);

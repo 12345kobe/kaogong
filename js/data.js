@@ -64,6 +64,7 @@
     checkin: { lastDate: null, dates: [] },
     quotesLib: [],
     wrongbook: {}, // { subject: [ {id, q, a, ua, date, note, img} ] }
+    favorites: {}, // { subject: [ {id, q, options, a, e, subject, addedAt, qid} ] }
     notes: {}, // { subject: { qid: [ {color,width,points:[{x,y}]} ] } }  手写标注笔迹
     reviews: { verbal: {} }, // { word: {box, next} }
     lastResetDay: null,
