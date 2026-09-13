@@ -810,7 +810,8 @@ body.light .kg-det-s:hover{ background:#f3f6fb }
 /* ===== AI 咨询：整屏对话（占屏 80% 以上） ===== */
 /* AI 咨询：整屏固定布局（页面不滚动，只有消息区滚动） */
 body.ai-mode #content{ padding:0; overflow:hidden }
-.ai-wrap{ display:flex; flex-direction:column; height:100%; min-height:0 }
+body.ai-mode #content > #pageBody{ height:100%; display:flex; flex-direction:column; min-height:0 }
+.ai-wrap{ display:flex; flex-direction:column; flex:1 1 auto; min-height:0 }
 .ai-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border-bottom:1px solid var(--line); flex:0 0 auto }
 .ai-head-t{ font-weight:700; font-size:16px }
 .ai-head-sub{ font-weight:400; font-size:12px; color:var(--txt-dim); margin-left:6px }
