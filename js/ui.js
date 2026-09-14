@@ -3,6 +3,10 @@
   "use strict";
   const DB = window.DB;
 
+  // 答题（写题）过程中的手写笔迹：仅本次训练会话内有效，训练结束/切模块即丢弃（不落盘 DB）
+  let _hwSession = {};
+  function _hwKey(subject, id) { return subject + "\u0001" + id; }
+
   function el(html) { const d = document.createElement("div"); d.innerHTML = html.trim(); return d.firstElementChild; }
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
@@ -338,12 +342,20 @@
       open(opts) {
         const subject = opts.subject, id = opts.id, anchor = opts.anchor || null;
         const onChange = opts.onChange, fresh = opts.fresh;
+        const session = !!opts.session; // true：本次训练会话级笔迹（不落盘，结束训练即清）
         const DB = window.DB;
         const notesRoot = DB.state.notes = DB.state.notes || {};
         notesRoot[subject] = notesRoot[subject] || {};
         const saved = notesRoot[subject][id];
-        let notes = fresh ? { vw: 0, vh: 0, strokes: [] }
-          : (saved ? JSON.parse(JSON.stringify(saved)) : { vw: 0, vh: 0, strokes: [] });
+        let notes;
+        if (session) {
+          // 会话模式：始终从会话缓存还原（fresh 不再清空，保证「写完关闭→再打开」能看到当时的笔迹）
+          const sess = _hwSession[_hwKey(subject, id)];
+          notes = sess ? JSON.parse(JSON.stringify(sess)) : { vw: 0, vh: 0, strokes: [] };
+        } else {
+          notes = fresh ? { vw: 0, vh: 0, strokes: [] }
+            : (saved ? JSON.parse(JSON.stringify(saved)) : { vw: 0, vh: 0, strokes: [] });
+        }
         if (!notes.strokes) notes.strokes = [];
         let dirty = false, redo = [];
         let tool = "pen";                 // pen | erase
@@ -544,8 +556,15 @@
         }
         function saveAndClose() {
           if (dirty) {
-            if (notes.strokes.length) notesRoot[subject][id] = notes; else if (saved) delete notesRoot[subject][id];
-            DB.save(); if (onChange) onChange();
+            if (session) {
+              // 会话模式：只写入内存缓存，不落盘；训练结束由 UI.Handwriting.clearSession() 清空
+              const k = _hwKey(subject, id);
+              if (notes.strokes.length) _hwSession[k] = JSON.parse(JSON.stringify(notes)); else delete _hwSession[k];
+              if (onChange) onChange();
+            } else {
+              if (notes.strokes.length) notesRoot[subject][id] = notes; else if (saved) delete notesRoot[subject][id];
+              DB.save(); if (onChange) onChange();
+            }
           }
           document.body.style.overflow = prevBodyOverflow;
           window.removeEventListener("resize", sizeCanvas);
@@ -595,6 +614,27 @@
         sizeCanvas();
         window.addEventListener("resize", sizeCanvas);
         if (window.visualViewport) window.visualViewport.addEventListener("resize", sizeCanvas);
+      },
+
+      /* ===== 会话级笔迹（答题写题用）：仅当次训练有效，结束训练/切模块即清，不落盘 ===== */
+      hasSession(subject, id) {
+        const n = _hwSession[_hwKey(subject, id)];
+        return !!(n && n.strokes && n.strokes.length);
+      },
+      clearSession() { _hwSession = {}; },
+      /* 在题目卡片上直接显示本次会话的笔迹覆盖层：关闭面板后仍能看到写过的痕迹，精准对齐题目 */
+      renderInline(container, subject, id) {
+        const card = container;
+        const existing = card.querySelector(".kg-hw-session-ov");
+        if (existing) existing.remove();
+        const notes = _hwSession[_hwKey(subject, id)];
+        if (!notes || !notes.strokes || !notes.strokes.length) return;
+        const W = notes.vw || card.clientWidth || 720;
+        const H = notes.vh || card.scrollHeight || 800;
+        const inner = (window.UI && UI.Notes && UI.Notes._svgInner) ? UI.Notes._svgInner(notes, W, H) : "";
+        const ov = el(`<div class="kg-hw-session-ov" style="position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:6"><svg width="100%" height="100%" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${inner}</svg></div>`);
+        card.style.position = "relative";
+        card.appendChild(ov);
       }
     },
 

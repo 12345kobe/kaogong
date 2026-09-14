@@ -27,6 +27,8 @@
       if (Quiz._handler) { try { document.removeEventListener("keydown", Quiz._handler); } catch (e) {} Quiz._handler = null; }
       if (Quiz._timer) { try { clearInterval(Quiz._timer); } catch (e) {} Quiz._timer = null; }
       Quiz._answered = 0;
+      // 进入新一组训练：清空上一组会话级手写笔迹（不落盘，避免跨模块残留）
+      try { UI.Handwriting.clearSession(); } catch (e) {}
 
       // ===== 模式选择条：练题 / 背题（默认练题） =====
       const modeBar = UI.el(`<div class="quiz-modebar">
@@ -185,7 +187,7 @@
 
       questions.forEach((qq, qi) => {
         const qid = hashId(subject + "|" + qq.q);
-        const hasNote = UI.Notes.has(subject, qid);
+        const hasNote = UI.Handwriting.hasSession(subject, qid);
         const favList = DB.state.favorites[subject] = DB.state.favorites[subject] || [];
         function isFav() { return favList.some(f => f.qid === qid); }
         function refreshFavBtn() {
@@ -207,11 +209,15 @@
         const optsWrap = card.querySelector(".opts");
 
         card.querySelector(".pen-btn").onclick = () => UI.Handwriting.open({
-          subject, id: qid, anchor: card, fresh: true, onChange: () => {
-            const has = UI.Notes.has(subject, qid);
+          subject, id: qid, anchor: card, session: true, fresh: false, onChange: () => {
+            const has = UI.Handwriting.hasSession(subject, qid);
             const b = card.querySelector(".pen-btn");
             b.classList.toggle("has", has);
             b.textContent = "✏️" + (has ? "•" : "");
+            // 关闭面板后把本次会话笔迹覆盖到题目上，精准对齐，方便复盘
+            if (has) UI.Handwriting.renderInline(card, subject, qid); else {
+              const ov = card.querySelector(".kg-hw-session-ov"); if (ov) ov.remove();
+            }
           }
         });
         card.querySelector(".star-btn").onclick = () => {
@@ -263,6 +269,8 @@
         if (liveTimer) clearInterval(liveTimer);
         if (Quiz._timer) { try { clearInterval(Quiz._timer); } catch (e) {} Quiz._timer = null; }
         if (Quiz._handler) { try { document.removeEventListener("keydown", Quiz._handler); } catch (e) {} Quiz._handler = null; }
+        // 训练结束：丢弃本次会话的题面手写笔迹（符合「结束训练/切模块不再保存笔迹」）
+        try { UI.Handwriting.clearSession(); } catch (e) {}
         const correct = results.filter(r => r && r.right).length;
         const totalSec = Math.floor((Date.now() - quizStart) / 1000);
         const pct = questions.length ? Math.round(correct / questions.length * 100) : 0;
