@@ -19,6 +19,7 @@
     start(container, questions, subject, opts) {
       opts = opts || {};
       const noStats = !!opts.noStats;
+      const noRecordWrong = !!opts.noRecordWrong; // 错题本「重做本题」用：避免重复写入错题本
       // 进入答题时隐藏所有悬浮标注按钮，避免与「交卷」按钮在左下角重叠
       try { document.querySelectorAll(".kg-anno-fab").forEach(f => { f.style.display = "none"; }); } catch (e) {}
       // 模式：优先 opts.mode，否则全局设置，默认 practice（练题）
@@ -124,19 +125,13 @@
 
       /* ===== 把错题整理成 AI 看得懂的结构化文本，填入 AI 输入框 ===== */
       function askAI(qq, ua) {
-        const optsTxt = (qq.options || []).map((o, i) => A(i) + ". " + (o == null ? "" : o)).join("\n");
-        const myAns = (ua === undefined || ua === null || isNaN(ua)) ? "未作答" : A(ua);
-        const txt =
-          `【科目】${subject}\n` +
-          `【题目】${qq.q || ""}\n` +
-          (optsTxt ? `【选项】\n${optsTxt}\n` : "") +
-          `【我的答案】${myAns}\n` +
-          `【正确答案】${A(qq.a)}\n` +
-          (qq.e ? `【解析】${qq.e}\n` : "") +
-          `\n我看了解析还是没弄懂，请用通俗的方式一步步讲清楚：这道题的考点是什么、正确选项为什么对、我的思路错在哪里。\n我的疑惑点：（请在这里补充）`;
         try {
-          if (window.KGAI && window.KGAI.ask) { window.KGAI.ask(txt); }
-          else { UI.toast("AI 模块未就绪"); }
+          if (window.KGAI && window.KGAI.askQuestion) { window.KGAI.askQuestion(subject, qq, ua); }
+          else if (window.KGAI && window.KGAI.ask) {
+            const optsTxt = (qq.options || []).map((o, i) => A(i) + ". " + (o == null ? "" : o)).join("\n");
+            const myAns = (ua === undefined || ua === null || isNaN(ua)) ? "未作答" : A(ua);
+            window.KGAI.ask(`【科目】${subject}\n【题目】${qq.q || ""}\n${optsTxt ? "【选项】\n" + optsTxt + "\n" : ""}【我的答案】${myAns}\n【正确答案】${A(qq.a)}\n${qq.e ? "【解析】" + qq.e + "\n" : ""}`);
+          } else { UI.toast("AI 模块未就绪"); }
         } catch (e) { UI.toast("跳转 AI 失败：" + e.message); }
       }
 
@@ -176,7 +171,7 @@
         }
         exp.innerHTML = html;
         if (!right) {
-          recordWrong(qq.subject || subject, qq, ua);
+          if (!noRecordWrong) recordWrong(qq.subject || subject, qq, ua);
           const askWrap = UI.el(`<div class="qz-ask"><button class="btn ghost sm ask-ai">🤖 没看懂？询问 AI</button></div>`);
           exp.appendChild(askWrap);
           askWrap.querySelector(".ask-ai").onclick = () => askAI(qq, ua);

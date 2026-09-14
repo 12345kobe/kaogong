@@ -392,10 +392,12 @@
         const offCtx = offCanvas.getContext("2d", { alpha: true });
 
         let screenW = 0, screenH = 0, normW = 1, normH = 1;
+        let cvLeft = 0, cvTop = 0; // 画布在视口中的左上角（用于把视口坐标换算成画布本地坐标）
         let anchorRect = null;
         function refreshMetrics() {
           const r = canvas.getBoundingClientRect();
           screenW = r.width; screenH = r.height;
+          cvLeft = r.left; cvTop = r.top; // 关键：画布并非在视口 (0,0)，而是 top:56px（工具栏下方）
           if (anchor) {
             anchorRect = anchor.getBoundingClientRect();
             normW = Math.max(1, anchor.clientWidth || screenW);
@@ -413,6 +415,8 @@
           if (anchorRect) return { x: nx * normW + anchorRect.left, y: ny * normH + anchorRect.top - (anchor ? anchor.scrollTop : 0) };
           return { x: nx * normW, y: ny * normH };
         }
+        // 视口坐标 → 画布本地坐标（绘制/命中都在画布 2D 上下文里进行）
+        function cxy(p) { return { x: p.x - cvLeft, y: p.y - cvTop }; }
         function widthFromPct(p) { return Math.max(minW, minW + (maxW - minW) * (p / 100)); }
         function pressureMul(p) {
           const v = 0.35 + (p == null ? 0.5 : p) * 1.25;
@@ -432,8 +436,8 @@
           renderToOffscreen(); blit();
         }
         function absolute(e) {
-          const r = canvas.getBoundingClientRect();
-          return { x: e.clientX - r.left, y: e.clientY - r.top, p: e.pressure == null ? 0.5 : e.pressure };
+          // 返回视口坐标（与 toNorm/toScreen 的语义一致）；绘制时由 cxy 折算回画布本地坐标
+          return { x: e.clientX, y: e.clientY, p: e.pressure == null ? 0.5 : e.pressure };
         }
         function drawLine(ctx, a, b, w, col) {
           ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = "round"; ctx.lineJoin = "round";
@@ -445,7 +449,7 @@
           const col = st.color || color;
           for (let i = 1; i < st.points.length; i++) {
             const a = st.points[i - 1], b = st.points[i];
-            const s0 = toScreen(a.x, a.y), s1 = toScreen(b.x, b.y);
+            const s0 = cxy(toScreen(a.x, a.y)), s1 = cxy(toScreen(b.x, b.y));
             const mul = (a.p != null || b.p != null) ? pressureMul(((a.p == null ? 0.5 : a.p) + (b.p == null ? 0.5 : b.p)) / 2) : 1;
             drawLine(ctx, s0, s1, base * mul, col);
           }
@@ -464,13 +468,13 @@
             for (let i = 1; i < cur.points.length; i++) {
               const a = cur.points[i - 1], b = cur.points[i];
               const mul = pressureMul(b.p == null ? 0.5 : b.p);
-              drawLine(ctx, a, b, penW * mul, color);
+              drawLine(ctx, cxy(a), cxy(b), penW * mul, color);
             }
           } else if (tool === "erase") {
             ctx.strokeStyle = "rgba(255,255,255,.35)"; ctx.lineWidth = eraseW; ctx.lineCap = "round"; ctx.lineJoin = "round";
             ctx.setLineDash([5, 5]);
             ctx.beginPath();
-            cur.points.forEach((p, idx) => idx === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+            cur.points.forEach((p, idx) => { const q = cxy(p); idx === 0 ? ctx.moveTo(q.x, q.y) : ctx.lineTo(q.x, q.y); });
             ctx.stroke(); ctx.setLineDash([]);
           }
         }

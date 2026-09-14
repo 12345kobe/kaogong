@@ -120,6 +120,22 @@
     } catch (e) {}
     location.hash = "#/ai";
   }
+  // 把一道题整理成结构化文本并跳转 AI（答题页「没看懂？询问 AI」、错题本「AI 咨询」共用）
+  function askQuestion(subject, qq, ua) {
+    const A = i => String.fromCharCode(65 + i);
+    const optsTxt = (qq.options || []).map((o, i) => A(i) + ". " + (o == null ? "" : o)).join("\n");
+    const myAns = (ua === undefined || ua === null || isNaN(ua)) ? "未作答" : A(ua);
+    const ansLabel = (qq.a == null) ? "（见解析）" : A(qq.a);
+    const txt =
+      `【科目】${subject}\n` +
+      `【题目】${qq.q || ""}\n` +
+      (optsTxt ? `【选项】\n${optsTxt}\n` : "") +
+      `【我的答案】${myAns}\n` +
+      `【正确答案】${ansLabel}\n` +
+      (qq.e ? `【解析】${qq.e}\n` : "") +
+      `\n我看了解析还是没弄懂，请用通俗的方式一步步讲清楚：这道题的考点是什么、正确选项为什么对、我的思路错在哪里。\n我的疑惑点：（请在这里补充）`;
+    ask(txt);
+  }
 
   /* ===== 调用（OpenAI 兼容，按当前服务商） ===== */
   async function chat(messages, o) {
@@ -159,7 +175,7 @@
     getToken: getToken, setToken: setToken, hasCustom: hasCustom,
     getModel: getModel, setModel: setModel, modelInfo: modelInfo, canVision: canVision,
     getLog: getLog, setLog: setLog,
-    getTemp: getTemp, setTemp: setTemp, ask: ask, test: test, chat: chat
+    getTemp: getTemp, setTemp: setTemp, ask: ask, askQuestion: askQuestion, test: test, chat: chat
   };
 
   /* ===== PDF → 文本（按 Y 坐标重建行，避免整页挤成一行） ===== */

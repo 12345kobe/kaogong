@@ -6,15 +6,23 @@
 */
 (function () {
   window.MODULES = window.MODULES || {};
-  const SUBJECTS = ["言语", "资料", "逻辑", "政治", "数量", "常识", "申论"];
+  const SUBJECTS = ["言语", "资料", "逻辑", "政治", "数量", "常识", "申论", "时政"];
   const A = i => String.fromCharCode(65 + i);
-  const SUBJECT_LABELS = { 言语: "言语理解", 资料: "资料分析", 逻辑: "判断推理", 政治: "政治理论", 数量: "数量关系", 常识: "常识判断", 申论: "申论" };
+  const SUBJECT_LABELS = { 言语: "言语理解", 资料: "资料分析", 逻辑: "判断推理", 政治: "政治理论", 数量: "数量关系", 常识: "常识判断", 申论: "申论", 时政: "时政" };
+  function subjLabel(s) { return SUBJECT_LABELS[s] || s; }
   const BATCH = 5;  // 每次复习5题
 
   function countWrong(subject) { return ((window.DB && window.DB.state.wrongbook && window.DB.state.wrongbook[subject]) || []).length; }
   function getWrongs(subject) { return (window.DB.state.wrongbook[subject] || []).slice(); }
+  // 动态科目：基础 7 科 + 时政，并纳入任何已产生过错题的科目（如自己识别的时政等）
+  function allSubjects() {
+    const set = new Set(SUBJECTS);
+    const wb = (window.DB && window.DB.state && window.DB.state.wrongbook) || {};
+    Object.keys(wb).forEach(k => { if ((wb[k] || []).length) set.add(k); });
+    return Array.from(set);
+  }
   function listSubjectsWithWrongs() {
-    return SUBJECTS.filter(s => countWrong(s) > 0);
+    return allSubjects().filter(s => countWrong(s) > 0);
   }
 
   /* 生成今日待办（如果还没有） */
@@ -26,7 +34,7 @@
     const added = [];
     subs.forEach(s => {
       const w = countWrong(s);
-      const text = `${SUBJECT_LABELS[s]}错题复习（${w}题）`;
+      const text = `${subjLabel(s)}错题复习（${w}题）`;
       const hasToday = todos.find(t => t.text === text && t.day === today);
       if (!hasToday) {
         const t = { id: DB.uid(), text, done: false, day: today, subject: s, type: "wrong-review" };
@@ -47,7 +55,7 @@
     todos.forEach(t => {
       if (t.type === "wrong-review" && t.day === today && t.subject) {
         const w = countWrong(t.subject);
-        const newText = `${SUBJECT_LABELS[t.subject]}错题复习（${w}题）`;
+        const newText = `${subjLabel(t.subject)}错题复习（${w}题）`;
         if (t.text !== newText) { t.text = newText; dirty = true; }
       }
     });
@@ -67,7 +75,7 @@
     if (!list.length) { UI.toast("暂无闪卡类错题"); return; }
 
     window.Flashcard.start({
-      title: SUBJECT_LABELS[subject] + "·闪卡错题复习",
+      title: subjLabel(subject) + "·闪卡错题复习",
       subtitle: "正面＝题目/场景，反面＝答案。点「记得」累计 2 次即自动移出错题本",
       group: "wrongbook_fc_" + subject,
       subject: subject,
@@ -121,7 +129,7 @@
     m.style.cssText = "width:min(720px,96vw);max-height:90vh;overflow:auto";
     m.innerHTML = `
       <div class="row" style="justify-content:space-between;align-items:center">
-        <h2 style="margin:0">📕 ${UI.esc(SUBJECT_LABELS[subject])}错题复习（${wrongs.length}题）</h2>
+        <h2 style="margin:0">📕 ${UI.esc(subjLabel(subject))}错题复习（${wrongs.length}题）</h2>
         <div>
           <button class="btn ghost" id="goHome">← 返回主页面</button>
         </div>
@@ -239,7 +247,7 @@
       todos.forEach(t => {
         if (t.type === "wrong-review" && t.subject === subject && t.day === DB.today()) {
           if (remain === 0) t.done = true;
-          else t.text = `${SUBJECT_LABELS[subject]}错题复习（${remain}题）`;
+          else t.text = `${subjLabel(subject)}错题复习（${remain}题）`;
         }
       });
       DB.save();
@@ -365,12 +373,12 @@
 
       function renderFcCard() {
         const lst = fcCard.querySelector("#fcList");
-        const rows = SUBJECTS.map(s => ({ s, items: getFlashcardWrongs(s).filter(inRange) })).filter(r => r.items.length);
+        const rows = allSubjects().map(s => ({ s, items: getFlashcardWrongs(s).filter(inRange) })).filter(r => r.items.length);
         if (!rows.length) { lst.innerHTML = `<div class="empty">暂无闪卡类错题 🎉</div>`; return; }
         lst.innerHTML = "";
         rows.forEach(r => {
           const row = UI.el(`<div class="todo">
-            <div class="todo-text">${UI.esc(SUBJECT_LABELS[r.s])} · 闪卡类 <b>${r.items.length}</b> 条</div>
+            <div class="todo-text">${UI.esc(subjLabel(r.s))} · 闪卡类 <b>${r.items.length}</b> 条</div>
             <button class="btn primary" data-fc="${UI.esc(r.s)}">📇 开始复习</button>
           </div>`);
           row.querySelector("[data-fc]").onclick = () => {
@@ -384,7 +392,7 @@
 
       function renderTabs() {
         const tabs = panel.querySelector("#tabs"); tabs.innerHTML = "";
-        SUBJECTS.forEach(s => {
+        allSubjects().forEach(s => {
           const total = countWrong(s);
           const n = filtered(s).length;
           const label = (dFrom || dTo) ? `${s} (${n}/${total})` : `${s} (${n})`;
@@ -412,9 +420,19 @@
             <input type="file" accept="image/*" data-img="${it.id}" style="font-size:12px"/>
             ${it.img ? `<img class="img-thumb" src="${it.img}"/>` : ""}
             <input placeholder="笔记…" value="${UI.esc(it.note || "")}" data-note="${it.id}" style="font-size:13px"/>
+            <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:4px">
+              <button class="btn sm" data-ai="${it.id}">🤖 AI 咨询</button>
+              <button class="btn sm ghost" data-redo="${it.id}">🔄 重做本题</button>
+            </div>
             <button class="del" data-del="${it.id}" style="border:none;background:none;color:#ff6b81">删除</button>
           </div>`);
           list.appendChild(card);
+
+          card.querySelector("[data-ai]").onclick = () => {
+            if (window.KGAI && window.KGAI.askQuestion) window.KGAI.askQuestion(cur, it, it.ua);
+            else UI.toast("AI 模块未就绪");
+          };
+          card.querySelector("[data-redo]").onclick = () => redoWrong(it);
         });
         list.querySelectorAll("[data-note]").forEach(inp => inp.onchange = e => {
           const it = (DB.state.wrongbook[cur] || []).find(x => x.id === inp.dataset.note);
@@ -432,6 +450,33 @@
         });
       }
 
+      // 重做单道错题：选择题走 Quiz（不重复入册/不计统计），闪卡类走 Flashcard
+      function redoWrong(it) {
+        if (isFlashcardItem(it)) {
+          window.Flashcard.start({
+            title: subjLabel(cur) + "·重做本题", subject: cur,
+            items: [{ id: it.id, prompt: it.q, answer: it.e || "（原记录无答案）" }],
+            mode: "easy", noWrongbook: true
+          });
+          return;
+        }
+        const host = document.createElement("div");
+        host.className = "modal-mask";
+        const m = document.createElement("div");
+        m.className = "modal";
+        m.style.cssText = "width:min(720px,96vw);max-height:92vh;overflow:auto";
+        m.innerHTML = `<h2 style="margin:0 0 8px">🔄 重做本题（${UI.esc(subjLabel(cur))}）</h2><div id="rh"></div>`;
+        host.appendChild(m);
+        document.getElementById("modalRoot").appendChild(host);
+        host.onclick = e => { if (e.target === host) host.remove(); };
+        const opts = (it.options && it.options.length) ? it.options : ["A", "B", "C", "D"];
+        const a = (typeof it.a === "string" && it.a.length === 1) ? it.a.charCodeAt(0) - 65 : (it.a || 0);
+        window.Quiz.start(m.querySelector("#rh"), [{ q: it.q, options: opts, a: a, e: it.e || "" }], cur, {
+          noRecordWrong: true, noStats: true,
+          onDone: () => { setTimeout(() => host.remove(), 1400); }
+        });
+      }
+
       panel.querySelector("#exp").onclick = () => {
         const arr = filtered(cur);
         if (!arr.length) { UI.toast("该范围内暂无错题"); return; }
@@ -439,7 +484,7 @@
       };
       panel.querySelector("#expRange").onclick = () => {
         // 按当前日期范围，跨科目导出
-        const blocks = SUBJECTS.map(s => ({ s, items: filtered(s) })).filter(b => b.items.length);
+        const blocks = allSubjects().map(s => ({ s, items: filtered(s) })).filter(b => b.items.length);
         if (!blocks.length) { UI.toast("该日期范围内暂无错题"); return; }
         const all = [];
         blocks.forEach(b => b.items.forEach(it => all.push(Object.assign({ _sub: b.s }, it))));
@@ -449,7 +494,7 @@
         if (dFrom || dTo) {
           // 有筛选时"导出全部"也按范围走
           const all = [];
-          SUBJECTS.forEach(s => filtered(s).forEach(it => all.push(it)));
+          allSubjects().forEach(s => filtered(s).forEach(it => all.push(it)));
           if (!all.length) { UI.toast("该日期范围内暂无错题"); return; }
           window.PDF.exportWrongList(`全部科目 · 错题本（${rangeLabel()}）`, all);
         } else {
@@ -458,7 +503,7 @@
       };
       panel.querySelector("#add").onclick = () => {
         const box = UI.el(`<div></div>`);
-        box.innerHTML = `<label class="fld">科目</label><select id="sb" style="width:100%">${SUBJECTS.map(s => `<option ${s === cur ? "selected" : ""}>${s}</option>`).join("")}</select>
+        box.innerHTML = `<label class="fld">科目</label><select id="sb" style="width:100%">${allSubjects().map(s => `<option ${s === cur ? "selected" : ""}>${s}</option>`).join("")}</select>
           <label class="fld">题干（可用 ____ 表示填空）</label><input id="q"/>
           <label class="fld">解析</label><input id="e"/>`;
         UI.modal({ title: "手动添加错题", body: box, actions: [
