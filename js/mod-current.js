@@ -370,9 +370,19 @@
       body.appendChild(hsSec);
       const hsBody = hsSec.querySelector(".kg-det-b");
       hsBody.innerHTML = `
-        <div class="muted small" style="margin-bottom:8px">热点来自央视新闻 / 人民网 / 新华网 / 南方网 等权威来源（重点全国 + 广东）。每条均保留<strong>原始发布日期</strong>，绝不把旧闻标成今天。点「查看完整」读全文，并可像申论一样<strong>标注重点 / 加笔迹 / 导出 PDF</strong>。</div>
-        <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">
-          <button class="btn primary sm" id="hsRefresh">🔄 刷新</button>
+        <div class="muted small" style="margin-bottom:8px">热点来自中国政府网 / 大洋网（广州日报）等权威来源，每条保留<strong>原始发布日期</strong>，绝不把旧闻标成今天。<strong>全国</strong>在前、<strong>广东</strong>在后；按日期归档，可搜索关键词，并可<strong>标注重点 / 加笔迹 / 导出 PDF</strong>。</div>
+        <div class="hs-bar">
+          <div class="hs-tabs">
+            <button class="hs-tab active" data-r="全国">🌐 全国 <span class="hs-n" id="hsN1">0</span></button>
+            <button class="hs-tab" data-r="广东">🏙 广东 <span class="hs-n" id="hsN2">0</span></button>
+          </div>
+          <div class="hs-tools">
+            <input id="hsSearch" class="hs-search" type="search" placeholder="🔍 搜索关键词（标题/正文/来源）"/>
+            <button class="btn sm ghost" id="hsImport">➕ 导入网页</button>
+            <button class="btn sm primary" id="hsRefresh">🔄 刷新</button>
+          </div>
+        </div>
+        <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px">
           <span class="muted small" id="hsUpdated"></span>
           <span class="muted small" id="hsNote"></span>
         </div>
@@ -402,34 +412,125 @@
           });
       }
 
+      /* ---- 视图状态：地区 / 搜索 / 日期展开 ---- */
+      const HS = { region: "全国", q: "", dateOpen: {}, all: [] };
+      function regionOf(it) { return it.region === "广东" ? "广东" : "全国"; }
+      // 抓取数据 + 用户导入的网页，合并为一个列表
+      function allItems() {
+        const crawled = (window.KG_HOTSPOTS && window.KG_HOTSPOTS.items) || [];
+        const imported = DB.state.hotspotsImports || [];
+        return crawled.concat(imported);
+      }
+      function daysAgo(d) {
+        if (!d) return 999;
+        const t = Date.parse(d);
+        if (isNaN(t)) return 999;
+        return Math.floor((Date.now() - t) / 86400000);
+      }
+
+      function itemHtml(it) {
+        const i = HS.all.indexOf(it);
+        const edit = (DB.state.hotspotsEdits && DB.state.hotspotsEdits[it.id]) || {};
+        const summary = edit.summary != null ? edit.summary : (it.summary || (it.body ? it.body.slice(0, 160) : ""));
+        return `<div class="hot-item" data-i="${i}">
+          <div class="hot-item-h">
+            <span class="hot-badge ${it.region === "广东" ? "gd" : "cn"}">${regionOf(it)}</span>
+            <span class="hot-src">${esc(it.source || "")}</span>
+            <span class="hot-date">${esc(it.date || "近日")}</span>
+          </div>
+          <div class="hot-title">${hl(edit.title != null ? edit.title : it.title)}</div>
+          <div class="hot-sum">${hl(summary)}</div>
+          <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px">
+            <button class="btn sm primary hs-view">📖 查看完整</button>
+            <button class="btn sm ghost hs-edit">✏️ 编辑/笔记</button>
+            <button class="btn sm ghost hs-pdf">⬇ 导出PDF</button>
+          </div>
+        </div>`;
+      }
+
       function renderHotspots(j) {
-        const items = (j && j.items) || [];
-        hsUpdated.textContent = j && j.updatedAt ? ("更新于 " + j.updatedAt) : "";
-        if (!items.length) { hsList.innerHTML = `<div class="empty">暂无可展示的时事热点。可点「刷新」触发抓取，或检查抓取工作流是否正常运行。</div>`; return; }
-        hsList.innerHTML = items.map((it, i) => {
-          const region = it.region === "广东" ? "广东" : "全国";
-          const edit = (DB.state.hotspotsEdits && DB.state.hotspotsEdits[it.id]) || {};
-          const summary = edit.summary != null ? edit.summary : (it.summary || (it.body ? it.body.slice(0, 160) : ""));
-          return `<div class="hot-item" data-i="${i}">
-            <div class="hot-item-h">
-              <span class="hot-badge ${it.region === "广东" ? "gd" : "cn"}">${region}</span>
-              <span class="hot-src">${esc(it.source || "")}</span>
-              <span class="hot-date">${esc(it.date || "近日")}</span>
+        if (j) window.KG_HOTSPOTS = j;
+        const all = allItems();
+        HS.all = all;
+        const upd = (window.KG_HOTSPOTS && window.KG_HOTSPOTS.updatedAt) || "";
+        hsUpdated.textContent = upd ? ("更新于 " + upd) : "";
+
+        // 顶部计数（不受搜索影响）
+        const n1 = hsBody.querySelector("#hsN1"), n2 = hsBody.querySelector("#hsN2");
+        if (n1) n1.textContent = all.filter(it => regionOf(it) === "全国").length;
+        if (n2) n2.textContent = all.filter(it => regionOf(it) === "广东").length;
+
+        if (!all.length) { hsList.innerHTML = `<div class="empty">暂无可展示的时事热点。可点「刷新」触发抓取，或用「➕ 导入网页」自己添加。</div>`; return; }
+
+        const q = (HS.q || "").trim().toLowerCase();
+        let list = all.filter(it => regionOf(it) === HS.region);
+        if (q) {
+          list = list.filter(it => {
+            const ed = (DB.state.hotspotsEdits && DB.state.hotspotsEdits[it.id]) || {};
+            const hay = [ed.title != null ? ed.title : it.title,
+                         ed.body != null ? ed.body : (it.body || ""),
+                         it.summary || "", it.source || ""].join(" ").toLowerCase();
+            return hay.indexOf(q) >= 0;
+          });
+        }
+        if (!list.length) { hsList.innerHTML = `<div class="empty">没有匹配的新闻。换个关键词，或切换到「${HS.region === "全国" ? "广东" : "全国"}」。</div>`; return; }
+
+        // 按日期分组（新 → 旧）
+        const byDate = {};
+        list.forEach(it => { const d = it.date || "未标注日期"; (byDate[d] = byDate[d] || []).push(it); });
+        const dates = Object.keys(byDate).sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
+
+        hsList.innerHTML = dates.map(d => {
+          const arr = byDate[d];
+          const recent = daysAgo(d) <= 3;          // 近三天默认展开，更早默认折叠
+          const open = HS.dateOpen[d] === undefined ? recent : HS.dateOpen[d];
+          return `<div class="hs-date ${open ? "open" : ""}" data-d="${esc(d)}">
+            <div class="hs-date-h">
+              <span class="hs-caret">${open ? "▾" : "▸"}</span>
+              <span class="hs-date-t">📅 ${esc(d)}</span>
+              <span class="muted small">${arr.length} 条</span>
+              ${recent ? `<span class="hs-new">近三天</span>` : `<span class="hs-old">更早</span>`}
             </div>
-            <div class="hot-title">${hl(edit.title != null ? edit.title : it.title)}</div>
-            <div class="hot-sum">${hl(summary)}</div>
-            <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px">
-              <button class="btn sm primary hs-view">📖 查看完整</button>
-              <button class="btn sm ghost hs-edit">✏️ 编辑/笔记</button>
+            <div class="hs-date-b" ${open ? "" : "hidden"}>
+              ${arr.map(it => itemHtml(it)).join("")}
             </div>
           </div>`;
         }).join("");
+
+        hsList.querySelectorAll(".hs-date-h").forEach(h => {
+          h.onclick = () => {
+            const box = h.parentElement;
+            const nowOpen = !box.classList.contains("open");
+            HS.dateOpen[box.dataset.d] = nowOpen;
+            box.classList.toggle("open", nowOpen);
+            h.querySelector(".hs-caret").textContent = nowOpen ? "▾" : "▸";
+            box.querySelector(".hs-date-b").hidden = !nowOpen;
+          };
+        });
         hsList.querySelectorAll(".hot-item").forEach(el => {
-          const it = items[+el.dataset.i];
-          el.querySelector(".hs-view").onclick = () => openHotspot(it, false);
-          el.querySelector(".hs-edit").onclick = () => openHotspot(it, true);
+          const it = HS.all[+el.dataset.i];
+          if (!it) return;
+          const v = el.querySelector(".hs-view"); if (v) v.onclick = () => openHotspot(it, false);
+          const e = el.querySelector(".hs-edit"); if (e) e.onclick = () => openHotspot(it, true);
+          const p = el.querySelector(".hs-pdf");  if (p) p.onclick = () => exportHotspot(it, (DB.state.hotspotsEdits || {})[it.id]);
         });
       }
+
+      // 地区切换
+      hsBody.querySelectorAll(".hs-tab").forEach(b => {
+        b.onclick = () => {
+          HS.region = b.dataset.r;
+          hsBody.querySelectorAll(".hs-tab").forEach(x => x.classList.toggle("active", x === b));
+          renderHotspots();
+        };
+      });
+      // 关键词搜索（防抖）
+      const hsSearch = hsBody.querySelector("#hsSearch");
+      let hsTimer = null;
+      hsSearch.oninput = () => {
+        clearTimeout(hsTimer);
+        hsTimer = setTimeout(() => { HS.q = hsSearch.value || ""; renderHotspots(); }, 200);
+      };
 
       function openHotspot(it, editMode) {
         const edits = (DB.state.hotspotsEdits = DB.state.hotspotsEdits || {});
@@ -502,6 +603,104 @@
           }).catch(() => {});
         } catch (e) {}
       }
+      /* ================= 导入网页：粘贴 URL 自动抓取正文 ================= */
+      function htmlToArticle(html, url) {
+        let h = String(html || "")
+          .replace(/<script[\s\S]*?<\/script>/gi, " ")
+          .replace(/<style[\s\S]*?<\/style>/gi, " ")
+          .replace(/<!--[\s\S]*?-->/g, " ");
+        const textOf = (s) => {
+          let t = String(s || "")
+            .replace(/<br\s*\/?>/gi, "\n")
+            .replace(/<\/(p|div|h\d|li)>/gi, "\n")
+            .replace(/<[^>]+>/g, "");
+          return t.replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<")
+                  .replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+                  .replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+        };
+        // 标题：og:title > h1 > title
+        let title = "";
+        const og = h.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i);
+        if (og && og[1]) title = textOf(og[1]);
+        if (!title) { const h1 = h.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i); if (h1) title = textOf(h1[1]); }
+        if (!title) { const tm = h.match(/<title[^>]*>([\s\S]*?)<\/title>/i); if (tm) title = textOf(tm[1]); }
+        // 日期
+        let date = "";
+        const dm = h.match(/<meta[^>]+(?:property|name|itemprop)=["'][^"']*(?:published_time|pubdate|publishdate|release_date|date)["'][^>]+content=["']([^"']+)["']/i)
+                || h.match(/<time[^>]+datetime=["']([^"']+)["']/i)
+                || h.match(/(20\d{2})[-\/年](\d{1,2})[-\/月](\d{1,2})/);
+        if (dm) {
+          if (dm[3] && dm[2]) date = dm[1] + "-" + String(dm[2]).padStart(2, "0") + "-" + String(dm[3]).padStart(2, "0");
+          else date = (dm[1] || "").slice(0, 10);
+        }
+        if (!date) date = DB.today();
+        // 正文：article / main / 内容容器
+        let main = (h.match(/<article[\s\S]*?<\/article>/i) || [])[0]
+                || (h.match(/<main[\s\S]*?<\/main>/i) || [])[0]
+                || (h.match(/<div[^>]+(?:id|class)=["'][^"']*(?:content|article|main|detail|text)[^"']*["'][\s\S]*?<\/div>/i) || [])[0]
+                || h;
+        const paras = (main.match(/<p[\s\S]*?<\/p>/gi) || []).map(textOf).filter(t => t.length >= 15);
+        let body = paras.join("\n\n");
+        if (body.length < 120) body = textOf(main).replace(/\n{2,}/g, "\n\n");
+        let source = "";
+        try { source = new URL(url).hostname.replace(/^www\./, ""); } catch (e) {}
+        const gd = /广东|广州|深圳|佛山|东莞|珠海|粤港澳|大湾区|湾区|中山|惠州|汕头|湛江|江门|肇庆|清远|韶关|梅州|茂名|揭阳|潮州|汕尾|河源|阳江|云浮/.test((title + body).slice(0, 4000));
+        return { title: title || "导入的网页", body: body || "", date, source, region: gd ? "广东" : "全国", url };
+      }
+
+      async function fetchPageHtml(url) {
+        // 1) 自己的后端代理（若已配置，最稳）
+        try {
+          if (window.Social && Social.isConfigured && Social.isConfigured()) {
+            const r = await fetch(Social.getBase() + "/api/fetch-url?url=" + encodeURIComponent(url));
+            if (r.ok) { const j = await r.json(); if (j && j.html) return j.html; }
+          }
+        } catch (e) {}
+        // 2) 公共 CORS 代理兜底
+        const proxies = [
+          u => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u),
+          u => "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(u),
+          u => "https://r.jina.ai/" + u
+        ];
+        for (const p of proxies) {
+          try { const r = await fetch(p(url)); if (r.ok) return await r.text(); } catch (e) {}
+        }
+        throw new Error("网页抓取失败（浏览器跨域限制）。若已部署后端，在设置里填好后端地址后导入会更稳定。");
+      }
+
+      function openImportUrl() {
+        const box = UI.el(`<div>
+          <div class="muted small" style="margin-bottom:8px">粘贴一个新闻网页地址，自动抓取标题 / 日期 / 正文，并按时事热点同样的排版归档（可标注、加笔迹、导出 PDF）。</div>
+          <input id="impUrl" class="kg-fld" style="width:100%" placeholder="https://example.com/news/..."/>
+          <div id="impMsg" class="muted small" style="margin-top:8px"></div>
+        </div>`);
+        UI.modal({
+          title: "➕ 导入网页", body: box, width: "560px",
+          actions: [
+            { label: "取消", cls: "ghost", onClick: (m, c) => c() },
+            { label: "抓取并导入", cls: "primary", onClick: async (m, c) => {
+              const u = (box.querySelector("#impUrl").value || "").trim();
+              const msg = box.querySelector("#impMsg");
+              if (!/^https?:\/\//i.test(u)) { msg.textContent = "请填写以 http(s):// 开头的完整网址。"; return; }
+              msg.textContent = "正在抓取…";
+              try {
+                const html = await fetchPageHtml(u);
+                const a = htmlToArticle(html, u);
+                if (!a.body) { msg.textContent = "没能抓到正文内容，换个网页试试。"; return; }
+                a.id = "imp_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+                const list = (DB.state.hotspotsImports = DB.state.hotspotsImports || []);
+                list.unshift(a);
+                DB.save();
+                c(); renderHotspots();
+                UI.toast("已导入：" + a.title.slice(0, 20));
+              } catch (e) { msg.textContent = "抓取失败：" + (e && e.message ? e.message : e); }
+            } }
+          ]
+        });
+      }
+      const hsImportBtn = hsBody.querySelector("#hsImport");
+      if (hsImportBtn) hsImportBtn.onclick = openImportUrl;
+
       hsBody.querySelector("#hsRefresh").onclick = () => {
         UI.toast("已触发抓取，稍后自动刷新最新热点…");
         triggerCrawlDispatch();

@@ -416,6 +416,26 @@ app.post("/api/generate-questions", async (req, res) => {
   } catch (e) { res.status(500).json({ error: "智能出题异常：" + (e && e.message ? e.message : e) }); }
 });
 
+/* ---------- 网页抓取代理：前端「导入网页」用，规避浏览器跨域限制 ---------- */
+app.get("/api/fetch-url", async (req, res) => {
+  const target = String(req.query.url || "").trim();
+  if (!/^https?:\/\//i.test(target)) return res.status(400).json({ error: "url 参数无效" });
+  try {
+    const r = await fetch(target, {
+      redirect: "follow",
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "zh-CN,zh;q=0.9"
+      }
+    });
+    const html = await r.text();
+    res.json({ ok: true, url: target, html });
+  } catch (e) {
+    res.status(502).json({ error: "抓取失败：" + (e && e.message ? e.message : e) });
+  }
+});
+
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 
 /* ============================================================
