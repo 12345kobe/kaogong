@@ -1,5 +1,5 @@
 window.KG_HOTSPOTS = {
- "updatedAt": "2026-09-16 00:43",
+ "updatedAt": "2026-09-16 04:12",
  "count": 48,
  "items": [
   {
