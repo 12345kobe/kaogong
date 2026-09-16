@@ -913,9 +913,13 @@ body.light .pdb-kp{ background:#fff }
 .fav-q{font-size:14px;color:var(--txt);line-height:1.55;margin-bottom:8px;word-break:break-all}
 .fav-actions{display:flex;gap:8px;flex-wrap:wrap}
 
-/* ===== AI 咨询「返回」悬浮键 ===== */
-.ai-back-fab{position:fixed;right:16px;bottom:96px;z-index:60;background:var(--bg2);color:var(--txt);border:1px solid var(--line);border-radius:999px;padding:10px 16px;font-size:14px;font-weight:600;box-shadow:0 4px 14px rgba(0,0,0,.18);cursor:pointer}
-.ai-back-fab:hover{filter:brightness(1.05)}
+/* ===== AI 咨询「返回」键：内联在发送键左侧（v=20260916c，不再悬浮遮挡） ===== */
+.ai-back-inline{margin-right:8px;white-space:nowrap}
+.ai-back-inline:hover{filter:brightness(1.1)}
+
+/* 返回定位到具体错题时的高亮闪烁 */
+@keyframes wqFlash{0%,100%{box-shadow:0 0 0 0 rgba(255,214,79,0)}20%,60%{box-shadow:0 0 0 4px rgba(255,214,79,.65);filter:brightness(1.12)}}
+.wq-flash{animation:wqFlash 1.3s ease-in-out 2;border-radius:10px}
 
 /* ===== 右上角头像 / 我的面板 ===== */
 #accountBtn.has-avatar{padding:0;overflow:hidden;border-radius:50%}

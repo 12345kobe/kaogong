@@ -366,7 +366,7 @@
       UI.StudyPanel && UI.StudyPanel("current", body);
 
       /* =========== 时事热点（每日 12:00 / 20:00 自动抓取） =========== */
-      const hsSec = UI.section("🔥 时事热点（每日 12:00 / 20:00 自动抓取）", { open: true });
+      const hsSec = UI.section("🔥 时事热点（每日 12:00 / 20:00 自动抓取）", { open: false });
       body.appendChild(hsSec);
       const hsBody = hsSec.querySelector(".kg-det-b");
       hsBody.innerHTML = `

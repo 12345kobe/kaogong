@@ -111,6 +111,7 @@
 
   let pending = ""; // 外部（如答题页「询问AI」）预填内容
   let returnHash = null; // 从错题/答题页进入 AI 后，「返回」按钮要回到的界面
+  let returnAnchor = null; // 「返回」要定位到的具体题目（错题卡 data-ai="id"）；返回后滚动到该题并高亮
   // 返回键钩子（由外部模块注入，用于回到「上一道题」等更精细的场景；不设置则回退到来源路由）
   let returnHook = null;
   function setReturnHook(fn) { returnHook = (typeof fn === "function") ? fn : null; }
@@ -134,6 +135,11 @@
     const optsTxt = (qq.options || []).map((o, i) => A(i) + ". " + (o == null ? "" : o)).join("\n");
     const myAns = (ua === undefined || ua === null || isNaN(ua)) ? "未作答" : A(ua);
     const ansLabel = (qq.a == null) ? "（见解析）" : A(qq.a);
+    // 若来源页面上存在这道题的卡片（如错题本 data-ai="id"），记录锚点：返回时直接定位到这道题而不是页面顶部
+    returnAnchor = null;
+    try {
+      if (qq && qq.id && document.querySelector('[data-ai="' + qq.id + '"]')) returnAnchor = String(qq.id);
+    } catch (e) {}
     const txt =
       `【科目】${subject}\n` +
       `【题目】${qq.q || ""}\n` +
@@ -239,14 +245,14 @@
               <button class="btn ghost sm" id="aiPickImg">🖼 图片</button>
               <button class="btn ghost sm" id="aiPickPdf">📄 PDF</button>
               <span class="ai-spacer"></span>
+              <button id="aiBack" class="btn ghost sm ai-back-inline" style="display:none" title="返回来源题">← 返回</button>
               <button class="btn primary" id="aiSend">发送</button>
             </div>
             <div class="ai-models" id="aiModels"></div>
           </div>
         </div>
         <input type="file" id="aiFileImg" accept="image/*" multiple style="display:none"/>
-        <input type="file" id="aiFilePdf" accept="application/pdf" style="display:none"/>
-        <button id="aiBack" class="ai-back-fab" style="display:none" title="返回上一界面">← 返回</button>`;
+        <input type="file" id="aiFilePdf" accept="application/pdf" style="display:none"/>`;
 
       const msgs = body.querySelector("#aiMsgs");
       const input = body.querySelector("#aiInput");
@@ -286,6 +292,15 @@
         });
       }
 
+      function scrollBottom() {
+        // 图片等资源异步加载会撑高内容，分帧多次滚动 + 监听图片加载，确保进入/新消息时始终停在最底部
+        const doScroll = () => { try { msgs.scrollTop = msgs.scrollHeight; } catch (e) {} };
+        doScroll();
+        requestAnimationFrame(doScroll);
+        setTimeout(doScroll, 200); setTimeout(doScroll, 600);
+        msgs.querySelectorAll("img").forEach(img => { if (!img.complete) img.addEventListener("load", doScroll, { once: true }); });
+      }
+
       function renderMsgs() {
         if (!log.length) {
           msgs.innerHTML = `<div class="empty">还没有对话。可以直接粘贴题目图片、上传 PDF，或输入你的疑问。</div>`;
@@ -301,7 +316,7 @@
             <div class="ai-text">${UI.md(m.content)}${html}</div>
           </div>`;
         }).join("");
-        msgs.scrollTop = msgs.scrollHeight;
+        scrollBottom();
       }
 
       /* ===== ⚙ 设置（服务商 / 密钥 / 模型 / 随机性） ===== */
@@ -410,7 +425,7 @@
         log.push({ role: "user", content: text || "（见图/PDF）", images: imgAtts.map(a => a.dataUrl) });
         input.value = ""; atts = []; renderAtts(); renderMsgs();
         msgs.innerHTML += `<div class="ai-msg bot" id="aiPending"><div class="ai-who">AI</div><div class="ai-text">思考中…</div></div>`;
-        msgs.scrollTop = msgs.scrollHeight;
+        scrollBottom();
         sendBtn.disabled = true; busy = true;
         try {
           const messages = [{ role: "system", content: SYS }]
@@ -472,16 +487,31 @@
       // 外部预填（答题页「询问AI」）
       if (pending) { input.value = pending; pending = ""; setTimeout(() => input.focus(), 60); }
 
-      /* ===== 返回键（来自错题本 / 答题页的「AI 咨询」时显示） ===== */
+      /* ===== 返回键（来自错题本 / 答题页的「AI 咨询」时显示，位于发送键左侧） ===== */
       const backBtn = body.querySelector("#aiBack");
       if (backBtn) {
         if (returnHash) {
           backBtn.style.display = "";
           backBtn.onclick = () => {
-            const h = returnHash; const hook = returnHook;
-            returnHash = null; returnHook = null;
-            if (typeof hook === "function") hook();
-            else location.hash = h;
+            const h = returnHash; const hook = returnHook; const anchor = returnAnchor;
+            returnHash = null; returnHook = null; returnAnchor = null;
+            if (typeof hook === "function") { hook(); return; }
+            location.hash = h;
+            // 定位到来源的那一道错题（而不是只回到页面顶部）：等路由重渲染后滚动 + 高亮该题卡片
+            if (!anchor) return;
+            const t0 = Date.now();
+            (function seek() {
+              const card = document.querySelector('[data-ai="' + anchor + '"]');
+              if (card) {
+                try {
+                  card.scrollIntoView({ behavior: "smooth", block: "center" });
+                  card.classList.add("wq-flash");
+                  setTimeout(() => card.classList.remove("wq-flash"), 2600);
+                } catch (e) {}
+                return;
+              }
+              if (Date.now() - t0 < 4000) setTimeout(seek, 150);
+            })();
           };
         } else {
           backBtn.style.display = "none";

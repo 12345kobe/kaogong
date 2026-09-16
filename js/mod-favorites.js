@@ -110,14 +110,11 @@
         mask.querySelector("#bStart").onclick = () => {
           const n = Math.max(5, Math.min(20, parseInt(nInput.value, 10) || 10));
           const take = Math.min(n, all.length);
-          const pool = all.slice();
-          for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = pool[i]; pool[i] = pool[j]; pool[j] = t; }
-          const picked = pool.slice(0, take);
           mask.remove();
-          runBatchQuiz(picked, mode, take, all.length);
+          runBatchQuiz(all, mode, take, all.length);
         };
       }
-      function runBatchQuiz(picked, mode, take, total) {
+      function runBatchQuiz(all, mode, take, total) {
         const mask = UI.el(`<div class="modal-mask"><div class="modal" style="max-width:880px;max-height:92vh;overflow:auto">
           <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
             <h3 style="margin:0">⭐ 收藏练题（${take}/${total}）</h3>
@@ -128,11 +125,19 @@
         document.body.appendChild(mask);
         mask.querySelector("#bBack").onclick = () => { mask.remove(); MODULES.favorites.render(body); };
         mask.onclick = e => { if (e.target === mask) { mask.remove(); MODULES.favorites.render(body); } };
-        try {
-          window.Quiz.start(mask.querySelector(".fav-quiz"), picked, "收藏", { mode: mode, noStats: true, onDone: () => {} });
-        } catch (e) {
-          mask.querySelector(".fav-quiz").innerHTML = `<div class="card empty">练习启动失败：${UI.esc(e.message)}</div>`;
+        const host = mask.querySelector(".fav-quiz");
+        // 连练：交卷后点「再来一组」直接在当前弹窗内随机抽新一组，不刷新页面、不返回原界面
+        function newSet() {
+          const pool = all.slice();
+          for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = pool[i]; pool[i] = pool[j]; pool[j] = t; }
+          const picked = pool.slice(0, Math.min(take, pool.length));
+          try {
+            window.Quiz.start(host, picked, "收藏", { mode: mode, noStats: true, onAgain: newSet });
+          } catch (e) {
+            host.innerHTML = `<div class="card empty">练习启动失败：${UI.esc(e.message)}</div>`;
+          }
         }
+        newSet();
       }
       let total = 0;
       SUBJECTS.forEach(subject => {

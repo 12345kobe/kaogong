@@ -26,22 +26,18 @@ ctx.verify_mode = ssl.CERT_NONE
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36"
 
 SOURCES = [
+    # 主要来源（均为「有可靠日期、内容新」的来源；2026-09 实测人民网/新华网 RSS 已冻结在旧日期，弃用）
+    {"name": "中国政府网·要闻", "region": "全国", "type": "govjson",
+     "url": "https://www.gov.cn/yaowen/liebiao/YAOWENLIEBIAO.json"},
+    {"name": "大洋网·广州日报", "region": "auto", "type": "dayoo",
+     "url": "https://www.dayoo.com/"},
+    # 备用来源（若其日期过期会被下面的新鲜度过滤自动剔除）
     {"name": "人民网·时政", "region": "全国", "type": "rss",
      "url": "https://www.people.com.cn/rss/politics.xml"},
-    {"name": "新华网·时政", "region": "全国", "type": "rss",
-     "url": "http://www.xinhuanet.com/politics/news_politics.xml"},
-    {"name": "央视网·新闻", "region": "全国", "type": "rss",
-     "url": "https://news.cctv.com/rss/news.xml"},
     {"name": "半月谈", "region": "全国", "type": "rss",
      "url": "https://www.banyuetan.org/rss/byt.xml"},
     {"name": "南方网·广东要闻", "region": "广东", "type": "html",
      "url": "https://www.southcn.com/"},
-    {"name": "广东省政府·要闻", "region": "广东", "type": "html",
-     "url": "http://www.gd.gov.cn/gdyw/"},
-    {"name": "荔枝网·广东广电", "region": "广东", "type": "html",
-     "url": "https://www.gdtv.cn/"},
-    {"name": "汕头日报", "region": "广东", "type": "html",
-     "url": "https://strb.dahuawang.com/"},
 ]
 
 # 公考常见「考点 / 重要表述」词典（用于前端高亮，也在这里预打标签）
@@ -54,6 +50,7 @@ KW = ["高质量发展", "新质生产力", "百县千镇万村", "百千万工�
 
 MAX_ITEMS = 48
 MAX_FULL = 24  # 最多抓取多少条全文（控制请求数）
+FRESH_DAYS = 3  # 只保留最近 N 天内的新闻（含今天），杜绝旧文混入「时事热点」
 
 
 def fetch(url, timeout=9, binary=False):
@@ -179,6 +176,57 @@ def fetch_article(url):
     return "\n".join(paras)[:2000]
 
 
+def parse_govjson(buf):
+    """中国政府网 YAOWENLIEBIAO.json：[{TITLE, URL, DOCRELPUBTIME}, ...]，日期可靠且当天更新。"""
+    out = []
+    try:
+        arr = json.loads(buf)
+    except Exception:
+        return out
+    for it in arr if isinstance(arr, list) else []:
+        t = clean_text(str(it.get("TITLE", "")))
+        link = str(it.get("URL", "")).strip()
+        d = parse_date(str(it.get("DOCRELPUBTIME", "")))
+        if len(t) < 8 or not link:
+            continue
+        out.append({"title": t, "link": link, "summary": "", "date": d})
+    return out
+
+
+GD_PATH_HINTS = ["/gd/", "/guangdong", "/guangzhou", "/gdnews", "/nfgd", "southcn"]
+def parse_dayoo(buf):
+    """大洋网（广州日报）：首页链接带 /YYYYMM/DD/ 日期路径，可从 URL 提取真实发布日期。
+    按 URL 频道自动分区：广东本地频道 → 广东，其余（/china/ 等）→ 全国。"""
+    out = []
+    for m in re.finditer(r"<a[^>]+href=\"(https?://[^\"]*?/(\d{6})/(\d{2})/[^\"]+?)\"[^>]*>([\s\S]*?)</a>", buf, re.I):
+        href, ym, dd, txt = m.group(1), m.group(2), m.group(3), m.group(4)
+        title = clean_text(txt)
+        if len(title) < 10:
+            continue
+        date = "%s-%s-%s" % (ym[:4], ym[4:6], dd) if len(ym) == 6 else ""
+        region = "广东" if any(k in href.lower() for k in ["/gd/", "/guangdong", "/guangzhou", "/gdnews"]) else "全国"
+        out.append({"title": title, "link": href, "summary": "", "date": date, "region": region})
+    seen, res = set(), []
+    for o in out:
+        k = o["title"][:20]
+        if k in seen:
+            continue
+        seen.add(k)
+        res.append(o)
+    return res[:40]
+
+
+def fresh_enough(date_str):
+    """只保留最近 FRESH_DAYS 天内（含今天）的文章；无日期的一律视为不够新鲜而丢弃，杜绝旧文冒充当天新闻。"""
+    if not date_str:
+        return False
+    try:
+        d = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+    except Exception:
+        return False
+    return (datetime.date.today() - d).days <= FRESH_DAYS and (datetime.date.today() - d).days >= 0
+
+
 def norm_key(s):
     return re.sub(r"\s+", "", s or "")[:40]
 
@@ -194,27 +242,39 @@ def main():
                 continue
             if src["type"] == "rss":
                 rows = parse_rss(buf)
+            elif src["type"] == "govjson":
+                rows = parse_govjson(buf)
+            elif src["type"] == "dayoo":
+                rows = parse_dayoo(buf)
             else:
                 rows = parse_html_headlines(buf, src["url"])
             if not rows:
                 print("  skip (empty):", src["name"])
                 continue
+            fresh = 0
             for r in rows:
+                # 新鲜度过滤：无日期或超过 FRESH_DAYS 天的旧文直接丢弃（防「张冠李戴」）
+                if not fresh_enough(r.get("date", "")):
+                    continue
                 key = norm_key(r["title"])
                 if not key or key in seen:
                     continue
                 seen.add(key)
+                region = src["region"]
+                if region == "auto":
+                    region = r.get("region", "全国")
                 items.append({
-                    "title": r["title"], "source": src["name"], "region": src["region"],
+                    "title": r["title"], "source": src["name"], "region": region,
                     "url": r["link"], "date": r.get("date", "") or "",
                     "summary": r.get("summary", "") or "", "body": "", "tags": []
                 })
-            print("  ok:", src["name"], len(rows), "条")
+                fresh += 1
+            print("  ok:", src["name"], len(rows), "条 → 新鲜", fresh, "条")
         except Exception as e:
             print("  error:", src["name"], repr(e)[:80])
 
     # 按来源分组，每源取较新的若干条，避免「全国」大源挤掉「广东」小源
-    PER_SOURCE = 16
+    PER_SOURCE = 30
     by_src = {}
     for it in items:
         by_src.setdefault(it["source"], []).append(it)
@@ -224,11 +284,13 @@ def main():
         balanced.extend(lst[:PER_SOURCE])
     items = balanced
 
-    # 全局按日期倒序（有日期的优先），再补没有日期的
-    def sortkey(x):
-        return x["date"] or "0000-00-00"
-    items.sort(key=sortkey, reverse=True)
-    items = items[:MAX_ITEMS]
+    # 全局按日期倒序（此时全部条目都有新鲜日期）
+    items.sort(key=lambda x: x["date"], reverse=True)
+    # 保证广东存在：先取广东 16 条，再用全国补足
+    gd = [x for x in items if x["region"] == "广东"][:16]
+    rest = [x for x in items if x not in gd]
+    items = (gd + rest)[:MAX_ITEMS]
+    items.sort(key=lambda x: x["date"], reverse=True)
 
     # 抓取全文（最多 MAX_FULL 条，且只抓有链接的）
     full = 0
@@ -244,11 +306,10 @@ def main():
         blob = it["title"] + " " + it["summary"] + " " + it["body"]
         it["tags"] = [k for k in KW if k in blob]
 
-    # 防止覆盖：若本次为空且本地已有数据，则保留旧文件
+    # 防止覆盖：若本次为空（来源全挂 / 全被新鲜度过滤）且本地已有数据，则保留旧文件
     if not items:
-        for o in (OUT1, OUT2):
-            if os.path.exists(o):
-                print("本次无抓取结果，保留既有", o)
+        if os.path.exists(OUT1):
+            print("本次无新鲜抓取结果，保留既有", OUT1)
         return
 
     data = {
