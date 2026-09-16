@@ -159,7 +159,7 @@
           <div class="shuati-top">
             <button class="shuati-back" id="backBtn">← 返回</button>
             <div class="shuati-task" style="${taskColor()}">📚 ${esc(ended ? (s.task || task) : (started ? (s.task || task) : (task || "刷题")))}</div>
-            <button class="shuati-wn ${wnOn ? 'on' : ''}" id="wnBtn">🎧 白噪音${wnOn ? ' · 播放中' : ''}</button>
+            <button class="shuati-wn ${wnOn ? 'on' : ''}" id="wnBtn">🎧${wnOn ? ' · 播放中' : ''}</button>
           </div>
           ${inner}
           <div class="shuati-foot">

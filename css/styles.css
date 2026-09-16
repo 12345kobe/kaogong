@@ -580,6 +580,14 @@ body.light .qd-author{color:#1c2433}                   /* 浅色模式：作者�
 body.light .wn-btn.on{color:#0f1828}
 @media(max-width:760px){.wn-btn{font-size:11px;padding:5px 7px}}
 
+/* 头像裁剪 */
+.crop-wrap{display:flex;flex-direction:column;gap:8px}
+.crop-tip{margin-bottom:2px}
+.crop-stage{position:relative;display:inline-block;max-width:100%;line-height:0;user-select:none;-webkit-user-select:none;touch-action:none;background:#0b1430;border-radius:8px;overflow:hidden}
+.crop-stage .crop-img{display:block;width:100%;height:auto;pointer-events:none;-webkit-user-drag:none}
+.crop-box{position:absolute;box-sizing:border-box;border:2px solid #fff;box-shadow:0 0 0 9999px rgba(0,0,0,.5);cursor:move;touch-action:none}
+.crop-handle{position:absolute;right:-9px;bottom:-9px;width:18px;height:18px;background:#fff;border-radius:50%;cursor:nwse-resize;box-shadow:0 1px 4px rgba(0,0,0,.4);touch-action:none}
+
 /* ===== 刷题模式（全屏覆盖） ===== */
 .shuati{position:fixed;inset:0;z-index:200;background:#0c1024 center/cover no-repeat;
   display:flex;flex-direction:column;align-items:center;justify-content:space-between;

@@ -115,22 +115,29 @@
   // 返回键钩子（由外部模块注入，用于回到「上一道题」等更精细的场景；不设置则回退到来源路由）
   let returnHook = null;
   function setReturnHook(fn) { returnHook = (typeof fn === "function") ? fn : null; }
-  function ask(text, ret) {
+  function ask(text, ret, keepModal, hook) {
     pending = text || "";
     // 记录来源，供「返回」按钮使用（来自错题本 / 答题页时，返回到上一个界面继续看其他问题）
     returnHash = (ret && ret !== "#/ai") ? ret
       : (location.hash && location.hash !== "#/ai" ? location.hash : null);
-    // 关闭所有打开的模态框（收藏/资料/言语等刷题弹窗）。否则 location.hash 切换后
-    // AI 模块会渲染在弹窗背后，视觉上「没跳走」，用户以为还停留在原位置。
-    try {
-      const root = document.getElementById("modalRoot");
-      if (root) { while (root.firstChild) root.removeChild(root.firstChild); }
-    } catch (e) {}
+    if (typeof hook === "function") setReturnHook(hook);
+    if (keepModal) {
+      // 不销毁、仅隐藏答题弹窗：返回时由 returnHook 恢复，从而能回到「那组题的那道题」（作答状态也保留）
+      document.querySelectorAll(".modal-mask").forEach(m => { try { m.style.display = "none"; } catch (e) {} });
+    } else {
+      // 关闭所有打开的模态框（收藏/资料/言语等刷题弹窗）。否则 location.hash 切换后
+      // AI 模块会渲染在弹窗背后，视觉上「没跳走」，用户以为还停留在原位置。
+      try {
+        const root = document.getElementById("modalRoot");
+        if (root) { while (root.firstChild) root.removeChild(root.firstChild); }
+      } catch (e) {}
+    }
     location.hash = "#/ai";
   }
   // 把一道题整理成结构化文本并跳转 AI（答题页「没看懂？询问 AI」、错题本「AI 咨询」共用）
   // ret：可选，指定「返回」要回到的路由（如 #/wrongbook）；不传则回退到进入 AI 前的当前路由
-  function askQuestion(subject, qq, ua, ret) {
+  function askQuestion(subject, qq, ua, ret, opts) {
+    opts = opts || {};
     const A = i => String.fromCharCode(65 + i);
     const optsTxt = (qq.options || []).map((o, i) => A(i) + ". " + (o == null ? "" : o)).join("\n");
     const myAns = (ua === undefined || ua === null || isNaN(ua)) ? "未作答" : A(ua);
@@ -148,7 +155,7 @@
       `【正确答案】${ansLabel}\n` +
       (qq.e ? `【解析】${qq.e}\n` : "") +
       `\n我看了解析还是没弄懂，请用通俗的方式一步步讲清楚：这道题的考点是什么、正确选项为什么对、我的思路错在哪里。\n我的疑惑点：（请在这里补充）`;
-    ask(txt, ret || location.hash);
+    ask(txt, ret || location.hash, !!opts.keepModal, opts.returnHook || null);
   }
 
   /* ===== 调用（OpenAI 兼容，按当前服务商） ===== */
@@ -495,7 +502,7 @@
           backBtn.onclick = () => {
             const h = returnHash; const hook = returnHook; const anchor = returnAnchor;
             returnHash = null; returnHook = null; returnAnchor = null;
-            if (typeof hook === "function") { hook(); return; }
+            if (typeof hook === "function") { try { hook(h); } catch (e) {} return; }
             location.hash = h;
             // 定位到来源的那一道错题（而不是只回到页面顶部）：等路由重渲染后滚动 + 高亮该题卡片
             if (!anchor) return;

@@ -84,16 +84,49 @@
         html += UI.Attachments.toHtml("申论", rid);
         window.PDF.exportHtml("申论时评 · " + (rec.data.essay.topic || rec.title), html);
       }
+      function openHistoryQuotes() {
+        const all = (DB.state.essay.userQuotes || []).slice();
+        if (!all.length) { UI.toast("暂无历史金句，去「时政」模块粘贴识别后会自动记录"); return; }
+        all.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+        const groups = {};
+        all.forEach(q => { const k = q.date || "未知日期"; (groups[k] = groups[k] || []).push(q); });
+        const dates = Object.keys(groups).sort().reverse();
+        const box = UI.el(`<div style="max-height:70vh;overflow:auto;padding:2px"></div>`);
+        box.innerHTML = dates.map(d => {
+          const items = groups[d].map((q) => {
+            const idx = all.indexOf(q);
+            return `<div class="kg-hq" style="display:flex;gap:8px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--line)">
+              <div style="flex:1"><div style="font-size:15px;line-height:1.65">“${UI.esc(q.t)}”</div>
+              <span class="chip">${UI.esc(q.theme || "时政")}</span></div>
+              <button class="btn ghost sm" data-del="${idx}">删除</button>
+            </div>`;
+          }).join("");
+          return `<div class="subhead" style="margin:12px 0 4px">📅 ${UI.esc(d)} · ${groups[d].length} 句</div>` + items;
+        }).join("");
+        UI.modal({ title: "📜 历史金句", body: box, width: "560px", actions: [{ label: "关闭", cls: "ghost", onClick: (m, c) => c() }] });
+        box.querySelectorAll("[data-del]").forEach(btn => {
+          btn.onclick = () => {
+            if (!confirm("确定删除这条历史金句？")) return;
+            const i = parseInt(btn.getAttribute("data-del"), 10);
+            const real = DB.state.essay.userQuotes || [];
+            const j = real.indexOf(all[i]);
+            if (j >= 0) { real.splice(j, 1); DB.save(); UI.toast("已删除该金句"); btn.closest(".kg-hq").remove(); }
+          };
+        });
+      }
       const comRec = todayCommentary();
+      const hqCount = (DB.state.essay.userQuotes || []).length;
       const comCard = UI.el(`<div class="card"><h3>📰 申论时评</h3>
         ${comRec
-          ? `<div class="muted small">${UI.esc(comRec.data.essay.topic || comRec.title)} · ${comRec.date}</div>
-             <div class="row" style="margin-top:10px;gap:8px">
-               <button class="btn primary" id="comOpen">📖 查看并手写标注</button>
-             </div>`
-          : `<div class="empty">暂无今日时评，请去「时政」模块粘贴识别。</div>`}
+          ? `<div class="muted small">${UI.esc(comRec.data.essay.topic || comRec.title)} · ${comRec.date}</div>`
+          : `<div class="muted small">暂无今日时评，请去「时政」模块粘贴识别。</div>`}
+        <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap">
+          ${comRec ? `<button class="btn primary" id="comOpen">📖 查看并手写标注</button>` : ``}
+<button class="btn" id="comHistory">📜 查看历史金句${hqCount ? '（' + hqCount + '）' : ''}</button>
+        </div>
       </div>`);
       if (comRec) comCard.querySelector("#comOpen").onclick = () => openCommentary(comRec);
+      comCard.querySelector("#comHistory").onclick = () => openHistoryQuotes();
       addSec("📰 申论时评", comCard, true);
 
       // 每日金句

@@ -1,5 +1,5 @@
 /* 模块：设置
-   - 字体设置：华文行楷 / 楷体 / 宋体 / 黑体 / 华文仿宋（内置 Windows 与苹果通用字体栈），选择后记忆；
+   - 字体设置：华文行楷 / 楷体 / 宋体 / 黑体 / 华文仿宋（网页字体 + 系统字体兜底，手机/平板也能显示），选择后记忆；
    - 数据管理：导出备份 / 导入备份（合并）/ 上传云端 / 拉取云端。
    全部通过 localStorage 记忆、跨模块即时生效。
 */
@@ -7,17 +7,40 @@
   "use strict";
   window.MODULES = window.MODULES || {};
 
-  // 字体栈：Windows 原名在前，苹果（iPhone/iPad/Mac）对应字体名在后，保证两端都能显示
+  // 字体栈：网页字体（免费可商用，随页面从 CDN 加载）放在最前，保证手机/平板（安卓·iOS）也能显示；
+  // 其后为本机系统字体作为桌面端兜底。网页字体与系统字体风格一致，仅作跨设备显示之用。
   const FONTS = [
     { key: "default", label: "默认（系统字体）", stack: "" },
-    { key: "xingkai", label: "华文行楷", stack: '"华文行楷","STXingkai","行楷",cursive' },
-    { key: "kaiti",   label: "楷体",     stack: '"楷体","KaiTi","KaiTi_GB2312","Kaiti SC","STKaiti",serif' },
-    { key: "song",    label: "宋体",     stack: '"宋体","SimSun","Songti SC","STSong",serif' },
-    { key: "hei",     label: "黑体",     stack: '"黑体","SimHei","Heiti SC","STHeiti","PingFang SC","Microsoft YaHei",sans-serif' },
-    { key: "fangsong",label: "华文仿宋", stack: '"华文仿宋","STFangsong","FangSong","仿宋",serif' }
+    { key: "xingkai", label: "华文行楷", stack: '"Ma Shan Zheng","华文行楷","STXingkai","行楷",cursive' },
+    { key: "kaiti",   label: "楷体",     stack: '"LXGW WenKai","楷体","KaiTi","KaiTi_GB2312","Kaiti SC","STKaiti",serif' },
+    { key: "song",    label: "宋体",     stack: '"Noto Serif SC","宋体","SimSun","Songti SC","STSong",serif' },
+    { key: "hei",     label: "黑体",     stack: '"Noto Sans SC","黑体","SimHei","Heiti SC","STHeiti","PingFang SC","Microsoft YaHei",sans-serif' },
+    { key: "fangsong",label: "华文仿宋", stack: '"ZCOOL XiaoWei","华文仿宋","STFangsong","FangSong","仿宋",serif' }
   ];
   const FONT_MAP = {};
   FONTS.forEach(f => { FONT_MAP[f.key] = f.stack; });
+
+  // 旧版存的是纯系统字体栈（手机/平板无此字体，回退成默认）。这里把旧栈映射为新栈（网页字体在前），
+  // 让已选过字体的老用户在点开在线链接时也能在手机/平板上看到所选字体。
+  const LEGACY_MAP = {
+    '"华文行楷"': '"Ma Shan Zheng","华文行楷","STXingkai","行楷",cursive',
+    '"楷体"':     '"LXGW WenKai","楷体","KaiTi","KaiTi_GB2312","Kaiti SC","STKaiti",serif',
+    '"宋体"':     '"Noto Serif SC","宋体","SimSun","Songti SC","STSong",serif',
+    '"黑体"':     '"Noto Sans SC","黑体","SimHei","Heiti SC","STHeiti","PingFang SC","Microsoft YaHei",sans-serif',
+    '"华文仿宋"': '"ZCOOL XiaoWei","华文仿宋","STFangsong","FangSong","仿宋",serif'
+  };
+  (function migrateFont() {
+    try {
+      const raw = localStorage.getItem("kg_font");
+      if (!raw) return;
+      for (const k in LEGACY_MAP) {
+        if (raw.indexOf(k) === 0 && raw !== LEGACY_MAP[k]) {
+          localStorage.setItem("kg_font", LEGACY_MAP[k]);
+          break;
+        }
+      }
+    } catch (e) {}
+  })();
 
   function esc(s) { return (s == null ? "" : String(s)).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
@@ -52,7 +75,7 @@
       body.innerHTML = `
         <div class="card">
           <h3>🔤 字体设置</h3>
-          <div class="muted small">选择界面整体字体（标题与正文统一）。已内置 Windows 与苹果（iPhone / iPad / Mac）通用字体栈，换设备也能正常显示；选择后自动记忆，下次打开沿用。</div>
+          <div class="muted small">选择界面整体字体（标题与正文统一）。已接入网页字体（免费可商用，随页面从 CDN 加载），手机 / 平板（安卓 · iOS）打开在线链接也能看到所选字体；电脑端优先用本机系统字体。选择后自动记忆，下次打开沿用。</div>
           <div class="font-grid" style="margin-top:14px">
             ${FONTS.map(f => `
               <button class="font-opt ${f.key === curKey ? "on" : ""}" data-key="${f.key}">

@@ -64,6 +64,10 @@
 
       const keyHandler = (e) => {
         if (e.metaKey || e.ctrlKey || e.altKey) return;
+        if (e.target && (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT" || e.target.isContentEditable)) return;
+        // 弹窗被隐藏（如前往 AI 咨询时）时不响应快捷键，避免误触隐藏中的题目
+        const mm = container.closest && container.closest(".modal-mask");
+        if (mm && mm.style.display === "none") return;
         const k = (e.key || "").toLowerCase();
         const map = { a: 0, b: 1, c: 2, d: 3, "1": 0, "2": 1, "3": 2, "4": 3 };
         if (!(k in map)) return;
@@ -126,13 +130,22 @@
       function answeredCount() { return results.filter(r => r !== null).length; }
 
       /* ===== 把错题整理成 AI 看得懂的结构化文本，填入 AI 输入框 ===== */
-      function askAI(qq, ua) {
+      function askAI(qq, ua, qi) {
         try {
-          if (window.KGAI && window.KGAI.askQuestion) { window.KGAI.askQuestion(subject, qq, ua); }
-          else if (window.KGAI && window.KGAI.ask) {
-            const optsTxt = (qq.options || []).map((o, i) => A(i) + ". " + (o == null ? "" : o)).join("\n");
-            const myAns = (ua === undefined || ua === null || isNaN(ua)) ? "未作答" : A(ua);
-            window.KGAI.ask(`【科目】${subject}\n【题目】${qq.q || ""}\n${optsTxt ? "【选项】\n" + optsTxt + "\n" : ""}【我的答案】${myAns}\n【正确答案】${A(qq.a)}\n${qq.e ? "【解析】" + qq.e + "\n" : ""}`);
+          if (window.KGAI) {
+            // 返回钩子：恢复被隐藏的答题弹窗，并定位回「那组题中的那一道」（作答状态保留）
+            const hook = (h) => {
+              document.querySelectorAll(".modal-mask").forEach(m => { try { m.style.display = ""; } catch (e) {} });
+              if (h && location.hash !== h) { try { location.hash = h; } catch (e) {} }
+              const c = container.querySelector('.quiz-q[data-qi="' + qi + '"]');
+              if (c) { setTimeout(() => { try { c.scrollIntoView({ behavior: "smooth", block: "center" }); c.classList.add("qz-flash"); setTimeout(() => c.classList.remove("qz-flash"), 1800); } catch (e) {} }, 80); }
+            };
+            if (window.KGAI.askQuestion) window.KGAI.askQuestion(subject, qq, ua, null, { keepModal: true, returnHook: hook });
+            else if (window.KGAI.ask) {
+              const optsTxt = (qq.options || []).map((o, i) => A(i) + ". " + (o == null ? "" : o)).join("\n");
+              const myAns = (ua === undefined || ua === null || isNaN(ua)) ? "未作答" : A(ua);
+              window.KGAI.ask(`【科目】${subject}\n【题目】${qq.q || ""}\n${optsTxt ? "【选项】\n" + optsTxt + "\n" : ""}【我的答案】${myAns}\n【正确答案】${A(qq.a)}\n${qq.e ? "【解析】" + qq.e + "\n" : ""}`, null, true, hook);
+            }
           } else { UI.toast("AI 模块未就绪"); }
         } catch (e) { UI.toast("跳转 AI 失败：" + e.message); }
       }
@@ -176,7 +189,7 @@
           if (!noRecordWrong) recordWrong(qq.subject || subject, qq, ua);
           const askWrap = UI.el(`<div class="qz-ask"><button class="btn ghost sm ask-ai">🤖 没看懂？询问 AI</button></div>`);
           exp.appendChild(askWrap);
-          askWrap.querySelector(".ask-ai").onclick = () => askAI(qq, ua);
+          askWrap.querySelector(".ask-ai").onclick = () => askAI(qq, ua, qi);
         }
         if (opts.onAnswer) opts.onAnswer(qq, right);
       }

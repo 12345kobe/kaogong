@@ -350,6 +350,88 @@
     rd.readAsDataURL(file);
   }
 
+  /* ===== 头像裁剪：选图后框选区域作为头像 ===== */
+  function enableCropDrag(stage, box, handle) {
+    let mode = null, sx = 0, sy = 0, bx = 0, by = 0, bw0 = 0;
+    const onDown = (e, m) => {
+      mode = m;
+      const p = e;
+      sx = p.clientX; sy = p.clientY; bx = box.offsetLeft; by = box.offsetTop; bw0 = box.offsetWidth;
+      try { e.target.setPointerCapture(e.pointerId); } catch (err) {}
+      e.preventDefault();
+    };
+    const onMove = (e) => {
+      if (!mode) return;
+      const dx = e.clientX - sx, dy = e.clientY - sy;
+      if (mode === "move") {
+        let nx = bx + dx, ny = by + dy;
+        nx = Math.max(0, Math.min(nx, stage.clientWidth - box.offsetWidth));
+        ny = Math.max(0, Math.min(ny, stage.clientHeight - box.offsetHeight));
+        box.style.left = nx + "px"; box.style.top = ny + "px";
+      } else if (mode === "resize") {
+        const ns = Math.max(40, Math.min(bw0 + dx,
+          stage.clientWidth - Math.max(0, box.offsetLeft),
+          stage.clientHeight - Math.max(0, box.offsetTop)));
+        box.style.width = ns + "px"; box.style.height = ns + "px";
+      }
+      e.preventDefault();
+    };
+    const onUp = () => { mode = null; };
+    box.addEventListener("pointerdown", (e) => { if (e.target === handle) return; onDown(e, "move"); });
+    box.addEventListener("pointermove", onMove);
+    box.addEventListener("pointerup", onUp);
+    handle.addEventListener("pointerdown", (e) => onDown(e, "resize"));
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onUp);
+  }
+  function cropAvatar(file, cb) {
+    const rd = new FileReader();
+    rd.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const stage = UI.el(`<div class="crop-stage"><img class="crop-img" src="${rd.result}"/><div class="crop-box" id="cropBox"><span class="crop-handle" id="cropHandle"></span></div></div>`);
+        const wrap = UI.el(`<div class="crop-wrap"></div>`);
+        wrap.appendChild(stage);
+        wrap.insertBefore(UI.el(`<div class="crop-tip muted small">拖动选框移动位置，拖右下角圆点缩放；选框内即为头像</div>`), stage);
+        UI.modal({
+          title: "裁剪头像", body: wrap, width: "440px",
+          actions: [
+            { label: "取消", cls: "ghost", onClick: (m, c) => c() },
+            {
+              label: "使用此区域", cls: "primary", onClick: (m, c) => {
+                const box = stage.querySelector("#cropBox");
+                const rect = box.getBoundingClientRect(), srect = stage.getBoundingClientRect();
+                const scale = img.naturalWidth / stage.clientWidth;
+                const sz = 240;
+                const cv = document.createElement("canvas"); cv.width = sz; cv.height = sz;
+                try {
+                  cv.getContext("2d").drawImage(img,
+                    (rect.left - srect.left) * scale, (rect.top - srect.top) * scale,
+                    rect.width * scale, rect.height * scale, 0, 0, sz, sz);
+                  cb(cv.toDataURL("image/jpeg", 0.85));
+                } catch (e) { cb(rd.result); }
+                c();
+              }
+            }
+          ]
+        });
+        requestAnimationFrame(() => {
+          const bw = stage.clientWidth, bh = stage.clientHeight;
+          if (!bw || !bh) return;
+          const s0 = Math.round(Math.min(bw, bh) * 0.7);
+          const box = stage.querySelector("#cropBox");
+          box.style.width = s0 + "px"; box.style.height = s0 + "px";
+          box.style.left = Math.round((bw - s0) / 2) + "px";
+          box.style.top = Math.round((bh - s0) / 2) + "px";
+          enableCropDrag(stage, box, stage.querySelector("#cropHandle"));
+        });
+      };
+      img.onerror = () => fileToAvatar(file, cb);
+      img.src = rd.result;
+    };
+    rd.readAsDataURL(file);
+  }
+
   /* ===== 右上角头像（👤）→ 我的面板：头像/签名/设置入口 ===== */
   function openProfile() {
     const prof = DB.state.profile || (DB.state.profile = { avatar: "", signature: "" });
@@ -379,7 +461,7 @@
     box.querySelector("#pAva").onclick = () => box.querySelector("#pFile").click();
     box.querySelector("#pFile").onchange = () => {
       const f = box.querySelector("#pFile").files[0]; if (!f) return;
-      fileToAvatar(f, dataUrl => {
+      cropAvatar(f, dataUrl => {
         DB.state.profile.avatar = dataUrl; DB.save(); refreshTop();
         avaBox.innerHTML = `<img src="${UI.esc(dataUrl)}" alt="头像"/>`;
         UI.toast("头像已更新，将随云端同步到其他设备");
@@ -514,7 +596,7 @@
     function wnRender() {
       if (!wnBtn) return;
       wnBtn.classList.toggle("on", wnOn);
-      wnBtn.textContent = wnOn ? "🎧 白噪音 · 播放中" : "🎧 白噪音";
+      wnBtn.textContent = "🎧";
     }
     function wnPlay() { if (wnAudio) wnAudio.play().catch(() => {}); }
     window.WhiteNoise = {
