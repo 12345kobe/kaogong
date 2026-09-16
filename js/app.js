@@ -247,6 +247,20 @@
     if (DB.isLoggedIn()) { sb.textContent = "☁ " + DB.currentUser(); sb.classList.add("on"); }
     else if (DB.syncEnabled()) { sb.textContent = "☁ 未登录"; sb.classList.remove("on"); }
     else { sb.textContent = "☁ 本地模式"; sb.classList.remove("on"); }
+    // 右上角头像：显示用户头像（云端同步的 dataURL），否则默认 👤
+    const ab = document.getElementById("accountBtn");
+    if (ab) {
+      const prof = (DB.state && DB.state.profile) || {};
+      if (prof.avatar) {
+        ab.innerHTML = `<img class="avatar-img" src="${prof.avatar}" alt="头像"/>`;
+        ab.classList.add("has-avatar");
+      } else {
+        ab.textContent = "👤";
+        ab.classList.remove("has-avatar");
+      }
+      const sig = prof.signature || "";
+      ab.title = "我的" + (DB.isLoggedIn() ? "（" + DB.currentUser() + "）" : "") + (sig ? " · " + sig : "");
+    }
   }
 
   function doCheckin() {
@@ -313,6 +327,83 @@
       box.querySelector("#exp").onclick = exportData;
       box.querySelector("#imp").onclick = importData;
       box.querySelector("#logout").onclick = () => { DB.stopAutoSync(); DB.logout(); refreshTop(); UI.toast("已退出登录"); document.querySelector(".modal-mask") && document.querySelector(".modal-mask").remove(); };
+    }
+  }
+
+  /* ===== 头像/签名：把图片压缩成 dataURL（限制尺寸，避免同步数据过大） ===== */
+  function fileToAvatar(file, cb) {
+    const rd = new FileReader();
+    rd.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const max = 240;
+        let w = img.width, h = img.height;
+        if (w > h && w > max) { h = Math.round(h * max / w); w = max; }
+        else if (h > max) { w = Math.round(w * max / h); h = max; }
+        const c = document.createElement("canvas"); c.width = w; c.height = h;
+        try { c.getContext("2d").drawImage(img, 0, 0, w, h); cb(c.toDataURL("image/jpeg", 0.85)); }
+        catch (e) { cb(rd.result); }
+      };
+      img.onerror = () => cb(rd.result);
+      img.src = rd.result;
+    };
+    rd.readAsDataURL(file);
+  }
+
+  /* ===== 右上角头像（👤）→ 我的面板：头像/签名/设置入口 ===== */
+  function openProfile() {
+    const prof = DB.state.profile || (DB.state.profile = { avatar: "", signature: "" });
+    const logged = DB.isLoggedIn();
+    // 关闭全部模态框：避免「编辑签名」重开时与旧面板叠加，或进入设置/同步时残留遮罩
+    function closeAllModals() { try { document.querySelectorAll(".modal-mask").forEach(m => m.remove()); } catch (e) {} }
+    const box = el(`<div class="prof"></div>`);
+    box.innerHTML = `
+      <div class="prof-top">
+        <div class="prof-ava">${prof.avatar ? `<img src="${UI.esc(prof.avatar)}" alt="头像"/>` : "👤"}</div>
+        <div class="prof-meta">
+          <div class="prof-name">${logged ? UI.esc(DB.currentUser()) : "未登录"}</div>
+          <div class="prof-sig">${prof.signature ? UI.esc(prof.signature) : '<span class="muted">（未设置个性签名）</span>'}</div>
+        </div>
+      </div>
+      <div class="row prof-actions" style="gap:8px;flex-wrap:wrap;margin-top:12px">
+        <button class="btn" id="pAva">🖼 更换头像</button>
+        <button class="btn" id="pSig">✏️ 编辑签名</button>
+        <button class="btn primary" id="pSet">⚙ 设置</button>
+        ${logged
+          ? `<button class="btn" id="pSync">☁ 云端同步</button><button class="btn danger" id="pOut">🚪 退出</button>`
+          : `<button class="btn" id="pLogin">🔑 登录 / 同步</button>`}
+      </div>
+      <input type="file" id="pFile" accept="image/*" style="display:none"/>`;
+    UI.modal({ title: "我的", body: box, width: "420px", actions: [{ label: "关闭", cls: "ghost", onClick: (m, c) => c() }] });
+    const avaBox = box.querySelector(".prof-ava");
+    box.querySelector("#pAva").onclick = () => box.querySelector("#pFile").click();
+    box.querySelector("#pFile").onchange = () => {
+      const f = box.querySelector("#pFile").files[0]; if (!f) return;
+      fileToAvatar(f, dataUrl => {
+        DB.state.profile.avatar = dataUrl; DB.save(); refreshTop();
+        avaBox.innerHTML = `<img src="${UI.esc(dataUrl)}" alt="头像"/>`;
+        UI.toast("头像已更新，将随云端同步到其他设备");
+      });
+    };
+    box.querySelector("#pSig").onclick = () => {
+      const ta = el(`<div><textarea id="sig" rows="3" placeholder="写一句你的个性签名…" style="width:100%">${UI.esc(prof.signature || "")}</textarea></div>`);
+      UI.modal({
+        title: "编辑个性签名", body: ta, width: "420px",
+        actions: [
+          { label: "取消", cls: "ghost", onClick: (m, c) => c() },
+          { label: "保存", cls: "primary", onClick: (m, c) => {
+            DB.state.profile.signature = ta.querySelector("#sig").value.trim(); DB.save(); refreshTop();
+            c(); closeAllModals(); openProfile(); UI.toast("签名已保存");
+          } }
+        ]
+      });
+    };
+    box.querySelector("#pSet").onclick = () => { closeAllModals(); location.hash = "#/settings"; };
+    if (logged) {
+      box.querySelector("#pSync").onclick = () => { closeAllModals(); openAccount(); };
+      box.querySelector("#pOut").onclick = () => { DB.stopAutoSync(); DB.logout(); refreshTop(); UI.toast("已退出登录"); closeAllModals(); };
+    } else {
+      box.querySelector("#pLogin").onclick = () => { closeAllModals(); openAccount(); };
     }
   }
 
@@ -406,7 +497,7 @@
     dailyQuote();
     refreshTop();
     document.getElementById("checkinBtn").onclick = doCheckin;
-    document.getElementById("accountBtn").onclick = openAccount;
+    document.getElementById("accountBtn").onclick = openProfile;
     document.getElementById("syncBtn").onclick = openAccount;
     document.getElementById("menuToggle").onclick = () => document.getElementById("sidebar").classList.toggle("open");
     document.getElementById("themeBtn").onclick = () => { const t = Theme.toggle(); UI.toast(t === "light" ? "已切换到浅色（护眼）模式" : "已切换到深色模式"); };

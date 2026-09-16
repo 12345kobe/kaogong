@@ -110,8 +110,15 @@
   function setTemp(v) { try { localStorage.setItem(LS_TEMP, String(v)); } catch (e) {} }
 
   let pending = ""; // 外部（如答题页「询问AI」）预填内容
-  function ask(text) {
+  let returnHash = null; // 从错题/答题页进入 AI 后，「返回」按钮要回到的界面
+  // 返回键钩子（由外部模块注入，用于回到「上一道题」等更精细的场景；不设置则回退到来源路由）
+  let returnHook = null;
+  function setReturnHook(fn) { returnHook = (typeof fn === "function") ? fn : null; }
+  function ask(text, ret) {
     pending = text || "";
+    // 记录来源，供「返回」按钮使用（来自错题本 / 答题页时，返回到上一个界面继续看其他问题）
+    returnHash = (ret && ret !== "#/ai") ? ret
+      : (location.hash && location.hash !== "#/ai" ? location.hash : null);
     // 关闭所有打开的模态框（收藏/资料/言语等刷题弹窗）。否则 location.hash 切换后
     // AI 模块会渲染在弹窗背后，视觉上「没跳走」，用户以为还停留在原位置。
     try {
@@ -121,7 +128,8 @@
     location.hash = "#/ai";
   }
   // 把一道题整理成结构化文本并跳转 AI（答题页「没看懂？询问 AI」、错题本「AI 咨询」共用）
-  function askQuestion(subject, qq, ua) {
+  // ret：可选，指定「返回」要回到的路由（如 #/wrongbook）；不传则回退到进入 AI 前的当前路由
+  function askQuestion(subject, qq, ua, ret) {
     const A = i => String.fromCharCode(65 + i);
     const optsTxt = (qq.options || []).map((o, i) => A(i) + ". " + (o == null ? "" : o)).join("\n");
     const myAns = (ua === undefined || ua === null || isNaN(ua)) ? "未作答" : A(ua);
@@ -134,7 +142,7 @@
       `【正确答案】${ansLabel}\n` +
       (qq.e ? `【解析】${qq.e}\n` : "") +
       `\n我看了解析还是没弄懂，请用通俗的方式一步步讲清楚：这道题的考点是什么、正确选项为什么对、我的思路错在哪里。\n我的疑惑点：（请在这里补充）`;
-    ask(txt);
+    ask(txt, ret || location.hash);
   }
 
   /* ===== 调用（OpenAI 兼容，按当前服务商） ===== */
@@ -175,7 +183,8 @@
     getToken: getToken, setToken: setToken, hasCustom: hasCustom,
     getModel: getModel, setModel: setModel, modelInfo: modelInfo, canVision: canVision,
     getLog: getLog, setLog: setLog,
-    getTemp: getTemp, setTemp: setTemp, ask: ask, askQuestion: askQuestion, test: test, chat: chat
+    getTemp: getTemp, setTemp: setTemp, ask: ask, askQuestion: askQuestion, test: test, chat: chat,
+    setReturnHook: setReturnHook, getReturn: () => returnHash
   };
 
   /* ===== PDF → 文本（按 Y 坐标重建行，避免整页挤成一行） ===== */
@@ -236,7 +245,8 @@
           </div>
         </div>
         <input type="file" id="aiFileImg" accept="image/*" multiple style="display:none"/>
-        <input type="file" id="aiFilePdf" accept="application/pdf" style="display:none"/>`;
+        <input type="file" id="aiFilePdf" accept="application/pdf" style="display:none"/>
+        <button id="aiBack" class="ai-back-fab" style="display:none" title="返回上一界面">← 返回</button>`;
 
       const msgs = body.querySelector("#aiMsgs");
       const input = body.querySelector("#aiInput");
@@ -461,6 +471,22 @@
 
       // 外部预填（答题页「询问AI」）
       if (pending) { input.value = pending; pending = ""; setTimeout(() => input.focus(), 60); }
+
+      /* ===== 返回键（来自错题本 / 答题页的「AI 咨询」时显示） ===== */
+      const backBtn = body.querySelector("#aiBack");
+      if (backBtn) {
+        if (returnHash) {
+          backBtn.style.display = "";
+          backBtn.onclick = () => {
+            const h = returnHash; const hook = returnHook;
+            returnHash = null; returnHook = null;
+            if (typeof hook === "function") hook();
+            else location.hash = h;
+          };
+        } else {
+          backBtn.style.display = "none";
+        }
+      }
     }
   };
 })();

@@ -1,0 +1,41 @@
+name: 时事热点自动抓取
+on:
+  schedule:
+    # 北京时间 12:00 与 20:00（对应 UTC 04:00 / 12:00）
+    - cron: "0 4 * * *"
+    - cron: "0 12 * * *"
+  repository_dispatch:
+    types: [crawl-hotspots]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 配置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 抓取时事热点
+        run: python tools/crawl_hotspots.py
+
+      - name: 提交并更新站点
+        run: |
+          git config user.name "hotspots-bot"
+          git config user.email "bot@kaogong.local"
+          git add assets/data/hotspots.js
+          if git diff --cached --quiet; then
+            echo "无变化，跳过提交"
+          else
+            git commit -m "chore: 时事热点自动抓取 $(date +'%Y-%m-%d %H:%M')"
+            git push
+          fi

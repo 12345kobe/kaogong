@@ -7,6 +7,14 @@
   const DB = window.DB;
   const SUBJECT = "时政";
 
+  // 公考「考点 / 重要表述」高亮词典（时事热点详情里重点词突出显示）
+  const HOTSPOTS_KW = ["高质量发展", "新质生产力", "百县千镇万村", "百千万工程", "粤港澳大湾区", "中国式现代化",
+    "全过程人民民主", "全面从严治党", "共同富裕", "乡村振兴", "科技创新", "营商环境", "双碳",
+    "碳达峰", "碳中和", "供给侧结构性改革", "扩大内需", "区域协调发展", "制造强国", "教育强国",
+    "人才强国", "文化强国", "美丽中国", "国家安全", "新发展格局", "高水平开放", "实体经济",
+    "专精特新", "数字中国", "健康中国", "就业优先", "依法行政", "一国两制", "广东", "深圳",
+    "广州", "珠海", "佛山", "东莞", "汕头", "省考", "国考", "宏观调控"];
+
   function store() {
     if (!Array.isArray(DB.state.currentAffairs)) DB.state.currentAffairs = [];
     return DB.state.currentAffairs;
@@ -356,6 +364,150 @@
     render(body) {
       const UI = window.UI;
       UI.StudyPanel && UI.StudyPanel("current", body);
+
+      /* =========== 时事热点（每日 12:00 / 20:00 自动抓取） =========== */
+      const hsSec = UI.section("🔥 时事热点（每日 12:00 / 20:00 自动抓取）", { open: true });
+      body.appendChild(hsSec);
+      const hsBody = hsSec.querySelector(".kg-det-b");
+      hsBody.innerHTML = `
+        <div class="muted small" style="margin-bottom:8px">热点来自央视新闻 / 人民网 / 新华网 / 南方网 等权威来源（重点全国 + 广东）。每条均保留<strong>原始发布日期</strong>，绝不把旧闻标成今天。点「查看完整」读全文，并可像申论一样<strong>标注重点 / 加笔迹 / 导出 PDF</strong>。</div>
+        <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <button class="btn primary sm" id="hsRefresh">🔄 刷新</button>
+          <span class="muted small" id="hsUpdated"></span>
+          <span class="muted small" id="hsNote"></span>
+        </div>
+        <div id="hsList"></div>`;
+      const hsList = hsBody.querySelector("#hsList");
+      const hsUpdated = hsBody.querySelector("#hsUpdated");
+
+      function hl(s) {
+        s = esc(s || "");
+        HOTSPOTS_KW.forEach(k => { if (k) s = s.split(k).join('<mark class="kw">' + k + '</mark>'); });
+        return s;
+      }
+
+      function loadHotspots() {
+        if (typeof fetch === "undefined") { hsList.innerHTML = `<div class="empty">当前环境不支持自动加载。</div>`; return; }
+        hsList.innerHTML = `<div class="empty">加载中…</div>`;
+        fetch("assets/data/hotspots.js?t=" + Date.now(), { cache: "no-store" })
+          .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
+          .then(txt => {
+            const m = txt.indexOf("=");
+            const j = JSON.parse(txt.slice(m + 1).replace(/;\s*$/, ""));
+            window.KG_HOTSPOTS = j;
+            renderHotspots(j);
+          })
+          .catch(e => {
+            hsList.innerHTML = `<div class="empty">时事热点加载失败：${esc(e.message)}。<br>若已配置后端或部署了抓取工作流，请稍后重试。</div>`;
+          });
+      }
+
+      function renderHotspots(j) {
+        const items = (j && j.items) || [];
+        hsUpdated.textContent = j && j.updatedAt ? ("更新于 " + j.updatedAt) : "";
+        if (!items.length) { hsList.innerHTML = `<div class="empty">暂无可展示的时事热点。可点「刷新」触发抓取，或检查抓取工作流是否正常运行。</div>`; return; }
+        hsList.innerHTML = items.map((it, i) => {
+          const region = it.region === "广东" ? "广东" : "全国";
+          const edit = (DB.state.hotspotsEdits && DB.state.hotspotsEdits[it.id]) || {};
+          const summary = edit.summary != null ? edit.summary : (it.summary || (it.body ? it.body.slice(0, 160) : ""));
+          return `<div class="hot-item" data-i="${i}">
+            <div class="hot-item-h">
+              <span class="hot-badge ${it.region === "广东" ? "gd" : "cn"}">${region}</span>
+              <span class="hot-src">${esc(it.source || "")}</span>
+              <span class="hot-date">${esc(it.date || "近日")}</span>
+            </div>
+            <div class="hot-title">${hl(edit.title != null ? edit.title : it.title)}</div>
+            <div class="hot-sum">${hl(summary)}</div>
+            <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px">
+              <button class="btn sm primary hs-view">📖 查看完整</button>
+              <button class="btn sm ghost hs-edit">✏️ 编辑/笔记</button>
+            </div>
+          </div>`;
+        }).join("");
+        hsList.querySelectorAll(".hot-item").forEach(el => {
+          const it = items[+el.dataset.i];
+          el.querySelector(".hs-view").onclick = () => openHotspot(it, false);
+          el.querySelector(".hs-edit").onclick = () => openHotspot(it, true);
+        });
+      }
+
+      function openHotspot(it, editMode) {
+        const edits = (DB.state.hotspotsEdits = DB.state.hotspotsEdits || {});
+        const cur = edits[it.id] || {};
+        const title = cur.title != null ? cur.title : it.title;
+        const body = cur.body != null ? cur.body : (it.body || it.summary || "");
+        const box = UI.el(`<div class="hot-detail" style="max-height:72vh;overflow:auto">
+          <div class="hot-item-h" style="margin-bottom:8px">
+            <span class="hot-badge ${it.region === "广东" ? "gd" : "cn"}">${it.region === "广东" ? "广东" : "全国"}</span>
+            <span class="hot-src">${esc(it.source || "")}</span>
+            <span class="hot-date">${esc(it.date || "近日")}</span>
+          </div>
+          <input class="hot-edit-title" value="${esc(title)}" ${editMode ? "" : "readonly"}/>
+          <div class="hot-edit-wrap" style="${editMode ? "" : "display:none"}">
+            <textarea class="hot-edit-body" rows="10">${esc(body)}</textarea>
+          </div>
+          <div class="hot-body">${hl(body)}</div>
+          <div class="muted small" style="margin-top:8px">来源：${esc(it.source || "")}　原文日期：${esc(it.date || "未标注")}　<a href="${esc(it.url || "#")}" target="_blank" rel="noopener">打开原文 ↗</a></div>
+        </div>`);
+        box.appendChild(UI.notebook("时事热点", "hs_" + it.id, box.querySelector(".hot-body")));
+        const detailBody = box.querySelector(".hot-body");
+        const editTitle = box.querySelector(".hot-edit-title");
+        const editBody = box.querySelector(".hot-edit-body");
+        const editWrap = box.querySelector(".hot-edit-wrap");
+        if (editMode) { editWrap.style.display = ""; detailBody.style.display = "none"; }
+        UI.modal({
+          title: "🔥 时事热点", body: box, width: "800px",
+          actions: editMode
+            ? [
+                { label: "取消", cls: "ghost", onClick: (m, c) => c() },
+                { label: "保存修改", cls: "primary", onClick: (m, c) => {
+                  edits[it.id] = { title: editTitle.value.trim() || it.title, body: editBody.value };
+                  DB.save(); c(); openHotspot(it, false); UI.toast("已保存你的修改");
+                } }
+              ]
+            : [
+                { label: "✏️ 编辑/笔记", cls: "ghost", onClick: (m, c) => { c(); openHotspot(it, true); } },
+                { label: "⬇ 导出PDF", cls: "ghost", onClick: () => exportHotspot(it, edits[it.id]) },
+                { label: "关闭", cls: "ghost", onClick: (m, c) => c() }
+              ]
+        });
+      }
+
+      function exportHotspot(it, editObj) {
+        const title = (editObj && editObj.title != null) ? editObj.title : it.title;
+        const body = (editObj && editObj.body != null) ? editObj.body : (it.body || it.summary || "");
+        let html = `<h2>${esc(title)}</h2>`;
+        html += `<p class="muted">${esc(it.source || "")} · ${esc(it.date || "近日")}</p>`;
+        html += `<p>${esc(body).replace(/\n/g, "<br/>")}</p>`;
+        const notes = UI.Notes.get("时事热点", "hs_" + it.id);
+        if (notes && notes.strokes && notes.strokes.length) {
+          const W = notes.vw || 720;
+          html = `<div style="position:relative;width:${W}px">${html}${UI.Notes.overlayHtml(notes)}</div>`;
+        }
+        html += UI.Attachments.toHtml("时事热点", "hs_" + it.id);
+        window.PDF.exportHtml(title, html);
+        UI.toast("已生成PDF，请在打印窗口选择「另存为 PDF」");
+      }
+
+      /* 刷新：已登录（有同步令牌）则触发 Actions 实时抓取；随后重新拉取最新数据 */
+      function triggerCrawlDispatch() {
+        try {
+          const tok = localStorage.getItem("kg_sync_token");
+          if (!tok) return;
+          const GH = (window.APP_CONFIG && window.APP_CONFIG.GH) || { owner: "12345kobe", repo: "kaogong" };
+          fetch("https://api.github.com/repos/" + GH.owner + "/" + GH.repo + "/dispatches", {
+            method: "POST",
+            headers: { "Authorization": "token " + tok, "Accept": "application/vnd.github+json", "Content-Type": "application/json" },
+            body: JSON.stringify({ event_type: "crawl-hotspots" })
+          }).catch(() => {});
+        } catch (e) {}
+      }
+      hsBody.querySelector("#hsRefresh").onclick = () => {
+        UI.toast("已触发抓取，稍后自动刷新最新热点…");
+        triggerCrawlDispatch();
+        setTimeout(loadHotspots, 6000);
+      };
+      loadHotspots();
 
       /* —— 导入卡 —— */
       const today = DB.today();

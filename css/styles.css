@@ -912,3 +912,32 @@ body.light .pdb-kp{ background:#fff }
 .fav-item{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
 .fav-q{font-size:14px;color:var(--txt);line-height:1.55;margin-bottom:8px;word-break:break-all}
 .fav-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+/* ===== AI 咨询「返回」悬浮键 ===== */
+.ai-back-fab{position:fixed;right:16px;bottom:96px;z-index:60;background:var(--bg2);color:var(--txt);border:1px solid var(--line);border-radius:999px;padding:10px 16px;font-size:14px;font-weight:600;box-shadow:0 4px 14px rgba(0,0,0,.18);cursor:pointer}
+.ai-back-fab:hover{filter:brightness(1.05)}
+
+/* ===== 右上角头像 / 我的面板 ===== */
+#accountBtn.has-avatar{padding:0;overflow:hidden;border-radius:50%}
+.avatar-img{width:24px;height:24px;border-radius:50%;object-fit:cover;display:block}
+.prof-top{display:flex;gap:14px;align-items:center}
+.prof-ava{width:64px;height:64px;border-radius:50%;background:var(--bg2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:30px;overflow:hidden;flex:0 0 auto}
+.prof-ava img{width:100%;height:100%;object-fit:cover}
+.prof-name{font-size:17px;font-weight:700;color:var(--txt)}
+.prof-sig{font-size:13px;color:var(--muted);margin-top:4px;word-break:break-all}
+
+/* ===== 时事热点 ===== */
+.hot-item{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+.hot-item-h{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+.hot-badge{font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;color:#fff}
+.hot-badge.cn{background:#2f6fed}
+.hot-badge.gd{background:#e0532a}
+.hot-src{font-size:12px;color:var(--muted)}
+.hot-date{font-size:12px;color:var(--muted);margin-left:auto}
+.hot-title{font-size:15px;font-weight:700;color:var(--txt);line-height:1.5}
+.hot-sum{font-size:13px;color:var(--txt);line-height:1.6;margin-top:4px;opacity:.92}
+.hot-detail .hot-title{font-size:18px}
+.hot-edit-title{width:100%;font-size:16px;font-weight:700;margin:6px 0 8px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--txt)}
+.hot-edit-body{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--txt);font-size:14px;line-height:1.7}
+.hot-body{font-size:14px;line-height:1.8;color:var(--txt);white-space:pre-wrap;word-break:break-word}
+mark.kw{background:rgba(255,206,0,.38);color:inherit;padding:0 2px;border-radius:3px;font-weight:700}
