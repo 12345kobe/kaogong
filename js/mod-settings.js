@@ -87,6 +87,17 @@
         </div>
 
         <div class="card" style="margin-top:12px">
+          <h3>💬 后端服务地址（好友 / 聊天）</h3>
+          <div class="muted small">加好友、聊天、在线状态、媒体上传依赖一个常驻后端。把部署 <b>backend</b>（Render / Railway 一键部署，或本地 <code>node backend/server.js</code>）得到的地址填到这里，例如 <code>https://kaogong-sync.onrender.com</code> 或本地 <code>http://localhost:3000</code>。填写后到「我的」登录 / 注册社交账号即可使用。</div>
+          <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap;align-items:center">
+            <input id="apiBase" placeholder="https://你的后端地址" style="flex:1;min-width:220px" value="${esc(Social.getBase())}"/>
+            <button class="btn primary sm" id="saveBase">保存</button>
+            <button class="btn sm ghost" id="testBase">测试连接</button>
+          </div>
+          <div class="muted small" id="baseNote" style="margin-top:10px"></div>
+        </div>
+
+        <div class="card" style="margin-top:12px">
           <h3>📦 数据管理</h3>
           <div class="muted small">导出 / 导入为本地备份文件（JSON）；上传 / 拉取走 GitHub 云端同步。<b>导入会合并</b>现有数据、不覆盖，可放心恢复历史备份。</div>
           <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:10px">
@@ -140,6 +151,25 @@
           UI.toast("字体已切换为：" + lbl);
         };
       });
+
+      /* ===== 后端服务地址（好友/聊天） ===== */
+      const baseNote = body.querySelector("#baseNote");
+      const apiBase = body.querySelector("#apiBase");
+      const saveBase = body.querySelector("#saveBase");
+      const testBase = body.querySelector("#testBase");
+      if (saveBase) saveBase.onclick = () => {
+        const v = (apiBase.value || "").trim().replace(/\/+$/, "");
+        Social.setBase(v);
+        baseNote.innerHTML = `已保存：<b>${UI.esc(v || "（空）")}</b>。到「我的」登录社交账号后启用。`;
+        UI.toast("后端地址已保存");
+      };
+      if (testBase) testBase.onclick = () => {
+        const v = (apiBase.value || "").trim().replace(/\/+$/, "");
+        if (!v) { baseNote.textContent = "请先填写地址"; return; }
+        baseNote.textContent = "连接中…";
+        fetch(v + "/api/health").then(r => r.json()).then(j => { baseNote.innerHTML = j && j.ok ? "✓ 连接成功，后端在线" : "返回异常"; })
+          .catch(e => baseNote.textContent = "连接失败：" + e.message);
+      };
 
       /* ===== 数据管理 ===== */
       const note = body.querySelector("#dataNote");

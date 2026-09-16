@@ -450,11 +450,14 @@
       <div class="row prof-actions" style="gap:8px;flex-wrap:wrap;margin-top:12px">
         <button class="btn" id="pAva">🖼 更换头像</button>
         <button class="btn" id="pSig">✏️ 编辑签名</button>
+        <button class="btn" id="pProfile">📝 完善资料</button>
+        <button class="btn" id="pContacts">📇 通讯录</button>
         <button class="btn primary" id="pSet">⚙ 设置</button>
         ${logged
           ? `<button class="btn" id="pSync">☁ 云端同步</button><button class="btn danger" id="pOut">🚪 退出</button>`
           : `<button class="btn" id="pLogin">🔑 登录 / 同步</button>`}
       </div>
+      <div id="pSocial" class="prof-social muted small"></div>
       <input type="file" id="pFile" accept="image/*" style="display:none"/>`;
     UI.modal({ title: "我的", body: box, width: "420px", actions: [{ label: "关闭", cls: "ghost", onClick: (m, c) => c() }] });
     const avaBox = box.querySelector(".prof-ava");
@@ -481,12 +484,101 @@
       });
     };
     box.querySelector("#pSet").onclick = () => { closeAllModals(); location.hash = "#/settings"; };
+    box.querySelector("#pContacts").onclick = () => { closeAllModals(); location.hash = "#/contacts"; };
+    box.querySelector("#pProfile").onclick = () => { closeAllModals(); openProfileEdit(false); };
     if (logged) {
       box.querySelector("#pSync").onclick = () => { closeAllModals(); openAccount(); };
       box.querySelector("#pOut").onclick = () => { DB.stopAutoSync(); DB.logout(); refreshTop(); UI.toast("已退出登录"); closeAllModals(); };
     } else {
       box.querySelector("#pLogin").onclick = () => { closeAllModals(); openAccount(); };
     }
+    renderSocialSection(box.querySelector("#pSocial"));
+  }
+
+  /* 我的面板里的社交账号状态（好友/聊天功能需要后端） */
+  function renderSocialSection(host) {
+    if (!host) return;
+    if (!Social.isConfigured()) {
+      host.innerHTML = `💬 聊天/好友功能需在「设置 → 后端服务地址」填写后端（部署 backend 后获得），填写后将自动启用。`;
+      return;
+    }
+    if (!Social.isLoggedIn()) {
+      host.innerHTML = `<button class="btn sm" id="pSLogin">🔑 登录社交账号</button> <button class="btn sm ghost" id="pSReg">注册</button>`;
+      host.querySelector("#pSLogin").onclick = () => openSocialAuth(false);
+      host.querySelector("#pSReg").onclick = () => openSocialAuth(true);
+    } else {
+      host.innerHTML = `💬 社交账号：<b>${UI.esc(Social.currentUser())}</b> · <span id="pSStatus">连接中…</span> <button class="btn sm ghost" id="pSOut">退出</button>`;
+      host.querySelector("#pSOut").onclick = () => { Social.logout(); UI.toast("已退出社交账号"); openProfile(); };
+      Social.autoLogin().then(() => { const s = host.querySelector("#pSStatus"); if (s) s.textContent = "已连接"; refreshSocialBadge(); }).catch(() => { const s = host.querySelector("#pSStatus"); if (s) s.textContent = "失败，请重登"; });
+    }
+  }
+  function openSocialAuth(isReg) {
+    const box = el(`<div>
+      <div class="muted small" style="margin-bottom:10px">${isReg ? "注册新社交账号（仅用于好友/聊天）" : "登录社交账号"}</div>
+      <input id="saU" placeholder="用户名（2-20位，字母/数字/中文）" style="width:100%;margin-bottom:8px"/>
+      <input id="saP" type="password" placeholder="密码（≥4位）" style="width:100%"/>
+    </div>`);
+    UI.modal({
+      title: isReg ? "注册社交账号" : "登录社交账号", body: box, width: "420px",
+      actions: [
+        { label: "取消", cls: "ghost", onClick: (m, c) => c() },
+        { label: isReg ? "注册" : "登录", cls: "primary", onClick: (m, c) => {
+          const u = box.querySelector("#saU").value.trim(), p = box.querySelector("#saP").value;
+          if (!u || !p) { UI.toast("请输入用户名和密码"); return; }
+          const fn = isReg ? Social.register(u, p) : Social.login(u, p);
+          fn.then(() => { c(); UI.toast("已" + (isReg ? "注册并" : "") + "登录"); openProfileEdit(true); })
+            .catch(e => UI.toast("失败：" + e.message));
+        } }
+      ]
+    });
+  }
+
+  /* 完善基本资料（昵称/性别/生日/签名/头像），可强制（启动未完成时弹窗） */
+  function openProfileEdit(force) {
+    const prof = DB.state.profile || (DB.state.profile = {});
+    const load = () => Social.isConfigured() && Social.isLoggedIn() ? Social.getProfile().then(j => j.profile).catch(() => prof) : Promise.resolve(prof);
+    load().then(p => {
+      const cur = Object.assign({}, prof, p || {});
+      const box = el(`<div>
+        <div class="muted small" style="margin-bottom:10px">${force ? "为了使用好友/聊天功能，请先完善你的基本信息：" : "完善你的公开资料，好友可在通讯录看到："}</div>
+        <label class="kg-fld">昵称<input id="pfNick" value="${UI.esc(cur.nickname || "")}" placeholder="例如：小明" maxlength="20"/></label>
+        <label class="kg-fld">性别
+          <select id="pfGender">
+            <option value="">不填</option>
+            <option value="男"${cur.gender === "男" ? " selected" : ""}>男</option>
+            <option value="女"${cur.gender === "女" ? " selected" : ""}>女</option>
+          </select>
+        </label>
+        <label class="kg-fld">生日<input id="pfBirth" type="date" value="${UI.esc(cur.birthday || "")}"/></label>
+        <label class="kg-fld">个性签名<input id="pfBio" value="${UI.esc(cur.bio || cur.signature || "")}" placeholder="一句话介绍自己" maxlength="60"/></label>
+      </div>`);
+      UI.modal({
+        title: "完善资料", body: box, width: "440px",
+        actions: [
+          ...(force ? [] : [{ label: "取消", cls: "ghost", onClick: (m, c) => c() }]),
+          { label: "保存", cls: "primary", onClick: (m, c) => {
+            const np = {
+              nickname: box.querySelector("#pfNick").value.trim(),
+              gender: box.querySelector("#pfGender").value,
+              birthday: box.querySelector("#pfBirth").value,
+              bio: box.querySelector("#pfBio").value.trim()
+            };
+            if (!np.nickname || !np.gender || !np.birthday) { UI.toast("昵称、性别、生日为必填"); return; }
+            // 本地镜像 + 后端保存
+            DB.state.profile = Object.assign(DB.state.profile || {}, { nickname: np.nickname, gender: np.gender, birthday: np.birthday, signature: np.bio });
+            DB.save();
+            if (Social.isConfigured() && Social.isLoggedIn()) {
+              Social.saveProfile(np).then(() => { c(); UI.toast("资料已保存"); refreshTop(); if (force) bootSocialAfterProfile(); })
+                .catch(e => { c(); UI.toast("已本地保存，后端同步失败：" + e.message); refreshTop(); if (force) bootSocialAfterProfile(); });
+            } else { c(); UI.toast("已本地保存（未连接后端，好友暂不可见）"); refreshTop(); if (force) bootSocialAfterProfile(); }
+          } }
+        ]
+      });
+    });
+  }
+  function bootSocialAfterProfile() {
+    // 资料完善后若已登录社交，进入通讯录
+    if (Social.isConfigured() && Social.isLoggedIn()) location.hash = "#/contacts";
   }
 
   function exportData() {
@@ -557,6 +649,52 @@
 
   function closeSidebar() { document.getElementById("sidebar").classList.remove("open"); }
 
+  /* ===== 社交初始化：自动登录、未读角标、资料校验、实时事件 ===== */
+  async function initSocial() {
+    if (!Social.isConfigured()) return;
+    if (!Social.isLoggedIn()) return;
+    try { await Social.autoLogin(); } catch (e) { return; }
+    Social.connectWs();
+    // 未读数角标
+    Social.on("unread", () => refreshSocialBadge());
+    Social.on("message", () => { refreshSocialBadge(); });
+    Social.on("friend", () => refreshSocialBadge());
+    Social.on("remind", (r) => { showReminderPopup(r); refreshSocialBadge(); });
+    refreshSocialBadge();
+    // 轮询兜底：即便 WebSocket 偶发未触发，红点也能在数秒内更新
+    if (!window.__badgeTimer) window.__badgeTimer = setInterval(refreshSocialBadge, 5000);
+    // 启动资料校验：若基本资料未完成，弹窗提醒
+    try {
+      const j = await Social.getProfile();
+      if (!j.complete) setTimeout(() => openProfileEdit(true), 400);
+    } catch (e) {}
+  }
+  function refreshSocialBadge() {
+    const btn = document.getElementById("accountBtn");
+    if (!btn) return;
+    let badge = btn.querySelector(".kg-badge");
+    if (!Social.isLoggedIn()) { if (badge) badge.remove(); return; }
+    Social.unread().then(j => {
+      const counts = (j && j.unread) || {};
+      const total = Object.values(counts).reduce((a, b) => a + (b | 0), 0);
+      if (!badge) { badge = document.createElement("span"); badge.className = "kg-badge"; btn.appendChild(badge); }
+      if (total > 0) { badge.textContent = total > 99 ? "99+" : String(total); badge.style.display = ""; }
+      else { badge.style.display = "none"; badge.textContent = ""; }
+    }).catch(() => {});
+  }
+  function showReminderPopup(r) {
+    const from = r && r.from ? r.from : "好友";
+    const box = el(`<div style="text-align:center;padding:6px">
+      <div style="font-size:40px;margin-bottom:8px">📚</div>
+      <div style="font-size:16px;margin-bottom:6px"><b>${UI.esc(from)}</b> 提醒你去学习啦！</div>
+      <div class="muted">${UI.esc(r && r.text ? r.text : "别掉队，坚持就是胜利～")}</div>
+    </div>`);
+    UI.modal({
+      title: "学习提醒", body: box, width: "380px",
+      actions: [{ label: "知道了，去学习", cls: "primary", onClick: (m, c) => { c(); Social.clearReminders().catch(() => {}); location.hash = "#/countdown"; } }]
+    });
+  }
+
   /* ===== 启动 ===== */
   async function boot() {
     DB.load();
@@ -619,6 +757,8 @@
       }, { once: true });
     }
     window.__refreshTop = refreshTop;
+    window.refreshSocialBadge = refreshSocialBadge;
+    initSocial();
     window.addEventListener("hashchange", renderRoute);
     if (!location.hash) location.hash = "#/countdown";
       if (DB.isLoggedIn()) {
