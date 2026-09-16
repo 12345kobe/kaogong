@@ -1029,6 +1029,7 @@ mark.kw{background:rgba(255,206,0,.38);color:inherit;padding:0 2px;border-radius
 .hs-new{background:rgba(61,220,151,.16);color:var(--green)}
 .hs-old{background:rgba(159,176,216,.16);color:var(--txt-dim)}
 .hs-date-b{padding:0 12px 12px}
+.hs-date-b[hidden]{display:none}
 .hs-date-b .hot-item{margin-bottom:10px}
 @media(max-width:760px){
   .hs-bar{flex-direction:column;align-items:stretch}
