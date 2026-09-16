@@ -91,8 +91,10 @@
         const groups = {};
         all.forEach(q => { const k = q.date || "未知日期"; (groups[k] = groups[k] || []).push(q); });
         const dates = Object.keys(groups).sort().reverse();
+        const HQ_ID = "essay_history";
         const box = UI.el(`<div style="max-height:70vh;overflow:auto;padding:2px"></div>`);
-        box.innerHTML = dates.map(d => {
+        const comBody = UI.el(`<div class="kg-com-body" style="position:relative;padding:12px;line-height:1.8"></div>`);
+        comBody.innerHTML = dates.map(d => {
           const items = groups[d].map((q) => {
             const idx = all.indexOf(q);
             return `<div class="kg-hq" style="display:flex;gap:8px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--line)">
@@ -103,7 +105,9 @@
           }).join("");
           return `<div class="subhead" style="margin:12px 0 4px">📅 ${UI.esc(d)} · ${groups[d].length} 句</div>` + items;
         }).join("");
-        UI.modal({ title: "📜 历史金句", body: box, width: "560px", actions: [{ label: "关闭", cls: "ghost", onClick: (m, c) => c() }] });
+        box.appendChild(comBody);
+        try { box.appendChild(UI.notebook("申论", HQ_ID, comBody)); } catch (e) {}
+        try { UI.floatingAnno("申论", HQ_ID, comBody); } catch (e) {}
         box.querySelectorAll("[data-del]").forEach(btn => {
           btn.onclick = () => {
             if (!confirm("确定删除这条历史金句？")) return;
@@ -112,6 +116,22 @@
             const j = real.indexOf(all[i]);
             if (j >= 0) { real.splice(j, 1); DB.save(); UI.toast("已删除该金句"); btn.closest(".kg-hq").remove(); }
           };
+        });
+        UI.modal({
+          title: "📜 历史金句", body: box, width: "560px",
+          actions: [
+            { label: "⬇ 导出PDF", cls: "ghost", onClick: () => {
+              let html = comBody.innerHTML;
+              const notes = UI.Notes.get("申论", HQ_ID);
+              if (notes && notes.strokes && notes.strokes.length) {
+                const W = notes.vw || comBody.clientWidth || 540;
+                html = `<div style="position:relative;width:${W}px">${html}${UI.Notes.overlayHtml(notes)}</div>`;
+              }
+              html += UI.Attachments.toHtml("申论", HQ_ID);
+              window.PDF.exportHtml("申论 · 历史金句", html);
+            } },
+            { label: "关闭", cls: "ghost", onClick: (m, c) => c() }
+          ]
         });
       }
       const comRec = todayCommentary();
