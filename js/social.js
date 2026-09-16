@@ -16,6 +16,18 @@ window.Social = (function () {
   function setBase(b) { base = (b || "").trim(); localStorage.setItem(LS_BASE, base); }
   function getBase() { return base; }
   function isConfigured() { return !!base; }
+  // 同域自动探测：若后端与前端同域部署（一次部署同时托管网页+接口），
+  // 无需用户手动填地址。GitHub Pages 等同域无后端时探测失败 → 保持「未配置」。
+  async function autoDetect() {
+    if (base) return false;
+    try {
+      const r = await fetch(location.origin + "/api/health", { cache: "no-store" });
+      if (!r.ok) return false;
+      const j = await r.json();
+      if (j && j.ok) { setBase(location.origin); return true; }
+    } catch (e) { /* 同域无后端，忽略 */ }
+    return false;
+  }
   function isLoggedIn() { return !!token && !!me; }
   function currentUser() { return me; }
   function wsUrl() {
@@ -115,7 +127,7 @@ window.Social = (function () {
   function emit(ev, data) { (listeners[ev] || []).forEach(cb => { try { cb(data); } catch (e) {} }); }
 
   return {
-    setBase, getBase, isConfigured, isLoggedIn, currentUser,
+    setBase, getBase, isConfigured, isLoggedIn, currentUser, autoDetect,
     register, login, autoLogin, logout,
     getProfile, saveProfile, getProfileOf,
     search, sendRequest, listRequests, accept, listFriends, setRemark, setSpecial, removeFriend,

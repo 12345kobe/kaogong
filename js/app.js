@@ -651,6 +651,8 @@
 
   /* ===== 社交初始化：自动登录、未读角标、资料校验、实时事件 ===== */
   async function initSocial() {
+    // 同域后端自动探测：一次部署同时托管网页+接口时（如 Railway），免手动填地址
+    try { await Social.autoDetect(); } catch (e) {}
     if (!Social.isConfigured()) return;
     if (!Social.isLoggedIn()) return;
     try { await Social.autoLogin(); } catch (e) { return; }
