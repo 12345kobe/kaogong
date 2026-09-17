@@ -78,7 +78,7 @@
     });
     list.innerHTML = html;
     list.querySelectorAll("[data-user]").forEach(el => {
-      el.onclick = () => openProfilePage(el.getAttribute("data-user"));
+      el.onclick = () => openProfilePage(el.getAttribute("data-user"), "通讯录");
     });
   }
   function itemHtml(f, special) {
@@ -143,18 +143,34 @@
     return s[u] = s[u] || { mute: false, pin: false, remind: false, bg: "", clearedTs: 0 };
   }
 
-  /* 通用微信式全屏页 */
-  function wxPage(title) {
+  /* 微信式全屏页：导航栈（返回上一级目录） */
+  let wxStack = [];
+  function closeInnerModals() {
+    // 只关闭普通 UI.modal（搜索/背景/媒体查看等），保留 wx 页与聊天页，实现嵌套导航
+    document.querySelectorAll(".modal-mask").forEach(m => {
+      if (!m.classList.contains("wx-mask") && !m.classList.contains("chat-mask")) m.remove();
+    });
+  }
+  function closeAllWx() {
+    document.querySelectorAll(".wx-mask").forEach(m => m.remove());
+    wxStack.length = 0;
+  }
+  function openWxPage(opts) {
+    closeInnerModals();
+    const backLb = opts.backLabel ? `<span class="wx-back-lb">${UI.esc(opts.backLabel)}</span>` : "";
+    const mask = UI.el(`<div class="modal-mask wx-mask"></div>`);
     const wrap = UI.el(`<div class="wx-page">
-      <div class="wx-head"><button class="wx-back">‹</button><div class="wx-title">${UI.esc(title)}</div><span class="wx-head-r"></span></div>
+      <div class="wx-head"><button class="wx-back" title="返回上一级">‹${backLb}</button><div class="wx-title">${UI.esc(opts.title)}</div><span class="wx-head-r"></span></div>
       <div class="wx-body"></div></div>`);
-    const mask = UI.el(`<div class="modal-mask chat-mask wx-mask"></div>`);
     mask.appendChild(wrap);
     document.body.appendChild(mask);
-    closeAllModalsKeep(mask);
-    const close = () => mask.remove();
+    wxStack.push(mask);
+    // 返回上一级：弹出当前页（父级页面仍在栈中，自动显现）
+    const close = () => { mask.remove(); wxStack = wxStack.filter(x => x !== mask); };
     wrap.querySelector(".wx-back").onclick = close;
-    return { wrap, mask, close, body: wrap.querySelector(".wx-body") };
+    const body = wrap.querySelector(".wx-body");
+    if (opts.build) opts.build(body, close, mask);
+    return { wrap, mask, close, body };
   }
   function avaInner(src, ch, cls) {
     if (src) return `<img class="${cls}" src="${UI.esc(src)}"/>`;
@@ -166,7 +182,7 @@
   function openChatDetail(peer, peerInfo) {
     const st = chatSet(peer);
     const me = Social.currentUser();
-    const pg = wxPage("聊天详情");
+    const pg = openWxPage({ title: "聊天详情" });
     const name = peerInfo.nickname ? (peerInfo.remark || peerInfo.nickname) : peer;
     pg.body.innerHTML = `
       <div class="wx-card wx-avas">
@@ -189,8 +205,8 @@
         <div class="wx-cell" id="cdRep"><span>投诉</span><i class="wx-arrow">›</i></div>
       </div>`;
     const saveSt = () => DB.save();
-    pg.body.querySelector("#cdPeer").onclick = () => { pg.close(); openProfilePage(peer); };
-    pg.body.querySelector("#cdMe").onclick = () => { pg.close(); openProfilePage(me); };
+    pg.body.querySelector("#cdPeer").onclick = () => { openProfilePage(peer, "聊天详情"); };
+    pg.body.querySelector("#cdMe").onclick = () => { openProfilePage(me, "聊天详情"); };
     pg.body.querySelector("#cdSearch").onclick = () => openChatSearch(peer);
     pg.body.querySelector("#cdBg").onclick = () => openChatBg(st, saveSt);
     pg.body.querySelector("#cdClear").onclick = () => {
@@ -254,7 +270,7 @@
   }
 
   /* ===================== 微信式主页（自己 / 好友） ===================== */
-  async function openProfilePage(username) {
+  async function openProfilePage(username, backLabel) {
     const me = Social.currentUser();
     const isMe = username === me;
     let p;
@@ -264,17 +280,16 @@
       catch (e) { UI.toast("加载失败：" + e.message); return; }
     }
     const name = p.nickname || username;
-    const pg = wxPage(isMe ? "我的主页" : "好友主页");
+    const pg = openWxPage({ title: isMe ? "我的主页" : "好友主页", backLabel: backLabel || (isMe ? "设置" : "通讯录") });
     pg.body.innerHTML = `
       <div class="wx-card wx-prof-top">
-        <div class="wx-prof-ava">${avaInner(Social.mediaUrl(p.avatar || ""), (name[0] || "?"), "")}</div>
         <div class="wx-prof-main">
-          <div class="wx-prof-name">${UI.esc(name)} ${p.gender === "女" ? "👩" : p.gender === "男" ? "👨" : ""} ${!isMe && p.online ? '<span class="on-dot" title="在线"></span>' : ""}</div>
+          <div class="wx-prof-name">${UI.esc(name)} ${p.gender === "女" ? "👩" : p.gender === "男" ? "👨" : ""} ${!isMe && p.online ? '<span class="on-dot" title="在线"></span>' : ""} ${!isMe ? `<span class="wx-star" id="wpStar" title="特别关心">${p.special ? "★" : "☆"}</span>` : ""}</div>
           <div class="wx-prof-row">昵称：${UI.esc(p.nickname || "未设置")}</div>
-          <div class="wx-prof-row">账号：${UI.esc(username)}</div>
+          <div class="wx-prof-row">微信号：${UI.esc(username)}</div>
           ${p.birthday ? `<div class="wx-prof-row">生日：${UI.esc(p.birthday)}</div>` : ""}
         </div>
-        ${!isMe ? `<span class="wx-star" id="wpStar" title="特别关心">${p.special ? "★" : "☆"}</span>` : ""}
+        <div class="wx-prof-ava">${avaInner(Social.mediaUrl(p.avatar || ""), (name[0] || "?"), "")}</div>
       </div>
       <div class="wx-card">
         <div class="wx-cell wx-cell-static"><span class="wx-cell-lb">备注</span><span class="wx-cell-val" id="wpRemark">${UI.esc(p.remark || "未设置")}</span>${!isMe ? '<i class="wx-arrow">›</i>' : ""}</div>
@@ -296,18 +311,22 @@
       </div>
       <div class="wx-card"><div class="wx-cell wx-danger" id="wpDel"><span>删除好友</span></div></div>` : `
       <div class="wx-card wx-actions-v"><div class="wx-big-btn" id="wpEdit">📝 完善资料</div></div>`}`;
-    pg.body.querySelector("#wpMoments").onclick = () => { pg.close(); openStudyLog(username, p); };
+    pg.body.querySelector("#wpMoments").onclick = () => { openStudyLog(username, p, isMe ? "我的主页" : "好友主页"); };
     if (isMe) {
       pg.body.querySelector("#wpEdit").onclick = () => { pg.close(); if (window.openProfileEdit) window.openProfileEdit(false); };
     } else {
-      pg.body.querySelector("#wpChat").onclick = () => { pg.close(); openChat(username); };
+      pg.body.querySelector("#wpChat").onclick = () => {
+        // 若聊天已打开（从聊天详情进入），直接返回聊天；否则新开聊天
+        if (document.querySelector(".chat-mask")) { closeAllWx(); }
+        else { pg.close(); openChat(username); }
+      };
       pg.body.querySelector("#wpRemark").parentElement.onclick = () => {
         const v = prompt("修改备注名（留空则显示昵称）：", p.remark || "");
         if (v === null) return;
-        Social.setRemark(username, v.trim()).then(() => { UI.toast("备注已更新"); pg.close(); openProfilePage(username); }).catch(e => UI.toast("失败：" + e.message));
+        Social.setRemark(username, v.trim()).then(() => { UI.toast("备注已更新"); pg.close(); openProfilePage(username, backLabel); }).catch(e => UI.toast("失败：" + e.message));
       };
       pg.body.querySelector("#wpStar").onclick = () => {
-        Social.setSpecial(username, !p.special).then(() => { UI.toast(p.special ? "已取消特别关心" : "已设为特别关心"); pg.close(); openProfilePage(username); }).catch(e => UI.toast("失败：" + e.message));
+        Social.setSpecial(username, !p.special).then(() => { UI.toast(p.special ? "已取消特别关心" : "已设为特别关心"); pg.close(); openProfilePage(username, backLabel); }).catch(e => UI.toast("失败：" + e.message));
       };
       pg.body.querySelector("#wpRemind").onclick = () => {
         const plan = p.plan || [];
@@ -343,7 +362,7 @@
     if (!Social.isConfigured() || !Social.isLoggedIn()) return;
     try { Social.saveProfile({ records: buildLocalRecords() }).catch(() => {}); } catch (e) {}
   }
-  async function openStudyLog(username, profHint) {
+  async function openStudyLog(username, profHint, backLabel) {
     const me = Social.currentUser();
     const isMe = username === me;
     let p = profHint, records = [];
@@ -356,7 +375,7 @@
       catch (e) { UI.toast("加载失败：" + e.message); return; }
     }
     const name = p.nickname || username;
-    const pg = wxPage(isMe ? "我的学习记录" : name + " 的学习记录");
+    const pg = openWxPage({ title: isMe ? "我的学习记录" : name + " 的学习记录", backLabel: backLabel || (isMe ? "我的主页" : "好友主页") });
     const checkinDays = ((DB.state.checkin && DB.state.checkin.dates) || []).length;
     pg.body.innerHTML = `
       <div class="wx-cover">
@@ -386,6 +405,7 @@
 
   function openChat(peer) {
     if (chatUnSub) { try { chatUnSub(); } catch (e) {} chatUnSub = null; }
+    closeAllWx();
     const wrap = UI.el(`<div class="chat-screen">
       <div class="chat-head">
         <button class="chat-back" id="chBack" title="返回通讯录">‹</button>
@@ -524,6 +544,7 @@
   function closeChat() {
     if (chatUnSub) { try { chatUnSub(); } catch (e) {} chatUnSub = null; }
     const mask = document.querySelector(".chat-mask"); if (mask) mask.remove();
+    closeAllWx(); // 一并关闭叠在聊天之上的微信式页面（详情/主页/学习记录）
     if (MODULES.contacts && document.getElementById("routeBody")) { /* 留在通讯录 */ }
   }
   /* 头像工具：我的头像来自本地资料，对方头像来自好友列表 */
