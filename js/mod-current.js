@@ -747,6 +747,180 @@
         triggerCrawlDispatch();
         setTimeout(loadHotspots, 6000);
       };
+
+      /* =========== 历史时政（全部归档：自动抓取 + 导入网页 + 我的记录） =========== */
+      const histSec = UI.section("🗂 历史时政（全部归档 · 可搜索）", { open: false });
+      body.appendChild(histSec);
+      const histBody = histSec.querySelector(".kg-det-b");
+      histBody.innerHTML = `
+        <div class="muted small" style="margin-bottom:8px">这里汇总<strong>所有</strong>自动抓取的时事热点，以及你粘贴识别 / 导入网页的时政记录，按<strong>年份月份 → 具体日期</strong>两级归档，可搜索标题 / 正文 / 来源。点击任意条目查看详情。</div>
+        <div class="hs-bar" style="margin-bottom:8px">
+          <div class="hs-tools" style="flex:1">
+            <input id="histSearch" class="hs-search" type="search" placeholder="🔍 搜索历史时政（标题/正文/来源）"/>
+          </div>
+        </div>
+        <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px">
+          <span class="muted small" id="histStat"></span>
+        </div>
+        <div id="histList"><div class="empty">加载中…</div></div>`;
+      const histList = histBody.querySelector("#histList");
+      const histStat = histBody.querySelector("#histStat");
+      const HIST = { q: "", loaded: false, items: [], openMonth: {} };
+
+      function weekday(d) {
+        const t = Date.parse(d);
+        if (isNaN(t)) return "";
+        return ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][new Date(t).getDay()];
+      }
+      function normKeyH(s) { return (s || "").replace(/\s+/g, "").slice(0, 40); }
+
+      function normalizeHist() {
+        const server = (window.KG_HOTSPOTS_HISTORY && window.KG_HOTSPOTS_HISTORY.items)
+                    || (window.KG_HOTSPOTS && window.KG_HOTSPOTS.items) || [];
+        const imports = DB.state.hotspotsImports || [];
+        const records = (DB.state.currentAffairs || []).map(r => {
+          const d = r.data || {};
+          const body = [
+            (d.news || []).map(n => (n.title || "") + " " + (n.body || "")).join("\n"),
+            (d.essay && (d.essay.paras || []).join("\n")),
+            (d.words || []).map(w => (w.word || "") + "：" + (w.def || "")).join("\n")
+          ].filter(Boolean).join("\n");
+          return {
+            id: "rec_" + r.id, date: r.date || "", title: r.title || "时政记录",
+            source: "我的时政记录", region: "全国", type: "record",
+            summary: body.slice(0, 160), body: body, url: "", imgs: [], rec: r
+          };
+        });
+        const merged = [];
+        const seen = new Set();
+        function pushIt(it) {
+          const k = (it.type === "record" ? "rec" : it.type === "import" ? "imp" : "web")
+                  + "|" + normKeyH(it.title) + "|" + (it.date || "");
+          if (seen.has(k)) return;
+          seen.add(k);
+          it.summary = it.summary || (it.body ? it.body.slice(0, 160) : "");
+          it.imgs = it.imgs || [];
+          it.url = it.url || "";
+          merged.push(it);
+        }
+        server.forEach(it => pushIt(Object.assign({}, it, { type: "web", id: "h_" + normKeyH(it.title) + "_" + (it.date || "") })));
+        imports.forEach(it => pushIt(Object.assign({}, it, { type: "import", id: it.id || ("imp_" + normKeyH(it.title)) })));
+        records.forEach(it => pushIt(it));
+        return merged;
+      }
+
+      function groupHist(items) {
+        const byMonth = {};
+        items.forEach(it => {
+          const d = it.date || "未标注";
+          const ym = d.length >= 7 ? d.slice(0, 7) : "未标注";
+          byMonth[ym] = byMonth[ym] || {};
+          (byMonth[ym][d] = byMonth[ym][d] || []).push(it);
+        });
+        const months = Object.keys(byMonth).sort((a, b) => b.localeCompare(a));
+        return months.map(ym => {
+          const label = ym === "未标注" ? "未标注日期" : (parseInt(ym.slice(0, 4)) + "年" + parseInt(ym.slice(5, 7)) + "月");
+          const days = Object.keys(byMonth[ym]).sort((a, b) => b.localeCompare(a));
+          const dayGroups = days.map(d => {
+            const dd = d === "未标注" ? "未标注" : (parseInt(d.slice(5, 7)) + "月" + parseInt(d.slice(8, 10)) + "日 " + weekday(d));
+            return { dateKey: d, label: dd, items: byMonth[ym][d] };
+          });
+          return { ym, label, dayGroups, count: dayGroups.reduce((s, g) => s + g.items.length, 0) };
+        });
+      }
+
+      function renderHist() {
+        histList.innerHTML = "";
+        const all = normalizeHist();
+        HIST.items = all;
+        const q = (HIST.q || "").trim().toLowerCase();
+        let filtered = all;
+        if (q) {
+          filtered = all.filter(it => {
+            const hay = [it.title, it.summary, it.body, it.source].filter(Boolean).join(" ").toLowerCase();
+            return hay.indexOf(q) >= 0;
+          });
+        }
+        if (!filtered.length) {
+          histList.innerHTML = `<div class="empty">${q ? "没有匹配的历史时政。" : "暂无可归档的时政记录。"}</div>`;
+          histStat.textContent = "";
+          return;
+        }
+        const groups = groupHist(filtered);
+        histStat.textContent = `共 ${filtered.length} 条${q ? "（已筛选）" : ""} · 跨 ${groups.length} 个月`;
+        const searching = !!q;
+        groups.forEach((mo, mi) => {
+          const monthOpen = searching ? true : (HIST.openMonth[mo.ym] !== undefined ? HIST.openMonth[mo.ym] : (mi === 0));
+          const mEl = UI.el(`<div class="hist-month ${monthOpen ? "open" : ""}" data-ym="${mo.ym}">
+            <div class="hist-month-h"><span class="hs-caret">${monthOpen ? "▾" : "▸"}</span><span class="hist-month-t">📂 ${esc(mo.label)}</span><span class="muted small">${mo.count} 条</span></div>
+            <div class="hist-month-b" ${monthOpen ? "" : "hidden"}></div></div>`);
+          const mBody = mEl.querySelector(".hist-month-b");
+          mo.dayGroups.forEach((dg, di) => {
+            const dayOpen = searching ? true : (monthOpen && mi === 0 && di === 0);
+            const dEl = UI.el(`<div class="hist-day ${dayOpen ? "open" : ""}" data-d="${esc(dg.dateKey)}">
+              <div class="hist-day-h"><span class="hs-caret">${dayOpen ? "▾" : "▸"}</span><span class="hist-day-t">📅 ${esc(dg.label)}</span><span class="muted small">${dg.items.length} 条</span></div>
+              <div class="hist-day-b" ${dayOpen ? "" : "hidden"}></div></div>`);
+            const dBody = dEl.querySelector(".hist-day-b");
+            dg.items.forEach(it => {
+              const tagHtml = it.type === "record" ? `<span class="hist-tag tag-rec">我的记录</span>`
+                           : it.type === "import" ? `<span class="hist-tag tag-imp">导入</span>` : "";
+              dBody.insertAdjacentHTML("beforeend", `<div class="hist-item" data-id="${esc(it.id)}" data-type="${it.type}">
+                <div class="hot-item-h">
+                  <span class="hot-badge ${it.region === "广东" ? "gd" : "cn"}">${it.region === "广东" ? "广东" : "全国"}</span>
+                  ${tagHtml}
+                  <span class="hot-src">${esc(it.source || "")}</span>
+                </div>
+                <div class="hot-title">${hl(it.title)}</div>
+                ${it.summary ? `<div class="hot-sum">${hl(it.summary)}</div>` : ""}
+              </div>`);
+            });
+            dEl.querySelector(".hist-day-h").onclick = () => {
+              const open = !dEl.classList.contains("open");
+              dEl.classList.toggle("open", open);
+              dEl.querySelector(".hist-day-b").hidden = !open;
+              dEl.querySelector(".hs-caret").textContent = open ? "▾" : "▸";
+            };
+            mBody.appendChild(dEl);
+          });
+          mEl.querySelector(".hist-month-h").onclick = () => {
+            const open = !mEl.classList.contains("open");
+            mEl.classList.toggle("open", open);
+            mEl.querySelector(".hist-month-b").hidden = !open;
+            mEl.querySelector(".hs-caret").textContent = open ? "▾" : "▸";
+            HIST.openMonth[mo.ym] = open;
+          };
+          histList.appendChild(mEl);
+        });
+        histList.querySelectorAll(".hist-item").forEach(el => {
+          el.onclick = () => {
+            const it = HIST.items.find(x => x.id === el.dataset.id);
+            if (!it) return;
+            if (it.type === "record") viewRecord(it.rec);
+            else openHotspot(it, false);
+          };
+        });
+      }
+
+      function loadHist() {
+        if (HIST.loaded) { renderHist(); return; }
+        histList.innerHTML = `<div class="empty">加载中…</div>`;
+        fetch("assets/data/hotspot_history.js?t=" + Date.now(), { cache: "no-store" })
+          .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
+          .then(txt => {
+            const m = txt.indexOf("=");
+            window.KG_HOTSPOTS_HISTORY = JSON.parse(txt.slice(m + 1).replace(/;\s*$/, ""));
+            HIST.loaded = true; renderHist();
+          })
+          .catch(() => { HIST.loaded = true; renderHist(); });
+      }
+      const histSearch = histBody.querySelector("#histSearch");
+      let histTimer = null;
+      histSearch.oninput = () => {
+        clearTimeout(histTimer);
+        histTimer = setTimeout(() => { HIST.q = histSearch.value || ""; renderHist(); }, 200);
+      };
+      loadHist();
+
       loadHotspots();
 
       /* —— 导入卡 —— */

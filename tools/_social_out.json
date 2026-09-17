@@ -1,0 +1,21 @@
+{
+  "pass": true,
+  "steps": {
+    "users": {
+      "ua": "uA584798",
+      "ub": "uB584798"
+    },
+    "uA584798_complete": true,
+    "A_registered": true,
+    "uB584798_complete": true,
+    "B_registered": true,
+    "A_sentRequest": true,
+    "B_friendCount": 1,
+    "A_sentMsgs": 2,
+    "B_unreadApi": "{\"uA584798\":2}",
+    "B_badge": "2",
+    "B_receivedMsgs": 2,
+    "B_badgeAfterRead": "",
+    "fatal": []
+  }
+}

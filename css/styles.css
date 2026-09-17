@@ -1061,6 +1061,22 @@ mark.kw{background:rgba(255,206,0,.38);color:inherit;padding:0 2px;border-radius
 .hs-date-b{padding:0 12px 12px}
 .hs-date-b[hidden]{display:none}
 .hs-date-b .hot-item{margin-bottom:10px}
+
+/* 历史时政：年-月 → 日 两级归档 */
+.hist-month{margin-bottom:6px}
+.hist-month-h{display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;user-select:none;font-size:15px;font-weight:700;color:var(--txt);background:var(--panel2);border-radius:10px}
+.hist-month-h:hover{filter:brightness(1.04)}
+.hist-month-b{padding:4px 0 2px 4px}
+.hist-day{margin:3px 0}
+.hist-day-h{display:flex;align-items:center;gap:8px;padding:7px 12px;cursor:pointer;user-select:none;color:var(--txt-dim)}
+.hist-day-h:hover{background:var(--panel2);border-radius:8px}
+.hist-day-b{padding:3px 0 3px 8px}
+.hist-item{padding:10px 12px;border-radius:10px;background:var(--panel);border:1px solid var(--line);margin:5px 0;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.hist-item:hover{filter:brightness(1.03);border-color:var(--purple)}
+.hist-tag{font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;color:#fff}
+.hist-tag.tag-rec{background:#7a4ddb}
+.hist-tag.tag-imp{background:#1f9e6b}
+.hs-caret{display:inline-block;width:14px;text-align:center;color:var(--txt-dim)}
 /* 时政详情：原文配图 */
 .hot-imgs{display:flex;flex-direction:column;gap:10px;margin:12px 0 4px}
 .hot-imgs img{max-width:100%;width:100%;border-radius:8px;display:block;background:rgba(127,127,127,.08)}
@@ -1070,7 +1086,7 @@ mark.kw{background:rgba(255,206,0,.38);color:inherit;padding:0 2px;border-radius
   .hs-search{flex:1 1 auto;min-width:0;max-width:none}
 }
 
-/* ===== 微信式聊天/主页/学习记录（v=20260918d） ===== */
+/* ===== 微信式聊天/主页/学习记录（v=20260918e） ===== */
 /* 气泡头像 + 时间分隔 */
 .chat-row{display:flex;align-items:flex-start;gap:8px;margin:8px 12px}
 .chat-row.mine{flex-direction:row-reverse}
