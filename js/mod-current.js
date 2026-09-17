@@ -13,7 +13,27 @@
     "碳达峰", "碳中和", "供给侧结构性改革", "扩大内需", "区域协调发展", "制造强国", "教育强国",
     "人才强国", "文化强国", "美丽中国", "国家安全", "新发展格局", "高水平开放", "实体经济",
     "专精特新", "数字中国", "健康中国", "就业优先", "依法行政", "一国两制", "广东", "深圳",
-    "广州", "珠海", "佛山", "东莞", "汕头", "省考", "国考", "宏观调控"];
+    "广州", "珠海", "佛山", "东莞", "汕头", "省考", "国考", "宏观调控",
+    // 高频政治术语（申论/行测常考重点表述）
+    "关键一招", "国之大者", "两个确立", "两个维护", "四个意识", "四个自信", "四个全面", "五位一体",
+    "新发展理念", "以人民为中心", "人民至上", "人类命运共同体", "一带一路", "全球发展倡议",
+    "高水平科技自立自强", "现代化产业体系", "农业强国", "海洋强国", "交通强国", "网络强国",
+    "体育强国", "贸易强国", "社会主义文化", "社会主义核心价值观",
+    "全面深化改革", "全面依法治国", "自我革命", "改革开放精神", "脱贫攻坚",
+    "民生福祉", "稳中求进", "强国建设", "民族复兴", "中国之治", "中国之问",
+    "时代之问", "人民之问", "第二个百年", "中国精神", "中国力量", "中国方案",
+    "人工智能+", "低空经济", "银发经济", "县域经济", "民营经济", "数字经济", "绿色低碳",
+    "自由贸易试验区", "海南自由贸易港", "横琴", "前海", "南沙", "河套"];
+  // 时政正文里要剔除的「页脚垃圾」行（政府网站模板尾巴）
+  const FOOTER_RE = /(主办单位|运行维护单位|网站标识码|ICP备|京公网安备|版权所有|备案号|网站地图|承办单位|技术支持|访问统计|单位地址|邮政编码)/;
+  function stripFooterLines(t) {
+    return String(t || "").split("\n").filter(l => {
+      const s = l.trim();
+      if (!s) return true;
+      // 页脚特征行且较短（长正文里偶尔出现这些词则保留）
+      return !(FOOTER_RE.test(s) && s.length <= 80);
+    }).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  }
 
   function store() {
     if (!Array.isArray(DB.state.currentAffairs)) DB.state.currentAffairs = [];
@@ -536,7 +556,8 @@
         const edits = (DB.state.hotspotsEdits = DB.state.hotspotsEdits || {});
         const cur = edits[it.id] || {};
         const title = cur.title != null ? cur.title : it.title;
-        const body = cur.body != null ? cur.body : (it.body || it.summary || "");
+        const body = stripFooterLines(cur.body != null ? cur.body : (it.body || it.summary || ""));
+        const imgs = cur.imgs || it.imgs || [];
         const box = UI.el(`<div class="hot-detail" style="max-height:72vh;overflow:auto">
           <div class="hot-item-h" style="margin-bottom:8px">
             <span class="hot-badge ${it.region === "广东" ? "gd" : "cn"}">${it.region === "广东" ? "广东" : "全国"}</span>
@@ -548,6 +569,7 @@
             <textarea class="hot-edit-body" rows="10">${esc(body)}</textarea>
           </div>
           <div class="hot-body">${hl(body)}</div>
+          ${imgs.length ? `<div class="hot-imgs">${imgs.map(u => `<img src="${esc(u)}" loading="lazy" referrerpolicy="no-referrer" alt=""/>`).join("")}</div>` : ""}
           <div class="muted small" style="margin-top:8px">来源：${esc(it.source || "")}　原文日期：${esc(it.date || "未标注")}　<a href="${esc(it.url || "#")}" target="_blank" rel="noopener">打开原文 ↗</a></div>
         </div>`);
         box.appendChild(UI.notebook("时事热点", "hs_" + it.id, box.querySelector(".hot-body")));
@@ -576,10 +598,12 @@
 
       function exportHotspot(it, editObj) {
         const title = (editObj && editObj.title != null) ? editObj.title : it.title;
-        const body = (editObj && editObj.body != null) ? editObj.body : (it.body || it.summary || "");
+        const body = stripFooterLines((editObj && editObj.body != null) ? editObj.body : (it.body || it.summary || ""));
+        const imgs = (editObj && editObj.imgs) || it.imgs || [];
         let html = `<h2>${esc(title)}</h2>`;
         html += `<p class="muted">${esc(it.source || "")} · ${esc(it.date || "近日")}</p>`;
         html += `<p>${esc(body).replace(/\n/g, "<br/>")}</p>`;
+        if (imgs.length) html += `<div>${imgs.map(u => `<img src="${esc(u)}" referrerpolicy="no-referrer" style="max-width:100%;margin:6px 0"/>`).join("")}</div>`;
         const notes = UI.Notes.get("时事热点", "hs_" + it.id);
         if (notes && notes.strokes && notes.strokes.length) {
           const W = notes.vw || 720;
@@ -642,10 +666,27 @@
         const paras = (main.match(/<p[\s\S]*?<\/p>/gi) || []).map(textOf).filter(t => t.length >= 15);
         let body = paras.join("\n\n");
         if (body.length < 120) body = textOf(main).replace(/\n{2,}/g, "\n\n");
+        body = stripFooterLines(body);
+        // 提取正文配图（过滤小图标/广告/logo；补全相对地址）
+        const imgs = [];
+        const imgRe = /<img[^>]*>/gi;
+        let im;
+        while ((im = imgRe.exec(main)) !== null) {
+          const tag = im[0];
+          const sm = tag.match(/src=["']([^"']+)["']/i);
+          if (!sm) continue;
+          let u = sm[1].trim();
+          if (!u || /^data:/i.test(u)) continue;
+          try { u = new URL(u, url).href; } catch (e) { continue; }
+          if (/(logo|icon|sprite|spacer|blank|qrcode|weixin|wechat|share|btn|button|avatar|banner|\.svg(\?|$))/i.test(u)) continue;
+          const wm = tag.match(/width=["']?(\d{1,4})["']?/i);
+          if (wm && parseInt(wm[1], 10) > 0 && parseInt(wm[1], 10) < 120) continue;
+          if (!imgs.includes(u)) imgs.push(u);
+        }
         let source = "";
         try { source = new URL(url).hostname.replace(/^www\./, ""); } catch (e) {}
         const gd = /广东|广州|深圳|佛山|东莞|珠海|粤港澳|大湾区|湾区|中山|惠州|汕头|湛江|江门|肇庆|清远|韶关|梅州|茂名|揭阳|潮州|汕尾|河源|阳江|云浮/.test((title + body).slice(0, 4000));
-        return { title: title || "导入的网页", body: body || "", date, source, region: gd ? "广东" : "全国", url };
+        return { title: title || "导入的网页", body: body || "", date, source, region: gd ? "广东" : "全国", url, imgs };
       }
 
       async function fetchPageHtml(url) {

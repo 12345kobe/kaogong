@@ -15,6 +15,7 @@
 - 若本次全部来源都失败（items 为空）且本地已有数据，则保留旧数据不覆盖。
 """
 import os, sys, re, json, hashlib, html as htmlmod, urllib.request, urllib.error, ssl, datetime
+from urllib.parse import urljoin
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT1 = os.path.join(ROOT, "assets", "data", "hotspots.js")
@@ -109,6 +110,37 @@ def clean_text(s):
     return s
 
 
+# 页脚垃圾行（政府网站模板尾巴）：主办单位 / 备案号 等
+FOOTER_PAT = re.compile(
+    r"(主办单位|运行维护单位|网站标识码|ICP备|京公网安备|版权所有|备案号|网站地图|"
+    r"承办单位|技术支持|访问统计|单位地址|邮政编码)")
+
+
+def extract_images(html, base_url):
+    """提取正文配图 URL（过滤小图标/广告/logo）。"""
+    out = []
+    for m in re.finditer(r"<img[^>]*>", html, re.I):
+        tag = m.group(0)
+        sm = re.search(r'src=["\']([^"\']+)["\']', tag, re.I)
+        if not sm:
+            continue
+        u = sm.group(1).strip()
+        if not u or u.lower().startswith("data:"):
+            continue
+        try:
+            u = urljoin(base_url, u)
+        except Exception:
+            continue
+        if re.search(r"(logo|icon|sprite|spacer|blank|qrcode|weixin|wechat|share|btn|button|avatar|banner|\.svg(\?|$))", u, re.I):
+            continue
+        wm = re.search(r'width=["\']?(\d{1,4})["\']?', tag, re.I)
+        if wm and 0 < int(wm.group(1)) < 120:
+            continue
+        if u not in out:
+            out.append(u)
+    return out[:6]
+
+
 def parse_rss(buf):
     out = []
     # RSS <item>
@@ -162,18 +194,20 @@ def parse_html_headlines(buf, base):
 
 
 def fetch_article(url):
+    """返回 (body, imgs)：正文过滤页脚行，并提取原文配图。"""
     buf = fetch(url, timeout=10)
     if not buf:
-        return ""
+        return "", []
     buf = re.sub(r"<script[\s\S]*?</script>", " ", buf, flags=re.I)
     buf = re.sub(r"<style[\s\S]*?</style>", " ", buf, flags=re.I)
-    # 取 <p> 段落里较长的
+    imgs = extract_images(buf, url)
+    # 取 <p> 段落里较长的，并剔除页脚垃圾行
     paras = [clean_text(p) for p in re.findall(r"<p[^>]*>([\s\S]*?)</p>", buf, re.I)]
-    paras = [p for p in paras if len(p) > 25]
+    paras = [p for p in paras if len(p) > 25 and not (FOOTER_PAT.search(p) and len(p) <= 80)]
     if not paras:
         # 退化：整页纯文本
-        return clean_text(buf)[:1500]
-    return "\n".join(paras)[:2000]
+        return clean_text(buf)[:1500], imgs
+    return "\n".join(paras)[:2000], imgs
 
 
 def parse_govjson(buf):
@@ -298,9 +332,11 @@ def main():
         if full >= MAX_FULL:
             break
         if it["url"] and not it["body"]:
-            body = fetch_article(it["url"])
+            body, imgs = fetch_article(it["url"])
             if body and len(body) > 30:
                 it["body"] = body
+                if imgs:
+                    it["imgs"] = imgs
                 full += 1
         # 标签
         blob = it["title"] + " " + it["summary"] + " " + it["body"]
