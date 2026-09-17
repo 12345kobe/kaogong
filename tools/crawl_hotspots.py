@@ -122,10 +122,39 @@ FOOTER_PAT = re.compile(
     r"承办单位|技术支持|访问统计|单位地址|邮政编码)")
 
 
+# 正文容器：优先只从这些块里取配图，避免导航/页脚/侧栏的装饰图标混入
+MAIN_PATS = [
+    r'<div[^>]+(?:id|class)=["\'][^"\']*(?:pages_content|UCAP-CONTENT|article-content|articleContent|content_main|TRS_Editor|xl_content|detail-content|news-content)[^"\']*["\'][\s\S]*?</div>',
+    r'<article[\s\S]*?</article>',
+    r'<div[^>]+(?:id|class)=["\'][^"\']*(?:content|article|detail|mainbody)[^"\']*["\'][\s\S]*?</div>',
+]
+
+# 装饰/功能图标：URL 命中即丢弃（只要真实的新闻配图 / 文件扫描件）
+IMG_BAD = re.compile(
+    r"(logo|icon|sprite|spacer|blank|qrcode|2wm|weixin|wechat|weibo|wb_|share|btn|button|"
+    r"avatar|banner|nav|menu|footer|header|top\.|back|print|search|arrow|more|next|prev|"
+    r"star|dot|line_|bg_|background|ad_|adv|poster|thumb|qq|sina|email|tel|phone|"
+    r"\.svg(\?|$)|/images?/default|placeholder|loading)", re.I)
+
+
+def _pick_main_html(html):
+    """返回最可能是正文的 HTML 片段；找不到则返回 None。"""
+    best = None
+    for pat in MAIN_PATS:
+        for m in re.finditer(pat, html, re.I):
+            seg = m.group(0)
+            # 取 <p> 最多、内容最长的那段作为正文
+            score = len(re.findall(r"<p[\s\S]*?</p>", seg, re.I)) * 100 + min(len(seg), 20000)
+            if not best or score > best[0]:
+                best = (score, seg)
+    return best[1] if best else None
+
+
 def extract_images(html, base_url):
-    """提取正文配图 URL（过滤小图标/广告/logo）。"""
+    """提取正文配图 URL（仅限正文容器内，过滤图标/广告/logo）。"""
+    main = _pick_main_html(html) or html
     out = []
-    for m in re.finditer(r"<img[^>]*>", html, re.I):
+    for m in re.finditer(r"<img[^>]*>", main, re.I):
         tag = m.group(0)
         sm = re.search(r'src=["\']([^"\']+)["\']', tag, re.I)
         if not sm:
@@ -137,10 +166,17 @@ def extract_images(html, base_url):
             u = urljoin(base_url, u)
         except Exception:
             continue
-        if re.search(r"(logo|icon|sprite|spacer|blank|qrcode|weixin|wechat|share|btn|button|avatar|banner|\.svg(\?|$))", u, re.I):
+        if IMG_BAD.search(u):
+            continue
+        # alt/title 含装饰性描述的也丢
+        atm = re.search(r'alt=["\']([^"\']*)["\']', tag, re.I)
+        if atm and re.search(r"(图标|二维码|微信|微博|分享|打印|返回|顶部|导航|logo|icon)", atm.group(1), re.I):
             continue
         wm = re.search(r'width=["\']?(\d{1,4})["\']?', tag, re.I)
-        if wm and 0 < int(wm.group(1)) < 120:
+        hm = re.search(r'height=["\']?(\d{1,4})["\']?', tag, re.I)
+        if wm and 0 < int(wm.group(1)) < 160:
+            continue
+        if hm and 0 < int(hm.group(1)) < 120:
             continue
         if u not in out:
             out.append(u)
@@ -299,9 +335,23 @@ def save_history(items):
     for e in existing:
         by_key[norm_key(e.get("title", "")) + "|" + (e.get("date", "") or "")] = e
     added = 0
+    updated = 0
     for it in items:
         k = norm_key(it.get("title", "")) + "|" + (it.get("date", "") or "")
-        if k not in by_key:
+        if k in by_key:
+            # 已存在：用本次抓到的新数据补齐/刷新字段（尤其 imgs 配图会随提取规则改进而变）
+            old = by_key[k]
+            changed = False
+            for f in ("imgs", "body", "summary", "url", "source", "region"):
+                nv = it.get(f)
+                if nv and nv != old.get(f):
+                    old[f] = nv
+                    changed = True
+            if it.get("title"):
+                old["title"] = it["title"]
+            if changed:
+                updated += 1
+        else:
             by_key[k] = it
             added += 1
     merged = list(by_key.values())
@@ -321,7 +371,7 @@ def save_history(items):
                 f.write(js)
         except Exception as e:
             print("history write fail:", o, repr(e)[:60])
-    print("history:", len(merged), "条（本次新增", added, "）")
+    print("history:", len(merged), "条（本次新增", added, "，刷新", updated, "）")
 
 
 def main():

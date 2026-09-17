@@ -1040,7 +1040,7 @@ mark.kw{background:rgba(255,206,0,.38);color:inherit;padding:0 2px;border-radius
 @media(max-width:760px){.chat-bubble{max-width:80%}.contacts-list{max-height:calc(100vh - 200px)}}
 
 /* ===== 时事热点：地区切换 + 按日期分组 + 搜索（v=20260917a） ===== */
-.hs-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:10px}
+.hs-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:6px}
 .hs-tabs{display:flex;gap:8px;flex-wrap:wrap}
 .hs-tab{padding:7px 14px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--txt-dim);font-size:14px;cursor:pointer;transition:.15s}
 .hs-tab:hover{color:var(--txt)}
@@ -1048,8 +1048,11 @@ mark.kw{background:rgba(255,206,0,.38);color:inherit;padding:0 2px;border-radius
 .hs-tab .hs-n{display:inline-block;min-width:18px;padding:0 5px;margin-left:4px;border-radius:8px;background:rgba(127,127,127,.25);font-size:12px;line-height:16px;text-align:center}
 .hs-tab.active .hs-n{background:rgba(0,0,0,.18)}
 .hs-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;flex:1 1 260px;justify-content:flex-end}
-.hs-search{min-width:180px;flex:1 1 200px;max-width:320px;padding:7px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--txt);font-size:14px;outline:none}
+.hs-search{min-width:150px;flex:1 1 180px;max-width:300px;padding:5px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--txt);font-size:14px;outline:none}
 .hs-search:focus{border-color:var(--cyan)}
+.hs-btn{padding:6px 16px;border-radius:999px;border:1px solid transparent;background:linear-gradient(135deg,var(--cyan),var(--purple));color:#04121f;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;transition:.15s}
+.hs-btn:hover{filter:brightness(1.08)}
+.hs-btn:active{transform:scale(.97)}
 .hs-date{margin-bottom:10px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);overflow:hidden}
 .hs-date-h{display:flex;align-items:center;gap:8px;padding:10px 14px;cursor:pointer;user-select:none;font-size:15px;color:var(--txt)}
 .hs-date-h:hover{background:var(--panel2)}
@@ -1086,7 +1089,7 @@ mark.kw{background:rgba(255,206,0,.38);color:inherit;padding:0 2px;border-radius
   .hs-search{flex:1 1 auto;min-width:0;max-width:none}
 }
 
-/* ===== 微信式聊天/主页/学习记录（v=20260918e） ===== */
+/* ===== 微信式聊天/主页/学习记录（v=20260918f） ===== */
 /* 气泡头像 + 时间分隔 */
 .chat-row{display:flex;align-items:flex-start;gap:8px;margin:8px 12px}
 .chat-row.mine{flex-direction:row-reverse}

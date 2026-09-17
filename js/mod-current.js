@@ -390,7 +390,11 @@
       body.appendChild(hsSec);
       const hsBody = hsSec.querySelector(".kg-det-b");
       hsBody.innerHTML = `
-        <div class="muted small" style="margin-bottom:8px">热点来自中国政府网 / 大洋网（广州日报）等权威来源，每条保留<strong>原始发布日期</strong>，绝不把旧闻标成今天。<strong>全国</strong>在前、<strong>广东</strong>在后；按日期归档，可搜索关键词，并可<strong>标注重点 / 加笔迹 / 导出 PDF</strong>。</div>
+        <div class="muted small" style="margin-bottom:4px">热点来自中国政府网 / 大洋网（广州日报）等权威来源，每条保留<strong>原始发布日期</strong>，绝不把旧闻标成今天。<strong>全国</strong>在前、<strong>广东</strong>在后；按日期归档，可搜索关键词，并可<strong>标注重点 / 加笔迹 / 导出 PDF</strong>。</div>
+        <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px">
+          <button class="btn sm primary" id="gotoHist">🗂 历史时政（全部归档·可搜索）</button>
+          <button class="btn sm ghost" id="gotoRec">📅 我的时政记录</button>
+        </div>
         <div class="hs-bar">
           <div class="hs-tabs">
             <button class="hs-tab active" data-r="全国">🌐 全国 <span class="hs-n" id="hsN1">0</span></button>
@@ -398,6 +402,7 @@
           </div>
           <div class="hs-tools">
             <input id="hsSearch" class="hs-search" type="search" placeholder="🔍 搜索关键词（标题/正文/来源）"/>
+            <button class="hs-btn" id="hsSearchBtn">搜索</button>
             <button class="btn sm ghost" id="hsImport">➕ 导入网页</button>
             <button class="btn sm primary" id="hsRefresh">🔄 刷新</button>
           </div>
@@ -547,10 +552,13 @@
       // 关键词搜索（防抖）
       const hsSearch = hsBody.querySelector("#hsSearch");
       let hsTimer = null;
+      function applyHsSearch() { HS.q = hsSearch.value || ""; renderHotspots(); }
       hsSearch.oninput = () => {
         clearTimeout(hsTimer);
-        hsTimer = setTimeout(() => { HS.q = hsSearch.value || ""; renderHotspots(); }, 200);
+        hsTimer = setTimeout(applyHsSearch, 200);
       };
+      hsSearch.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); clearTimeout(hsTimer); applyHsSearch(); } };
+      hsBody.querySelector("#hsSearchBtn").onclick = () => { clearTimeout(hsTimer); applyHsSearch(); };
 
       function openHotspot(it, editMode) {
         const edits = (DB.state.hotspotsEdits = DB.state.hotspotsEdits || {});
@@ -659,7 +667,8 @@
         }
         if (!date) date = DB.today();
         // 正文：article / main / 内容容器
-        let main = (h.match(/<article[\s\S]*?<\/article>/i) || [])[0]
+        let main = (h.match(/<div[^>]+(?:id|class)=["'][^"']*(?:pages_content|UCAP-CONTENT|article-content|articleContent|TRS_Editor|xl_content|detail-content|news-content)[^"']*["'][\s\S]*?<\/div>/i) || [])[0]
+                || (h.match(/<article[\s\S]*?<\/article>/i) || [])[0]
                 || (h.match(/<main[\s\S]*?<\/main>/i) || [])[0]
                 || (h.match(/<div[^>]+(?:id|class)=["'][^"']*(?:content|article|main|detail|text)[^"']*["'][\s\S]*?<\/div>/i) || [])[0]
                 || h;
@@ -678,9 +687,13 @@
           let u = sm[1].trim();
           if (!u || /^data:/i.test(u)) continue;
           try { u = new URL(u, url).href; } catch (e) { continue; }
-          if (/(logo|icon|sprite|spacer|blank|qrcode|weixin|wechat|share|btn|button|avatar|banner|\.svg(\?|$))/i.test(u)) continue;
+          if (/(logo|icon|sprite|spacer|blank|qrcode|2wm|weixin|wechat|weibo|share|btn|button|avatar|banner|nav|menu|footer|header|back|print|search|arrow|more|next|prev|star|dot|bg_|background|ad_|adv|poster|thumb|qq|sina|email|tel|phone|\.svg(\?|$)|placeholder|loading)/i.test(u)) continue;
+          const atm = tag.match(/alt=["']([^"']*)["']/i);
+          if (atm && /(图标|二维码|微信|微博|分享|打印|返回|顶部|导航|logo|icon)/i.test(atm[1])) continue;
           const wm = tag.match(/width=["']?(\d{1,4})["']?/i);
-          if (wm && parseInt(wm[1], 10) > 0 && parseInt(wm[1], 10) < 120) continue;
+          if (wm && parseInt(wm[1], 10) > 0 && parseInt(wm[1], 10) < 160) continue;
+          const hm = tag.match(/height=["']?(\d{1,4})["']?/i);
+          if (hm && parseInt(hm[1], 10) > 0 && parseInt(hm[1], 10) < 120) continue;
           if (!imgs.includes(u)) imgs.push(u);
         }
         let source = "";
@@ -753,13 +766,11 @@
       body.appendChild(histSec);
       const histBody = histSec.querySelector(".kg-det-b");
       histBody.innerHTML = `
-        <div class="muted small" style="margin-bottom:8px">这里汇总<strong>所有</strong>自动抓取的时事热点，以及你粘贴识别 / 导入网页的时政记录，按<strong>年份月份 → 具体日期</strong>两级归档，可搜索标题 / 正文 / 来源。点击任意条目查看详情。</div>
-        <div class="hs-bar" style="margin-bottom:8px">
+        <div class="hs-bar" style="margin-bottom:6px">
           <div class="hs-tools" style="flex:1">
             <input id="histSearch" class="hs-search" type="search" placeholder="🔍 搜索历史时政（标题/正文/来源）"/>
+            <button class="hs-btn" id="histSearchBtn">搜索</button>
           </div>
-        </div>
-        <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px">
           <span class="muted small" id="histStat"></span>
         </div>
         <div id="histList"><div class="empty">加载中…</div></div>`;
@@ -915,10 +926,13 @@
       }
       const histSearch = histBody.querySelector("#histSearch");
       let histTimer = null;
+      function applyHistSearch() { HIST.q = histSearch.value || ""; renderHist(); }
       histSearch.oninput = () => {
         clearTimeout(histTimer);
-        histTimer = setTimeout(() => { HIST.q = histSearch.value || ""; renderHist(); }, 200);
+        histTimer = setTimeout(applyHistSearch, 200);
       };
+      histSearch.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); clearTimeout(histTimer); applyHistSearch(); } };
+      histBody.querySelector("#histSearchBtn").onclick = () => { clearTimeout(histTimer); applyHistSearch(); };
       loadHist();
 
       loadHotspots();
@@ -991,6 +1005,19 @@
       body.appendChild(recSec);
       function renderList() { renderRecords(lc.querySelector("#curList")); }
       renderList();
+
+      /* 顶部快捷入口：展开并定位到「历史时政」/「我的时政记录」 */
+      const gotoHistBtn = document.getElementById("gotoHist");
+      if (gotoHistBtn) gotoHistBtn.onclick = () => {
+        histSec.open = true;
+        loadHist();
+        histSec.scrollIntoView({ behavior: "smooth", block: "start" });
+      };
+      const gotoRecBtn = document.getElementById("gotoRec");
+      if (gotoRecBtn) gotoRecBtn.onclick = () => {
+        recSec.open = true;
+        recSec.scrollIntoView({ behavior: "smooth", block: "start" });
+      };
 
       function renderRecords(host) {
         const arr = listRecords();
