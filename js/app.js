@@ -760,6 +760,12 @@
     }
     window.__refreshTop = refreshTop;
     window.refreshSocialBadge = refreshSocialBadge;
+    // 系统字号：启动时按保存的比例缩放主界面（聊天/弹窗在 #app 之外，不受影响）
+    try {
+      const fs = parseFloat(localStorage.getItem("kg_font_size"));
+      const appEl = document.getElementById("app");
+      if (appEl && !isNaN(fs) && fs >= 0.7 && fs <= 1.6 && fs !== 1) appEl.style.zoom = String(fs);
+    } catch (e) {}
     initSocial();
     window.addEventListener("hashchange", renderRoute);
     if (!location.hash) location.hash = "#/countdown";

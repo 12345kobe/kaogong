@@ -64,12 +64,33 @@
     return f ? f.key : "default";
   }
 
+  // 系统字号：通过对 #app 容器使用 zoom 缩放（聊天/弹窗在 #app 之外，不受影响），
+  // 数值为比例（1=标准），存 localStorage。提供全局 applyFontSize 供 app.js 启动时使用。
+  function getFontSizeScale() {
+    try { const v = parseFloat(localStorage.getItem("kg_font_size")); if (!isNaN(v) && v >= 0.7 && v <= 1.6) return v; } catch (e) {}
+    return 1;
+  }
+  function fontSizeLabel(scale) {
+    const p = Math.round(scale * 100);
+    if (p <= 90) return "小（" + p + "%）";
+    if (p >= 110) return "大（" + p + "%）";
+    return "标准（" + p + "%）";
+  }
+  function applyFontSize(scale) {
+    try {
+      const app = document.getElementById("app");
+      if (app) app.style.zoom = (scale && scale !== 1) ? String(scale) : "";
+    } catch (e) {}
+  }
+  window.applyKgFontSize = applyFontSize; // 供 app.js 启动调用
+
   window.MODULES.settings = {
     title: "设置", icon: "settings",
     render(body) {
       const DB = window.DB, UI = window.UI;
       const saved = getSaved();
       const curKey = keyOfStack(saved);
+      const scale = getFontSizeScale();
       const voiceOk = !!(window.KGVoice && window.KGVoice.supported);
 
       body.innerHTML = `
@@ -84,6 +105,15 @@
               </button>`).join("")}
           </div>
           <div class="muted small" id="fontCur" style="margin-top:10px">当前：${esc(curKey === "default" ? "默认（系统字体）" : FONTS.find(x => x.key === curKey).label)}</div>
+          <hr class="kg-sep" style="margin:16px 0 12px"/>
+          <div>
+            <div class="row" style="justify-content:space-between;align-items:center">
+              <strong>系统字号</strong>
+              <span id="fsVal" class="muted small">${fontSizeLabel(scale)}</span>
+            </div>
+            <input type="range" id="fsRange" min="80" max="140" step="5" value="${Math.round(scale * 100)}" style="width:100%;margin-top:8px;accent-color:var(--accent,#3b6cff)"/>
+            <div class="muted small" style="display:flex;justify-content:space-between;margin-top:2px"><span>小</span><span>标准</span><span>大</span></div>
+          </div>
         </div>
 
         <div class="card" style="margin-top:12px">
@@ -151,6 +181,20 @@
           UI.toast("字体已切换为：" + lbl);
         };
       });
+
+      /* ===== 系统字号滑块 ===== */
+      const fsRange = body.querySelector("#fsRange");
+      const fsVal = body.querySelector("#fsVal");
+      if (fsRange) {
+        const onFs = () => {
+          const s = Math.max(0.7, Math.min(1.6, (+fsRange.value) / 100));
+          try { localStorage.setItem("kg_font_size", String(s)); } catch (e) {}
+          applyFontSize(s);
+          if (fsVal) fsVal.textContent = fontSizeLabel(s);
+        };
+        fsRange.addEventListener("input", onFs);
+        fsRange.addEventListener("change", onFs);
+      }
 
       /* ===== 后端服务地址（好友/聊天） ===== */
       const baseNote = body.querySelector("#baseNote");

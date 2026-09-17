@@ -200,8 +200,9 @@
     if (chatUnSub) { try { chatUnSub(); } catch (e) {} chatUnSub = null; }
     const wrap = UI.el(`<div class="chat-screen">
       <div class="chat-head">
-        <button class="chat-back" id="chBack">‹</button>
+        <button class="chat-back" id="chBack" title="返回通讯录">‹</button>
         <div class="chat-peer"><span id="chName"></span> <span id="chOnline" class="muted small"></span></div>
+        <button class="chat-exit" id="chExit" title="退出聊天，回到主页">🏠</button>
       </div>
       <div class="chat-msgs" id="chMsgs"></div>
       <div class="chat-input">
@@ -278,23 +279,20 @@
       })).catch(e => UI.toast("上传失败：" + e.message));
       wrap.querySelector("#chFile").value = "";
     };
-    // 语音
-    let rec = null, recStream = null, recStart = 0;
-    wrap.querySelector("#chVoice").onclick = async () => {
-      const btn = wrap.querySelector("#chVoice");
-      if (rec) { // 停止
-        try { rec.stop(); } catch (e) {}
-        return;
-      }
-      try {
-        recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        rec = new MediaRecorder(recStream);
-        const chunks = [];
-        rec.ondataavailable = e => chunks.push(e.data);
+    // 语音：长按录制，松手发送；上滑/移出取消
+    const voiceBtn = wrap.querySelector("#chVoice");
+    let rec = null, recStream = null, recStart = 0, recChunks = [], recCancelled = false;
+    function startRec() {
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+        recStream = stream; recChunks = []; recCancelled = false;
+        rec = new MediaRecorder(stream);
+        rec.ondataavailable = e => { if (e.data && e.data.size) recChunks.push(e.data); };
         rec.onstop = () => {
-          btn.textContent = "🎤";
-          const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
-          const dur = Math.round((Date.now() - recStart) / 1000);
+          voiceBtn.classList.remove("recording");
+          voiceBtn.textContent = "🎤";
+          if (recCancelled) { recStream.getTracks().forEach(t => t.stop()); return; }
+          const dur = Math.max(1, Math.round((Date.now() - recStart) / 1000));
+          const blob = new Blob(recChunks, { type: rec.mimeType || "audio/webm" });
           UI.toast("上传语音中…");
           blobToBase64(blob).then(b64 => Social.uploadMedia(blob.type, b64, "voice." + (blob.type.includes("mp4") ? "m4a" : "webm")).then(r => {
             Social.send({ to: peer, type: "voice", url: r.url, duration: dur, clientId: "c" + Date.now() }).catch(e => UI.toast("发送失败：" + e.message));
@@ -302,11 +300,17 @@
           recStream.getTracks().forEach(t => t.stop());
         };
         recStart = Date.now(); rec.start();
-        btn.textContent = "⏹ 录音中";
-      } catch (e) { UI.toast("无法录音：" + e.message); }
-    };
-    // 返回
+        voiceBtn.classList.add("recording");
+        voiceBtn.textContent = "🎙";
+      }).catch(e => UI.toast("无法录音：" + e.message));
+    }
+    voiceBtn.addEventListener("pointerdown", e => { e.preventDefault(); startRec(); });
+    voiceBtn.addEventListener("pointerup", () => { if (rec && rec.state === "recording") rec.stop(); });
+    voiceBtn.addEventListener("pointerleave", () => { if (rec && rec.state === "recording") { recCancelled = true; rec.stop(); } });
+    voiceBtn.addEventListener("pointercancel", () => { if (rec && rec.state === "recording") { recCancelled = true; rec.stop(); } });
+    // 返回 / 退出
     wrap.querySelector("#chBack").onclick = closeChat;
+    wrap.querySelector("#chExit").onclick = () => { closeChat(); location.hash = "#/countdown"; };
     mask.onclick = (e) => { if (e.target === mask) closeChat(); };
 
     // 实时收消息
@@ -327,14 +331,18 @@
     const mine = m.from === Social.currentUser();
     const el = UI.el(`<div class="chat-row ${mine ? "mine" : "theirs"}"></div>`);
     let inner = "";
-    if (m.type === "image") inner = `<img class="chat-media-img" src="${UI.esc(Social.mediaUrl(m.url))}"/>`;
-    else if (m.type === "video") inner = `<video class="chat-media-video" src="${UI.esc(Social.mediaUrl(m.url))}" controls></video>`;
-    else if (m.type === "voice") inner = `<span class="chat-voice" data-url="${UI.esc(Social.mediaUrl(m.url))}" data-dur="${m.duration || 0}">🔊 ${m.duration || 0}"</span>`;
-    else inner = UI.esc(m.text || "");
+    const mediaUrl = m.url ? Social.mediaUrl(m.url) : "";
+    if (m.type === "image") {
+      inner = `<span class="chat-media-wrap"><img class="chat-media-img" src="${UI.esc(mediaUrl)}"/><a class="ov-save" href="${UI.esc(mediaUrl)}" download="${UI.esc(m.mediaName || "image")}" title="保存到相册">⬇</a></span>`;
+    } else if (m.type === "video") {
+      inner = `<span class="chat-media-wrap"><video class="chat-media-video" src="${UI.esc(mediaUrl)}" controls></video><a class="ov-save" href="${UI.esc(mediaUrl)}" download="${UI.esc(m.mediaName || "video")}" title="保存到相册">⬇</a></span>`;
+    } else if (m.type === "voice") {
+      inner = `<span class="chat-voice" data-url="${UI.esc(mediaUrl)}" data-dur="${m.duration || 0}"><span class="vbar"></span>🔊 ${m.duration || 0}″</span>`;
+    } else inner = UI.esc(m.text || "");
     el.innerHTML = `<div class="chat-bubble">${inner}</div>`;
     if (m.type === "voice") el.querySelector(".chat-voice").onclick = function () { playVoice(this.getAttribute("data-url")); };
-    if (m.type === "image") el.querySelector(".chat-media-img").onclick = () => viewMedia(Social.mediaUrl(m.url), "image", m.mediaName);
-    if (m.type === "video") el.querySelector(".chat-media-video").onclick = () => viewMedia(Social.mediaUrl(m.url), "video", m.mediaName);
+    if (m.type === "image") el.querySelector(".chat-media-img").onclick = () => viewMedia(mediaUrl, "image", m.mediaName);
+    if (m.type === "video") el.querySelector(".chat-media-video").onclick = () => viewMedia(mediaUrl, "video", m.mediaName);
     return el;
   }
   function playVoice(url) {
@@ -344,10 +352,10 @@
     a.play().catch(() => {});
   }
   function viewMedia(url, kind, name) {
-    const box = UI.el(`<div style="text-align:center"></div>`);
-    if (kind === "image") box.innerHTML = `<img src="${UI.esc(url)}" style="max-width:100%;max-height:60vh"/>`;
-    else box.innerHTML = `<video src="${UI.esc(url)}" controls style="max-width:100%;max-height:60vh"></video>`;
-    const a = UI.el(`<a class="btn primary" href="${UI.esc(url)}" download="${UI.esc(name || "file")}" style="margin-top:10px;display:inline-block">⬇ 保存到本地</a>`);
+    const box = UI.el(`<div style="text-align:center;position:relative"></div>`);
+    if (kind === "image") box.innerHTML = `<img src="${UI.esc(url)}" style="max-width:100%;max-height:60vh;border-radius:8px"/>`;
+    else box.innerHTML = `<video src="${UI.esc(url)}" controls style="max-width:100%;max-height:60vh;border-radius:8px"></video>`;
+    const a = UI.el(`<a class="chat-save-ic" href="${UI.esc(url)}" download="${UI.esc(name || "file")}" title="保存到相册">⬇</a>`);
     box.appendChild(a);
     UI.modal({ title: "查看媒体", body: box, width: "520px", actions: [{ label: "关闭", cls: "ghost", onClick: (m, c) => c() }] });
   }
