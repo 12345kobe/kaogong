@@ -657,6 +657,8 @@
     if (!Social.isLoggedIn()) return;
     try { await Social.autoLogin(); } catch (e) { return; }
     Social.connectWs();
+    // 学习记录同步到后端（好友主页可看）
+    if (window.syncStudyRecords) { try { window.syncStudyRecords(); } catch (e) {} }
     // 未读数角标
     Social.on("unread", () => refreshSocialBadge());
     Social.on("message", () => { refreshSocialBadge(); });
@@ -678,7 +680,8 @@
     if (!Social.isLoggedIn()) { if (badge) badge.remove(); return; }
     Social.unread().then(j => {
       const counts = (j && j.unread) || {};
-      const total = Object.values(counts).reduce((a, b) => a + (b | 0), 0);
+      const muted = (DB.state && DB.state.chatSettings) || {};
+      const total = Object.entries(counts).reduce((a, [u, c]) => a + ((muted[u] && muted[u].mute) ? 0 : (c | 0)), 0);
       if (!badge) { badge = document.createElement("span"); badge.className = "kg-badge"; btn.appendChild(badge); }
       if (total > 0) { badge.textContent = total > 99 ? "99+" : String(total); badge.style.display = ""; }
       else { badge.style.display = "none"; badge.textContent = ""; }

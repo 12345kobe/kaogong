@@ -1050,3 +1050,77 @@ mark.kw{background:rgba(255,206,0,.38);color:inherit;padding:0 2px;border-radius
   .hs-search{flex:1 1 auto;min-width:0;max-width:none}
 }
 
+/* ===== 微信式聊天/主页/学习记录（v=20260918a） ===== */
+/* 气泡头像 + 时间分隔 */
+.chat-row{display:flex;align-items:flex-start;gap:8px;margin:8px 12px}
+.chat-row.mine{flex-direction:row-reverse}
+.chat-ava{width:38px;height:38px;border-radius:6px;object-fit:cover;flex:0 0 auto}
+.chat-ava-txt{display:inline-flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#8fb7f5,#5a8de0);color:#fff;font-size:17px}
+.chat-time{text-align:center;color:#9a9a9a;font-size:12px;margin:10px 0 2px}
+.chat-row .chat-bubble{margin:0}
+/* 聊天详情右上 ⋯ */
+.chat-head .chat-exit#chMore{margin-left:auto}
+.chat-head .chat-exit#chExit{margin-left:0}
+/* 微信式全屏页 */
+.wx-mask{background:#f7f7f7;z-index:210}
+.wx-page{position:fixed;inset:0;display:flex;flex-direction:column;background:#f7f7f7;color:#191919;z-index:210}
+.wx-head{display:flex;align-items:center;height:52px;padding:0 10px;background:#f7f7f7;border-bottom:1px solid #e5e5e5;flex:0 0 auto}
+.wx-back{font-size:26px;line-height:1;background:none;border:none;color:#191919;cursor:pointer;padding:0 8px}
+.wx-title{flex:1;text-align:center;font-size:17px;font-weight:600;margin-right:44px}
+.wx-head-r{width:44px}
+.wx-body{flex:1;overflow-y:auto;padding-bottom:30px}
+.wx-card{background:#fff;margin:10px 0;border-top:1px solid #ececec;border-bottom:1px solid #ececec}
+.wx-cell{display:flex;align-items:center;justify-content:space-between;padding:15px 16px;font-size:16px;cursor:pointer}
+.wx-cell:hover{background:#fafafa}
+.wx-cell .wx-arrow{color:#c8c8c8;font-style:normal;font-size:20px;line-height:1}
+.wx-cell-static{cursor:default}
+.wx-cell-static:hover{background:none}
+.wx-cell-lb{color:#888;font-size:15px;margin-right:14px;flex:0 0 auto}
+.wx-cell-val{flex:1;text-align:right;color:#191919;word-break:break-all}
+.wx-danger{color:#e64340;justify-content:center}
+/* 开关 */
+.wx-switch{width:46px;height:27px;border-radius:14px;background:#e4e4e4;position:relative;transition:.2s;flex:0 0 auto;cursor:pointer}
+.wx-switch i{position:absolute;top:2px;left:2px;width:23px;height:23px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.wx-switch.on{background:#07c160}
+.wx-switch.on i{left:21px}
+/* 头像行 */
+.wx-avas{display:flex;gap:20px;padding:18px 16px}
+.wx-ava-item{display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#666}
+.wx-ava-lg{width:56px;height:56px;border-radius:8px;object-fit:cover;display:inline-flex;align-items:center;justify-content:center}
+.wx-ava-fb{background:linear-gradient(135deg,#8fb7f5,#5a8de0);color:#fff;font-size:24px}
+/* 主页 */
+.wx-prof-top{display:flex;gap:14px;padding:22px 16px;align-items:flex-start}
+.wx-prof-ava .wx-ava-lg,.wx-prof-ava img{width:64px;height:64px;border-radius:8px;object-fit:cover}
+.wx-prof-main{flex:1}
+.wx-prof-name{font-size:20px;font-weight:600;margin-bottom:6px}
+.wx-prof-row{font-size:14px;color:#888;margin-top:3px}
+.wx-star{font-size:26px;color:#f5b915;cursor:pointer;flex:0 0 auto}
+.wx-plan-h{padding:12px 16px 6px;font-size:15px;color:#555}
+.wx-actions-v{padding:0}
+.wx-big-btn{padding:15px 16px;font-size:16px;color:#576b95;text-align:center;cursor:pointer}
+.wx-big-btn:hover{background:#fafafa}
+.wx-big-btn + .wx-big-btn{border-top:1px solid #ececec}
+/* 学习记录（朋友圈式） */
+.wx-cover{position:relative;height:240px;background:linear-gradient(135deg,#5b7fd4 0%,#7aa3e8 45%,#a5c4f0 100%)}
+.wx-cover-ava{position:absolute;right:16px;bottom:-24px}
+.wx-cover-ava .wx-ava-lg{width:64px;height:64px;border-radius:8px;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.wx-cover-name{position:absolute;right:92px;bottom:34px;color:#fff;font-size:20px;font-weight:600;text-shadow:0 1px 4px rgba(0,0,0,.35)}
+.wx-mom-sign{padding:32px 16px 4px;font-size:14px;color:#888;text-align:right}
+.wx-mom-stats{padding:2px 16px 10px;font-size:13px;color:#999;text-align:right}
+.wx-mom-stats b{color:#576b95}
+.wx-mom-list{padding:6px 16px 30px}
+.mom-item{display:flex;gap:14px;padding:14px 0;border-bottom:1px solid #ececec}
+.mom-date{flex:0 0 52px;text-align:right;color:#576b95}
+.mom-date b{display:block;font-size:22px;font-weight:600;line-height:1.1}
+.mom-date span{font-size:13px}
+.mom-card{flex:1;background:#fff;border:1px solid #ececec;border-radius:8px;padding:12px 14px}
+.mom-title{font-size:15px;font-weight:600}
+.mom-sub{font-size:14px;color:#777;margin-top:4px}
+/* 背景色选择 */
+.bg-opt{cursor:pointer;text-align:center}
+@media(max-width:760px){
+  .chat-bubble{max-width:80%}
+  .contacts-list{max-height:calc(100vh - 200px)}
+  .wx-cover{height:200px}
+}
+

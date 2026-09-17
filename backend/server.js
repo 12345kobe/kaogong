@@ -135,8 +135,9 @@ app.post("/api/profile", (req, res) => {
   const users = loadUsers();
   users[user] = users[user] || {};
   const p = users[user].profile || {};
-  const allowed = ["nickname", "gender", "birthday", "avatar", "bio", "plan"];
+  const allowed = ["nickname", "gender", "birthday", "avatar", "bio", "plan", "records"];
   for (const k of allowed) { if (k in (req.body || {})) p[k] = req.body[k]; }
+  if (Array.isArray(p.records)) p.records = p.records.slice(0, 100); // 学习记录最多保留 100 条
   users[user].profile = p;
   saveUsers(users);
   res.json({ profile: Object.assign({ username: user }, p), complete: PROFILE_REQ.every(k => p[k]) });
