@@ -17,15 +17,22 @@ window.Social = (function () {
   function getBase() { return base; }
   function isConfigured() { return !!base; }
   // 同域自动探测：若后端与前端同域部署（一次部署同时托管网页+接口），
-  // 无需用户手动填地址。GitHub Pages 等同域无后端时探测失败 → 保持「未配置」。
+  // 无需用户手动填地址。GitHub Pages 等同域无后端时探测失败 → 试备用后端，仍失败则保持「未配置」。
+  // 备用后端：本项目已部署在 Railway 的常驻实例（仅作者与伴侣使用，地址稳定）。
+  const FALLBACK_BASE = "https://kaogong-production.up.railway.app";
   async function autoDetect() {
     if (base) return false;
+    // 1) 同域
     try {
       const r = await fetch(location.origin + "/api/health", { cache: "no-store" });
-      if (!r.ok) return false;
-      const j = await r.json();
-      if (j && j.ok) { setBase(location.origin); return true; }
+      if (r.ok) { const j = await r.json(); if (j && j.ok) { setBase(location.origin); return true; } }
     } catch (e) { /* 同域无后端，忽略 */ }
+    // 2) 备用后端（跨域）
+    if (location.origin === FALLBACK_BASE) return false;
+    try {
+      const r2 = await fetch(FALLBACK_BASE + "/api/health", { cache: "no-store" });
+      if (r2.ok) { const j2 = await r2.json(); if (j2 && j2.ok) { setBase(FALLBACK_BASE); return true; } }
+    } catch (e) { /* 备用不可达，忽略 */ }
     return false;
   }
   function isLoggedIn() { return !!token && !!me; }
