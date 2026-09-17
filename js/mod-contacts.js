@@ -542,6 +542,7 @@
     Social.on("presence", (p) => { if (p.user === peer && !p.self) wrap.querySelector("#chOnline").textContent = p.online ? "在线" : "离线"; });
   }
   function closeChat() {
+    stopVoice(); // 离开聊天时停掉正在播放的语音
     if (chatUnSub) { try { chatUnSub(); } catch (e) {} chatUnSub = null; }
     const mask = document.querySelector(".chat-mask"); if (mask) mask.remove();
     closeAllWx(); // 一并关闭叠在聊天之上的微信式页面（详情/主页/学习记录）
@@ -596,30 +597,49 @@
     if (m.type === "image") {
       inner = `<span class="chat-media-wrap"><img class="chat-media-img" src="${UI.esc(mediaUrl)}"/><a class="ov-save" href="${UI.esc(mediaUrl)}" download="${UI.esc(m.mediaName || "image")}" title="保存到相册">⬇</a></span>`;
     } else if (m.type === "video") {
-      inner = `<span class="chat-media-wrap"><video class="chat-media-video" src="${UI.esc(mediaUrl)}" controls></video><a class="ov-save" href="${UI.esc(mediaUrl)}" download="${UI.esc(m.mediaName || "video")}" title="保存到相册">⬇</a></span>`;
+      inner = `<span class="chat-media-wrap chat-video-thumb" data-url="${UI.esc(mediaUrl)}" data-name="${UI.esc(m.mediaName || "video")}"><video class="chat-media-video" src="${UI.esc(mediaUrl)}" muted playsinline preload="metadata"></video><span class="play-badge">▶</span><a class="ov-save" href="${UI.esc(mediaUrl)}" download="${UI.esc(m.mediaName || "video")}" title="保存到相册">⬇</a></span>`;
     } else if (m.type === "voice") {
-      inner = `<span class="chat-voice" data-url="${UI.esc(mediaUrl)}" data-dur="${m.duration || 0}"><span class="vbar"></span>🔊 ${m.duration || 0}″</span>`;
+      inner = `<span class="chat-voice" data-url="${UI.esc(mediaUrl)}" data-dur="${m.duration || 0}"><span class="vbar"></span><span class="vtxt">${m.duration || 0}″</span></span>`;
     } else inner = UI.esc(m.text || "");
     el.innerHTML += `<div class="chat-bubble">${inner}</div>`;
     insertAva(el, peer);
-    if (m.type === "voice") el.querySelector(".chat-voice").onclick = function () { playVoice(this.getAttribute("data-url")); };
+    if (m.type === "voice") el.querySelector(".chat-voice").onclick = function () { playVoice(this, this.getAttribute("data-url")); };
     if (m.type === "image") el.querySelector(".chat-media-img").onclick = () => viewMedia(mediaUrl, "image", m.mediaName);
-    if (m.type === "video") el.querySelector(".chat-media-video").onclick = () => viewMedia(mediaUrl, "video", m.mediaName);
+    if (m.type === "video") el.querySelector(".chat-video-thumb").onclick = (e) => { if (e.target.closest(".ov-save")) return; viewMedia(mediaUrl, "video", m.mediaName); };
     return el;
   }
-  function playVoice(url) {
-    const a = document.createElement("audio"); a.src = url; a.controls = true;
-    const box = UI.el(`<div></div>`); box.appendChild(a);
-    UI.modal({ title: "语音消息", body: box, width: "360px", actions: [{ label: "关闭", cls: "ghost", onClick: (m, c) => { a.pause(); c(); } }] });
-    a.play().catch(() => {});
+  let curVoice = null; // { audio, btn }
+  function setVoicePlaying(btn, on) { if (btn) btn.classList.toggle("playing", !!on); }
+  function stopVoice() {
+    if (curVoice) { try { curVoice.audio.pause(); } catch (e) {} setVoicePlaying(curVoice.btn, false); curVoice = null; }
+  }
+  function playVoice(btn, url) {
+    // 同一段语音：再点切换 播放/暂停
+    if (curVoice && curVoice.btn === btn) {
+      if (curVoice.audio.paused) { curVoice.audio.play().catch(() => {}); setVoicePlaying(btn, true); }
+      else { curVoice.audio.pause(); setVoicePlaying(btn, false); }
+      return;
+    }
+    stopVoice(); // 停掉其他正在播放的
+    const a = new Audio(url); a.preload = "auto";
+    a.onplay = () => setVoicePlaying(btn, true);
+    a.onpause = () => { if (!a.ended) setVoicePlaying(btn, false); };
+    a.onended = () => { setVoicePlaying(btn, false); curVoice = null; };
+    curVoice = { audio: a, btn };
+    a.play().catch(() => UI.toast("播放失败，请重试"));
   }
   function viewMedia(url, kind, name) {
-    const box = UI.el(`<div style="text-align:center;position:relative"></div>`);
-    if (kind === "image") box.innerHTML = `<img src="${UI.esc(url)}" style="max-width:100%;max-height:60vh;border-radius:8px"/>`;
-    else box.innerHTML = `<video src="${UI.esc(url)}" controls style="max-width:100%;max-height:60vh;border-radius:8px"></video>`;
-    const a = UI.el(`<a class="chat-save-ic" href="${UI.esc(url)}" download="${UI.esc(name || "file")}" title="保存到相册">⬇</a>`);
-    box.appendChild(a);
-    UI.modal({ title: "查看媒体", body: box, width: "520px", actions: [{ label: "关闭", cls: "ghost", onClick: (m, c) => c() }] });
+    const ov = UI.el(`<div class="view-ov"></div>`);
+    const box = UI.el(`<div class="view-box"></div>`);
+    if (kind === "image") box.innerHTML = `<img src="${UI.esc(url)}" class="view-img"/>`;
+    else box.innerHTML = `<video src="${UI.esc(url)}" class="view-video" controls autoplay playsinline></video>`;
+    const save = UI.el(`<a class="view-save" href="${UI.esc(url)}" download="${UI.esc(name || "file")}" title="保存到相册">⬇</a>`);
+    const close = UI.el(`<button class="view-close" title="关闭">✕</button>`);
+    ov.appendChild(box); ov.appendChild(save); ov.appendChild(close);
+    document.body.appendChild(ov);
+    const closeOv = () => { const v = box.querySelector("video"); if (v) { try { v.pause(); } catch (e) {} } ov.remove(); };
+    close.onclick = closeOv;
+    ov.onclick = (e) => { if (e.target === ov) closeOv(); };
   }
 
   /* ---- helpers ---- */

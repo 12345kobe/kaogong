@@ -1002,7 +1002,7 @@ mark.kw{background:rgba(255,206,0,.38);color:inherit;padding:0 2px;border-radius
 .chat-row.mine .chat-bubble{background:#95ec69;border-top-right-radius:4px}
 .chat-row.theirs .chat-bubble{background:#fff;border-top-left-radius:4px}
 .chat-media-img{max-width:180px;max-height:180px;border-radius:8px;cursor:pointer}
-.chat-media-video{max-width:200px;max-height:200px;border-radius:8px}
+.chat-media-video{max-width:200px;max-height:200px;border-radius:8px;cursor:pointer;display:block}
 .chat-voice{display:inline-flex;align-items:center;gap:6px;cursor:pointer;background:rgba(0,0,0,.04);padding:6px 10px;border-radius:8px}
 .chat-input{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--topbar-bg,#f7f7f7);border-top:1px solid var(--line);position:relative}
 .chat-input #chText{padding:9px 10px;border:1px solid var(--line);border-radius:18px;background:var(--bg);color:var(--txt);font-size:15px}
@@ -1020,6 +1020,22 @@ mark.kw{background:rgba(255,206,0,.38);color:inherit;padding:0 2px;border-radius
 .chat-media-wrap{position:relative;display:inline-block}
 .chat-media-wrap .ov-save{position:absolute;right:6px;bottom:6px;width:30px;height:30px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:15px;display:none;align-items:center;justify-content:center;text-decoration:none}
 .chat-media-wrap:hover .ov-save{display:inline-flex}
+/* 视频缩略图上的播放三角标 */
+.chat-video-thumb .play-badge{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:46px;height:46px;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center;pointer-events:none;box-shadow:0 2px 10px rgba(0,0,0,.35)}
+/* 语音气泡播放中：波纹动画 + 文案切换 */
+.chat-voice .vtxt{font-size:14px}
+.chat-voice.playing{background:rgba(59,108,255,.12)}
+.chat-voice.playing .vbar{animation:vg .6s infinite}
+.chat-voice.playing .vtxt::before{content:"▶ "}
+.chat-voice .vtxt::before{content:"🔊 "}
+/* 全屏媒体查看器（点一下看图/看视频） */
+.view-ov{position:fixed;inset:0;z-index:12000;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;flex-direction:column;padding:24px}
+.view-box{max-width:100%;max-height:100%;display:flex;align-items:center;justify-content:center}
+.view-img{max-width:100%;max-height:82vh;border-radius:8px;object-fit:contain}
+.view-video{max-width:100%;max-height:82vh;border-radius:8px;background:#000}
+.view-save{position:absolute;right:18px;bottom:22px;width:46px;height:46px;border-radius:50%;background:var(--accent,#3b6cff);color:#fff;font-size:22px;text-decoration:none;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,.3)}
+.view-close{position:absolute;right:16px;top:16px;width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.view-close:hover{background:rgba(255,255,255,.28)}
 @media(max-width:760px){.chat-bubble{max-width:80%}.contacts-list{max-height:calc(100vh - 200px)}}
 
 /* ===== 时事热点：地区切换 + 按日期分组 + 搜索（v=20260917a） ===== */
@@ -1050,7 +1066,7 @@ mark.kw{background:rgba(255,206,0,.38);color:inherit;padding:0 2px;border-radius
   .hs-search{flex:1 1 auto;min-width:0;max-width:none}
 }
 
-/* ===== 微信式聊天/主页/学习记录（v=20260918b） ===== */
+/* ===== 微信式聊天/主页/学习记录（v=20260918c） ===== */
 /* 气泡头像 + 时间分隔 */
 .chat-row{display:flex;align-items:flex-start;gap:8px;margin:8px 12px}
 .chat-row.mine{flex-direction:row-reverse}
