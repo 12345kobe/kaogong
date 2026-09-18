@@ -3,6 +3,15 @@
 window.CHANGELOG = {
   logs: [
     {
+      version: "20260918p",
+      date: "2026-09-19",
+      title: "本次更新",
+      items: [
+        { mod: "common", text: "口诀页去掉「一级/三级」文字标签；实战题改为「去做题」悬浮窗（练/背+解析+正确率+AI）" },
+        { mod: "countdown", text: "红色重点识别更精准（逐字校准 PDF 原书标注）；每个模块页左下角都有悬浮手写按钮" }
+      ]
+    },
+    {
       version: "20260918o",
       date: "2026-09-19",
       title: "本次更新",

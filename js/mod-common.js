@@ -558,7 +558,7 @@
             let itemN = 0;
             const defHtml = (d) => {
               let h = "";
-              if (d.label) { h += `<div class="kj-l1"><span class="kj-lv">一级</span>${UI.esc(d.label)}</div>`; itemN = 0; }
+              if (d.label) { h += `<div class="kj-l1">${UI.esc(d.label)}</div>`; itemN = 0; }
               if (d.t) {
                 itemN += 1;
                 const m = d.t.match(/^([\u4e00-\u9fffA-Za-z0-9（）()]{2,12})([:：])/);
@@ -566,7 +566,7 @@
                 const rest = m ? kjLine(d.t.slice(m[0].length), (d.o || []).map(r => [Math.max(0, r[0] - m[0].length), r[1] - m[0].length])) : kjLine(d.t, d.o);
                 h += `<div class="kj-l2"><span class="kj-lv lv2">${itemN}</span>${lead}${rest}</div>`;
               }
-              (d.subs || []).forEach(s => { h += `<div class="kj-l3"><span class="kj-lv lv3">三级</span>${kjLine(s.t, s.o)}</div>`; });
+              (d.subs || []).forEach(s => { h += `<div class="kj-l3"><span class="kj-lv lv3">▸</span>${kjLine(s.t, s.o)}</div>`; });
               return h;
             };
             return `<div class="kj-item">
@@ -575,20 +575,26 @@
               ${(e.koujue || []).map(k => `<div><span class="kj-koujue">${kjHtml(k.t, k.o)}</span></div>`).join("")}` : ""}
               ${(e.defs || []).length ? `<div class="kj-sec">📝 口诀释义</div>
               ${(e.defs || []).map(defHtml).join("")}` : ""}
-              ${withSz ? (e.shizhan || []).map(sh => `
-                <div class="kj-sec">⚔️ 口诀实战</div>
-                <div class="kj-def">${kjLine(sh.q)}</div>
-                ${(sh.options || []).map((o, oi) => `<div class="kj-def">${String.fromCharCode(65 + oi)}. ${UI.esc(o)}</div>`).join("")}
-                <div class="kj-def"><b>【答案】</b>${typeof sh.a === "number" ? String.fromCharCode(65 + sh.a) : UI.esc(sh.a)}</div>
-                <div class="kj-def">${kjLine("【解析】" + (sh.e || ""))}</div>`).join("") : ""}
-              <div class="row" style="margin-top:6px"><button class="btn ghost sm" data-hw="${e.num}">✍ 手写笔记</button></div>
+              ${withSz && (e.shizhan || []).length ? `<div class="row" style="margin-top:8px"><button class="btn primary sm" data-doquiz="${e.num}">⚔️ 去做题（${e.shizhan.length} 题）</button></div>` : ""}
             </div>`;
           }
+          /* 实战题：悬浮窗练题/背题（含解析、正确率、AI 咨询、计时） */
+          function openKjQuiz(e) {
+            const qs = (e.shizhan || []).map((sh, si) => ({ _id: "kjq" + e.num + "_" + si, q: sh.q, options: sh.options, a: sh.a, e: sh.e || "" }));
+            if (!qs.length) { UI.toast("本条暂无实战题"); return; }
+            const host = UI.el(`<div class="kp-quiz" style="max-height:72vh;overflow:auto"></div>`);
+            UI.modal({
+              title: "⚔️ 口诀实战 · " + e.num + " " + e.title, body: host, width: "760px",
+              actions: [{ label: "关闭", cls: "ghost", onClick: (m, c) => c() }]
+            });
+            function run() { host.innerHTML = ""; window.Quiz.start(host, qs.map(q => Object.assign({}, q)), SUBJECT, { onAgain: run }); }
+            run();
+          }
           kjBody.addEventListener("click", (ev) => {
-            const b = ev.target.closest("[data-hw]");
+            const b = ev.target.closest("[data-doquiz]");
             if (!b) return;
-            const e = entries.find(x => x.num === b.dataset.hw);
-            if (e) UI.Handwriting.open({ subject: "常识口诀", id: "kj" + e.num });
+            const e = entries.find(x => x.num === b.dataset.doquiz);
+            if (e) openKjQuiz(e);
           });
 
           /* ===== 学习模式：每组10条，学习/复习弹窗，艾宾浩斯调度，逐级返回 ===== */

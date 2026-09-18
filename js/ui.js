@@ -788,6 +788,8 @@
        按钮作为 anchor 的子节点（随容器一起销毁），position:fixed 悬浮在左下角。 */
     floatingAnno(subject, id, anchor) {
       if (!anchor) return null;
+      // 单例：一页只保留一个悬浮手写按钮（后挂的替代先挂的；返回/重渲染时自动恢复各自的）
+      document.querySelectorAll(".kg-anno-fab").forEach(b => { if (!anchor.contains(b)) b.remove(); });
       if (anchor.querySelector && anchor.querySelector(".kg-anno-fab")) return null; // 防重复挂载
       const DB = window.DB;
       const btn = el(`<button class="kg-anno-fab" title="标记笔记 · 写下你的见解">✍<span class="kg-anno-dot" style="display:none">•</span></button>`);
