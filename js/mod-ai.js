@@ -15,6 +15,11 @@
   const LS_TEMP = "kg_ai_temp";
   // 注意：令牌只存在本机 localStorage，绝不能写进代码/仓库——GitHub 推送保护会直接拦截含密钥的提交。
 
+  // 共享 AI：经后端代理转发，密钥只存服务端环境变量（Railway: ZHIPU_API_KEY），前端零配置。
+  const SHARED_AI_BASE = (typeof location !== "undefined" && /railway\.app$/.test(location.hostname))
+    ? "/api/ai-proxy"
+    : "https://kaogong-production.up.railway.app/api/ai-proxy";
+
   /* 免费 / 低成本服务商（均走 OpenAI 兼容接口，一键切换） */
   const PROVIDERS = [
     { id: "github", label: "GitHub Models（免费额度 · 可识图）", base: "https://models.inference.ai.azure.com/chat/completions",
@@ -67,6 +72,12 @@
         { id: "qwen2.5:7b", label: "Qwen2.5 7B", note: "本地", vision: false },
         { id: "llama3.1:8b", label: "Llama 3.1 8B", note: "本地", vision: false },
         { id: "deepseek-r1:7b", label: "DeepSeek-R1 7B", note: "本地", vision: false }
+      ] },
+    { id: "shared", label: "共享 AI（免配置 · 女友直接用）", base: SHARED_AI_BASE,
+      keyHint: "无需密钥（服务端已配置，打开即用）", keyUrl: "https://open.bigmodel.cn/usercenter/apikeys", noKey: true,
+      models: [
+        { id: "glm-4v-flash", label: "GLM-4V-Flash（识图·免费）", note: "可识图·推荐", vision: true },
+        { id: "glm-4-flash", label: "GLM-4-Flash（纯文字·免费）", note: "免费", vision: false }
       ] }
   ];
   const SYS = "你是一名资深公务员考试（行测+申论）辅导老师。回答要简洁、准确、贴合中国考情，必要时给出解题步骤与易错点。中文作答。";
@@ -74,7 +85,11 @@
   function esc(s) { return (s == null ? "" : String(s)).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
   function providerById(id) { return PROVIDERS.filter(p => p.id === id)[0] || PROVIDERS[0]; }
-  function getProviderId() { try { return providerById(localStorage.getItem(LS_PROVIDER)).id; } catch (e) { return PROVIDERS[0].id; } }
+  function getProviderId() {
+    const stored = localStorage.getItem(LS_PROVIDER);
+    if (stored && providerById(stored)) return providerById(stored).id;
+    return "shared"; // 新用户默认走「共享 AI（免配置）」，老用户仍用已存服务商
+  }
   function setProviderId(id) { try { localStorage.setItem(LS_PROVIDER, providerById(id).id); } catch (e) {} }
   function keyStore(id) { return "kg_ai_key_" + id; }
   function getKey(id) {

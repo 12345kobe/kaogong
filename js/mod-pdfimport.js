@@ -1505,7 +1505,8 @@
         const files = Array.from(aiImg.files || []);
         if (!files.length) { UI.toast("请先选一张题目图片"); return; }
         if (!window.KGAI) { UI.toast("AI 模块未加载，请刷新重试"); return; }
-        if (!window.KGAI.getToken && !window.KGAI.hasCustom()) { UI.toast("未配置 AI 令牌，请到「设置 → AI 令牌」填写"); return; }
+        const _prov0 = window.KGAI.providerById(window.KGAI.getProvider());
+        if (!_prov0.noKey && !window.KGAI.getToken && !window.KGAI.hasCustom()) { UI.toast("未配置 AI 令牌，请到「设置 → AI 令牌」填写，或选「共享 AI」"); return; }
         aiGo.disabled = true;
         try {
           let all = [], done = 0;
@@ -1548,7 +1549,7 @@
           else throw new Error("当前 AI 模型不支持识图，请在「设置 → AI」选一个可识图模型（如 Gemini 2.0 Flash）");
         }
         const key = window.KGAI.getKey(provId);
-        if (!key && !window.KGAI.hasCustom()) throw new Error("未配置 AI 令牌，请到「设置 → AI 令牌」填写");
+        if (!key && !prov.noKey && !window.KGAI.hasCustom()) throw new Error("未配置 AI 令牌，请到「设置 → AI 令牌」填写，或选「共享 AI」");
         const dataUrl = await fileToDataUrl(file);
         const sys = "你是公考题库录入助手。用户会发一张题目图片。请严格只输出一个 JSON 数组（不要任何解释、不要 markdown 代码块、不要 ```），数组每个元素是 {\"q\":\"题干\",\"options\":[\"A选项\",\"B选项\",\"C选项\",\"D选项\"],\"a\":\"A\"或\"B\"或\"C\"或\"D\"（不确定填 null），\"e\":\"解析，可空\"}。选项必须 2-4 个，顺序与图片一致；若一题含多选，a 用数组。";
         const user = "请识别这张公考题目图片，按要求只输出 JSON 数组。";

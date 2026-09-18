@@ -480,6 +480,40 @@ app.get("/api/fetch-url", async (req, res) => {
   }
 });
 
+/* ---------- 共享 AI 代理：前端「共享 AI（免配置）」通道 ----------
+   智谱 API Key 仅在服务端（Railway 环境变量 ZHIPU_API_KEY）持有，
+   绝不进入前端源码 / 公开仓库，避免 key 泄露被他人盗刷额度。
+   前端零配置（无需填 key），任何人打开本应用即可直接用 AI。 ---------- */
+const AI_ALLOWED_ORIGINS = [/\.github\.io$/, /\.railway\.app$/];
+const AI_MODELS = ["glm-4v-flash", "glm-4-flash", "glm-4-plus", "glm-4-air", "glm-4-airx", "glm-4v-plus"];
+app.post("/api/ai-proxy", async (req, res) => {
+  const origin = req.headers.origin || "";
+  if (origin && !AI_ALLOWED_ORIGINS.some(r => r.test(origin))) {
+    return res.status(403).json({ error: "来源不被允许" });
+  }
+  const key = process.env.ZHIPU_API_KEY;
+  if (!key) return res.status(503).json({ error: "服务端未配置 ZHIPU_API_KEY（请在 Railway 变量中添加）" });
+  const { model, messages, temperature, max_tokens } = req.body || {};
+  if (!model || !Array.isArray(messages)) return res.status(400).json({ error: "缺少 model 或 messages" });
+  if (AI_MODELS.indexOf(model) < 0) return res.status(400).json({ error: "模型不在允许列表：" + model });
+  try {
+    const r = await fetch("https://open.bigmodel.cn/api/paas/v4/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: typeof temperature === "number" ? Math.max(0, Math.min(1, temperature)) : 0.3,
+        max_tokens: Math.min(4000, Number(max_tokens) || 2000)
+      })
+    });
+    const t = await r.text();
+    if (!r.ok) { try { return res.status(r.status).json(JSON.parse(t)); } catch (e) { return res.status(r.status).json({ error: t.slice(0, 300) }); } }
+    res.set("Content-Type", "application/json");
+    res.send(t);
+  } catch (e) { res.status(500).json({ error: "AI 代理异常：" + (e && e.message ? e.message : e) }); }
+});
+
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 
 /* ============================================================

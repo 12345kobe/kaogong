@@ -1094,7 +1094,7 @@ mark.kw{background:rgba(255,206,0,.38);color:inherit;padding:0 2px;border-radius
   .hs-search{flex:1 1 auto;min-width:0;max-width:none}
 }
 
-/* ===== 微信式聊天/主页/学习记录（v=20260918h） ===== */
+/* ===== 微信式聊天/主页/学习记录（v=20260918i） ===== */
 /* 气泡头像 + 时间分隔 */
 .chat-row{display:flex;align-items:flex-start;gap:8px;margin:8px 12px}
 .chat-row.mine{flex-direction:row-reverse}
