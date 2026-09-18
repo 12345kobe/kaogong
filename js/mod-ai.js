@@ -60,7 +60,7 @@
         { id: "deepseek-ai/DeepSeek-V3", label: "DeepSeek V3", note: "低价", vision: false }
       ] },
     { id: "zhipu", label: "智谱 GLM（glm-4-flash 免费）", base: "https://open.bigmodel.cn/api/paas/v4/chat/completions",
-      keyHint: "智谱 API Key", keyUrl: "https://open.bigmodel.cn/usercenter/apikeys",
+      keyHint: "智谱 API Key", keyUrl: "https://open.bigmodel.cn/usercenter/apikeys", maxTok: 1024,
       models: [
         { id: "glm-4-flash", label: "GLM-4-Flash", note: "免费", vision: false },
         { id: "glm-4-air", label: "GLM-4-Air", note: "低价", vision: false },
@@ -184,7 +184,7 @@
     if (key) headers["Authorization"] = "Bearer " + key;
     const resp = await fetch(o.baseUrl || p.base, {
       method: "POST", headers: headers,
-      body: JSON.stringify({ model: model, messages: messages, temperature: getTemp(), max_tokens: 2000 })
+      body: JSON.stringify({ model: model, messages: messages, temperature: getTemp(), max_tokens: Math.min(p.maxTok || 2000, 2000) })
     });
     if (!resp.ok) {
       let msg = "HTTP " + resp.status;

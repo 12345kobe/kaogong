@@ -504,7 +504,7 @@ app.post("/api/ai-proxy", async (req, res) => {
         model,
         messages,
         temperature: typeof temperature === "number" ? Math.max(0, Math.min(1, temperature)) : 0.3,
-        max_tokens: Math.min(4000, Number(max_tokens) || 2000)
+        max_tokens: Math.min(/^glm-4v/.test(model) ? 1024 : 4000, Number(max_tokens) || 2000)
       })
     });
     const t = await r.text();
