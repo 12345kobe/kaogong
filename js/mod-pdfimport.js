@@ -1342,6 +1342,23 @@
       </div>`);
       root.appendChild(card);
 
+      /* ---------- AI 识图录入（拍照/截图直出，AI 为主、人工校对兜底） ---------- */
+      const aiCard = UI.el(`<div class="card" style="margin-top:12px">
+        <h3>📷 AI 识图录入题目（拍照/截图直出，准确率高）</h3>
+        <div class="muted small">
+          ① 选一张题目照片/截图（支持多选，一次多张）→ 点「AI 识别」。会调用你「AI 咨询」里已配置的<b>可识图模型</b>（如 Gemini 2.0 Flash / GLM-4V-Flash，免费款即可）直接读出题干/选项/答案。<br>
+          ② 识别结果进入下方「识别结果」预览；答案没把握的标「待校对」，点每题的 <b>✏️ 校对</b> 手动补全（可从识别原文复制），核对后保存。<br>
+          若未配置 AI：去「设置 → AI 令牌」填一个支持识图的令牌即可。
+        </div>
+        <div class="row" style="margin-top:10px;gap:10px;flex-wrap:wrap;align-items:center">
+          <input type="file" id="aiImg" accept="image/*" multiple />
+          <select id="aiSubj">${SUBJECTS.map(s => `<option value="${esc(SUBJECT_SHORT[s] || s)}">${esc(s)}</option>`).join("")}</select>
+          <button class="btn primary" id="aiGo">🤖 AI 识别</button>
+        </div>
+        <div class="muted small" id="aiStatus" style="margin-top:10px"></div>
+      </div>`);
+      root.appendChild(aiCard);
+
       /* ---------- 时政 / 申论材料：纯文字直接识别 → 存到「时政」模块 ---------- */
       const curCard = UI.el(`<div class="card" style="margin-top:12px">
         <h3>📝 时政 / 申论材料（直接粘贴文字）</h3>
@@ -1480,6 +1497,180 @@
         } catch (e) { setStatus(`<span style="color:var(--red)">识别失败：${esc(e.message)}</span>`); }
       };
 
+      /* ===== AI 识图：图片 → 结构化题目（复用 KGAI 视觉模型） ===== */
+      const aiImg = aiCard.querySelector("#aiImg");
+      const aiGo = aiCard.querySelector("#aiGo");
+      const aiStatus = aiCard.querySelector("#aiStatus");
+      aiGo.onclick = async () => {
+        const files = Array.from(aiImg.files || []);
+        if (!files.length) { UI.toast("请先选一张题目图片"); return; }
+        if (!window.KGAI) { UI.toast("AI 模块未加载，请刷新重试"); return; }
+        if (!window.KGAI.getToken && !window.KGAI.hasCustom()) { UI.toast("未配置 AI 令牌，请到「设置 → AI 令牌」填写"); return; }
+        aiGo.disabled = true;
+        try {
+          let all = [], done = 0;
+          for (const f of files) {
+            aiStatus.innerHTML = `正在用 AI 识别第 <b>${done + 1}</b>/<b>${files.length}</b> 张…`;
+            const qs = await aiVisionQuestions(f, aiCard.querySelector("#aiSubj").value || "常识");
+            if (qs && qs.length) all = all.concat(qs);
+            done++;
+          }
+          if (!all.length) {
+            aiStatus.innerHTML = '<span style="color:var(--red)">AI 未识别出题目：请确认图片清晰、且「AI 咨询」已配置可识图模型（如 Gemini 2.0 Flash / GLM-4V-Flash）。</span>';
+            return;
+          }
+          buildAiDraft(all, aiCard.querySelector("#aiSubj").value || "常识");
+          const stat = countStat(draft);
+          aiStatus.innerHTML = `✓ AI 识别到 <b>${all.length}</b> 道题${stat.bad ? `（<b style="color:var(--red)">${stat.bad}</b> 题答案待校对）` : ""}，已加入下方「识别结果」，请核对后保存。`;
+        } catch (e) {
+          aiStatus.innerHTML = `<span style="color:var(--red)">AI 识别失败：${esc(e.message || e)}</span>`;
+        } finally {
+          aiGo.disabled = false;
+        }
+      };
+
+      function fileToDataUrl(file) {
+        return new Promise((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(r.result);
+          r.onerror = () => rej(new Error("读取图片失败"));
+          r.readAsDataURL(file);
+        });
+      }
+
+      async function aiVisionQuestions(file, subject) {
+        const provId = window.KGAI.getProvider();
+        const prov = window.KGAI.providerById(provId);
+        let model = window.KGAI.getModel();
+        if (!window.KGAI.canVision(provId, model)) {
+          const v = (prov.models || []).filter(m => m.vision)[0];
+          if (v) model = v.id;
+          else throw new Error("当前 AI 模型不支持识图，请在「设置 → AI」选一个可识图模型（如 Gemini 2.0 Flash）");
+        }
+        const key = window.KGAI.getKey(provId);
+        if (!key && !window.KGAI.hasCustom()) throw new Error("未配置 AI 令牌，请到「设置 → AI 令牌」填写");
+        const dataUrl = await fileToDataUrl(file);
+        const sys = "你是公考题库录入助手。用户会发一张题目图片。请严格只输出一个 JSON 数组（不要任何解释、不要 markdown 代码块、不要 ```），数组每个元素是 {\"q\":\"题干\",\"options\":[\"A选项\",\"B选项\",\"C选项\",\"D选项\"],\"a\":\"A\"或\"B\"或\"C\"或\"D\"（不确定填 null），\"e\":\"解析，可空\"}。选项必须 2-4 个，顺序与图片一致；若一题含多选，a 用数组。";
+        const user = "请识别这张公考题目图片，按要求只输出 JSON 数组。";
+        const content = [
+          { type: "text", text: user },
+          { type: "image_url", image_url: { url: dataUrl } }
+        ];
+        const text = await window.KGAI.chat([
+          { role: "system", content: sys },
+          { role: "user", content: content }
+        ], { providerId: provId, model: model, key: key });
+        return parseAiQuestions(text, subject);
+      }
+
+      function parseAiQuestions(text, subject) {
+        if (!text) return [];
+        let s = String(text).trim();
+        s = s.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
+        let i = s.indexOf("["), j = s.lastIndexOf("]");
+        if (i >= 0 && j > i) s = s.slice(i, j + 1);
+        else {
+          const k = s.indexOf("{"); const l = s.lastIndexOf("}");
+          if (k >= 0 && l > k) {
+            try { const o = JSON.parse(s.slice(k, l + 1)); if (Array.isArray(o.questions)) s = JSON.stringify(o.questions); } catch (e) {}
+          }
+        }
+        let arr;
+        try { arr = JSON.parse(s); } catch (e) { throw new Error("AI 返回的不是有效 JSON，请重试或换模型"); }
+        if (!Array.isArray(arr)) arr = [arr];
+        return arr.map((x, idx) => {
+          const q = sanitizeText(x.q || "").replace(/\s+/g, " ").trim();
+          let opts = Array.isArray(x.options) ? x.options.map(o => sanitizeText(o).replace(/\s+/g, " ").trim()).filter(Boolean) : [];
+          if (!opts.length && x.options && typeof x.options === "object") {
+            ["A", "B", "C", "D", "E"].forEach(k => { if (x.options[k]) opts.push(sanitizeText(x.options[k]).trim()); });
+          }
+          let a = -1;
+          if (x.a != null) {
+            if (Array.isArray(x.a)) { a = -1; }
+            else {
+              const letter = String(x.a).trim().toUpperCase();
+              const li = "ABCDE".indexOf(letter);
+              if (li >= 0 && li < opts.length) a = li;
+              else if (/^\d+$/.test(String(x.a).trim())) { const n = +x.a - 1; if (n >= 0 && n < opts.length) a = n; }
+            }
+          }
+          const e = sanitizeText(x.e || "").trim();
+          const needCheck = !(a >= 0 && a < opts.length);
+          return { q, options: opts, a, e, kp: "", num: idx + 1, needCheck: needCheck };
+        }).filter(x => x.q && x.options.length >= 2);
+      }
+
+      function buildAiDraft(questions, subject) {
+        draft = {
+          subject: subject,
+          name: "",
+          sections: [{ name: "AI 识图导入", theory: "", questions: questions }]
+        };
+        renderDraft();
+      }
+
+      /* 人工校对：编辑单题（题干/选项/答案/解析），可从识别原文复制；校验入库 */
+      function openProofread(book, si, qi, isDraft) {
+        let q, persist;
+        if (isDraft) {
+          q = draft.sections[si].questions[qi];
+          persist = () => { renderDraft(); };
+        } else {
+          const live = rawBooks().find(x => x.id === book.id);
+          if (!live) return;
+          q = live.sections[si].questions[qi];
+          persist = () => { db().save(); renderBooks(); };
+        }
+        if (!q) return;
+        const letters = ["A", "B", "C", "D"];
+        const optSlots = [];
+        for (let i = 0; i < 4; i++) optSlots.push((q.options && q.options[i]) || "");
+        const ansOpts = letters.map((L, i) => `<option value="${i}" ${q.a === i ? "selected" : ""}>${L}</option>`).join("")
+          + `<option value="-1" ${!(q.a >= 0) ? "selected" : ""}>未定（待校对）</option>`;
+        const rawText = (card.querySelector("#pdfRaw") && card.querySelector("#pdfRaw").value) || "";
+        const body = UI.el(`<div>
+          <label class="fld">题干</label>
+          <textarea id="pfQ" class="full" rows="3" style="width:100%">${esc(q.q || "")}</textarea>
+          <label class="fld" style="margin-top:8px">选项（至少填 2 个，留空自动跳过）</label>
+          <div style="display:flex;flex-direction:column;gap:6px;align-items:stretch">
+            ${optSlots.map((o, i) => `<div style="display:flex;gap:8px;align-items:center"><b style="width:18px">${letters[i]}</b><input id="pfO${i}" class="full" style="flex:1" value="${esc(o)}"/></div>`).join("")}
+          </div>
+          <div style="display:flex;gap:10px;margin-top:10px;align-items:center">
+            <label class="fld" style="margin:0">正确答案</label>
+            <select id="pfA">${ansOpts}</select>
+          </div>
+          <label class="fld" style="margin-top:10px">解析（可空）</label>
+          <textarea id="pfE" class="full" rows="2" style="width:100%">${esc(q.e || "")}</textarea>
+          ${rawText ? `<details style="margin-top:10px"><summary class="muted small" style="cursor:pointer">📋 识别原文（可复制）</summary><div class="muted small" style="white-space:pre-wrap;max-height:160px;overflow:auto;border:1px solid var(--line);padding:8px;margin-top:6px">${esc(rawText)}</div></details>` : ""}
+          <div id="pfMsg" class="muted small" style="margin-top:8px"></div>
+        </div>`);
+        UI.modal({
+          title: "✏️ 人工校对 · " + (q.q ? q.q.slice(0, 18) : ("第" + (qi + 1) + "题")),
+          body: body, width: "560px",
+          actions: [
+            { label: "取消", cls: "ghost", onClick: (m, c) => c() },
+            {
+              label: "保存校对", cls: "primary", onClick: (m, c) => {
+                const nq = body.querySelector("#pfQ").value.trim();
+                const nopts = letters.map((L, i) => body.querySelector("#pfO" + i).value.trim()).filter(Boolean);
+                const na = parseInt(body.querySelector("#pfA").value, 10);
+                const ne = body.querySelector("#pfE").value.trim();
+                const msg = body.querySelector("#pfMsg");
+                if (!nq) { msg.innerHTML = '<span style="color:var(--red)">题干不能为空</span>'; return; }
+                if (nopts.length < 2) { msg.innerHTML = '<span style="color:var(--red)">至少需要 2 个选项</span>'; return; }
+                if (na >= 0 && na >= nopts.length) { msg.innerHTML = '<span style="color:var(--red)">答案超出了选项数量</span>'; return; }
+                q.q = nq; q.options = nopts; q.a = na; q.e = ne;
+                q.needCheck = !(na >= 0 && na < nopts.length);
+                if (q.needCheck) q.e = "⚠️ 答案未能自动识别，需人工校对。" + (ne ? "　" + ne : "");
+                else q.e = String(q.e).replace(/^⚠️\s*答案未能自动识别，需人工校对。\s*/, "");
+                persist();
+                c(); UI.toast(q.needCheck ? "已保存（仍待校对）" : "✓ 校对完成");
+              }
+            }
+          ]
+        });
+      }
+
       function countStat(d) {
         let q = 0, bad = 0;
         ((d && d.sections) || []).forEach(s => (s.questions || []).forEach(x => {
@@ -1605,16 +1796,23 @@
           const listHtml = slice.map((q, i) => {
             const n = st.page * st.size + i + 1;
             const opts = (q.options || []).map((o, oi) => `<div class="muted small" style="margin-left:14px">${A(oi)}. ${esc(o)}</div>`).join("");
-            const ans = (q.a >= 0 && q.a < q.options.length)
+            const need = !(q.a >= 0 && q.a < q.options.length);
+            const ans = !need
               ? `<b style="color:var(--green)">${A(q.a)}</b>`
               : `<b style="color:var(--red)">待校对</b>`;
-            return `<div class="pdf-q" style="margin-bottom:8px">
-              <div><b>${n}.</b> ${esc(q.q)}${q.kp ? `<span class="tag" style="margin-left:6px">${esc(q.kp)}</span>` : ""}</div>
+            return `<div class="pdf-q" data-pf="${si}:${n - 1}" style="margin-bottom:8px;padding:8px;border:1px solid ${need ? 'var(--red)' : 'var(--line)'};border-radius:8px">
+              <div><b>${n}.</b> ${esc(q.q)}${q.kp ? `<span class="tag" style="margin-left:6px">${esc(q.kp)}</span>` : ""}${need ? ` <span class="tag" style="background:var(--red);color:#fff;margin-left:6px">⚠️ 待校对</span>` : ""}</div>
               ${opts}
-              <div class="muted small" style="margin-top:4px">答案：${ans}${q.e ? " · " + esc(String(q.e).slice(0, 60)) : ""}</div>
+              <div class="row" style="gap:8px;align-items:center;margin-top:4px"><span class="muted small">答案：${ans}${q.e ? " · " + esc(String(q.e).slice(0, 60)) : ""}</span><button class="btn xs" data-act="pf" style="margin-left:auto">✏️ 校对</button></div>
             </div>`;
           }).join("");
-          box.appendChild(UI.el(`<div style="margin-top:8px">${listHtml}</div>`));
+          const listWrap = UI.el(`<div style="margin-top:8px">${listHtml}</div>`);
+          box.appendChild(listWrap);
+          listWrap.querySelectorAll("[data-pf]").forEach(el => {
+            const parts = el.dataset.pf.split(":").map(Number);
+            const btn = el.querySelector('[data-act="pf"]');
+            if (btn) btn.onclick = () => openProofread(book, parts[0], parts[1], isDraft);
+          });
 
           const p1 = bar.querySelector('[data-a="doPage"]');
           if (p1) p1.onclick = () => startQuiz(book, si, slice, (book.name || "题册") + " · " + (s.name || "") + " 第" + (st.page + 1) + "页");
