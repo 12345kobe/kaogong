@@ -74,9 +74,20 @@
             <span class="arc-month">第 ${i + 1} 章</span>
             <span class="arc-name">${UI.esc(d.name || "")}</span>
             <span class="arc-file">📄 ${UI.esc(d.file || "")}</span>
+            <button class="btn sm muti-ch-quiz" data-ch="${i}" title="只刷本章的题目">✍ 刷本章</button>
             <span class="arc-toggle">展开 ▾</span>
           </div>
           <div class="arc-body" style="display:none">
+            <div class="row ch-quiz-bar" style="gap:6px;flex-wrap:wrap;margin:8px 0">
+              <label class="fld" style="margin:0">题数(5-20)</label>
+              <input type="number" class="ch-count" min="5" max="20" value="10" style="width:64px">
+              <select class="ch-mode" style="width:110px">
+                <option value="chapter">按顺序</option>
+                <option value="shuffle">随机</option>
+              </select>
+              <button class="btn primary sm ch-start" data-ch="${i}">开始练习</button>
+            </div>
+            <div class="ch-quiz-host"></div>
             ${d.text ? `<div class="arc-text">${UI.esc(d.text)}</div>` : ""}
             ${qs ? `<div class="arc-qs"><h4 style="margin:10px 0 6px">本章题目（${d.questions.length}）</h4>${qs}</div>` : ""}
           </div>
@@ -91,6 +102,46 @@
           h.querySelector(".arc-toggle").textContent = open ? "展开 ▾" : "收起 ▴";
         };
       });
+
+      /* 每章单独刷题：点「✍ 刷本章」展开本章并选择 5-20 题量开练 */
+      function expandChapter(ci) {
+        const head = list.querySelector('.arc-item-head[data-i="' + ci + '"]');
+        if (!head) return null;
+        const b = head.nextElementSibling;
+        b.style.display = "block";
+        const tg = head.querySelector(".arc-toggle");
+        if (tg) tg.textContent = "收起 ▴";
+        return b;
+      }
+      list.querySelectorAll(".muti-ch-quiz").forEach(btn => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          const ci = parseInt(btn.dataset.ch, 10);
+          const b = expandChapter(ci);
+          if (!b) return;
+          const inp = b.querySelector(".ch-count");
+          if (inp) { try { inp.focus(); } catch (err) {} }
+          try { b.querySelector(".ch-quiz-bar").scrollIntoView({ behavior: "smooth", block: "center" }); } catch (err) {}
+        };
+      });
+      list.querySelectorAll(".ch-start").forEach(btn => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          const ci = parseInt(btn.dataset.ch, 10);
+          const b = btn.closest(".arc-body");
+          const mode = (b.querySelector(".ch-mode") || {}).value || "chapter";
+          const count = parseInt((b.querySelector(".ch-count") || {}).value, 10);
+          const qs = collectChapter(ci, mode, count);
+          if (!qs) return;
+          const host = b.querySelector(".ch-quiz-host");
+          host.innerHTML = "";
+          window.Quiz.start(host, qs, SUBJECT, {
+            onAgain: () => btn.click(),
+            onDone: (r) => recordHistory(qs, r)
+          });
+          try { host.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (err) {}
+        };
+      });
     }
 
     function collect(mode, count) {
@@ -101,6 +152,25 @@
       if (!qs.length) { UI.toast("该资料暂无题目"); return null; }
       if (mode === "shuffle") qs = shuffle(qs);
       // 取值范围 5-20；随机抽取 count 道（避免每次都是前 N 道）
+      count = Math.max(5, Math.min(20, count || 10));
+      if (qs.length > count) {
+        const picked = [], used = new Set();
+        while (picked.length < count && used.size < qs.length) {
+          const i = Math.floor(Math.random() * qs.length);
+          if (used.has(i)) continue; used.add(i); picked.push(qs[i]);
+        }
+        qs = picked;
+      }
+      return qs;
+    }
+
+    /* 只取某一章的题目（供「✍ 刷本章」使用），题量 5-20 */
+    function collectChapter(ci, mode, count) {
+      const data = window.MUTI;
+      const ch = (data && data.chapters) ? data.chapters[ci] : null;
+      if (!ch || !(ch.questions || []).length) { UI.toast("本章暂无题目"); return null; }
+      let qs = (ch.questions || []).slice();
+      if (mode === "shuffle") qs = shuffle(qs);
       count = Math.max(5, Math.min(20, count || 10));
       if (qs.length > count) {
         const picked = [], used = new Set();

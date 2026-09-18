@@ -468,17 +468,13 @@ body.light .hw-palette{background:rgba(255,255,255,.98);border-color:#d6dce6}
 .oe-def{color:var(--txt);font-size:13px;line-height:1.6}
 .oe-ex{color:var(--txt-dim);font-size:12px;margin-top:2px}
 
-/* ===== 题型 / 选非 徽章 ===== */
+/* ===== 题型徽章 ===== */
 .tag.q-type{font-weight:800;border-color:var(--cyan);color:var(--cyan)}
 .tag.q-type-multi{background:rgba(52,231,228,.14)}
 .tag.q-type-judge{background:rgba(155,108,255,.14);border-color:var(--purple);color:var(--purple)}
 .tag.q-type-single{background:rgba(255,209,102,.14);border-color:var(--yellow);color:var(--yellow)}
-.tag.q-xuanfei{font-weight:800;border-color:var(--red);color:#fff;background:var(--red)}
 .q-multi-hint{margin:6px 0 2px}
 .q-confirm{margin:4px 0}
-.q-xuanfei-note{margin:6px 0 2px;padding:6px 10px;border:1px solid var(--red);border-radius:8px;
-  background:rgba(255,107,129,.14);color:var(--red);font-size:13px;font-weight:700}
-.q-xuanfei-note b{color:var(--red)}
 
 /* ===== 更新日志 ===== */
 .cg-bubble{position:absolute;left:36px;top:-8px;max-width:170px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;

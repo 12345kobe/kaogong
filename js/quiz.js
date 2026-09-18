@@ -25,7 +25,7 @@
     const a = x.slice().sort((m, n) => m - n), b = y.slice().sort((m, n) => m - n);
     return a.length === b.length && a.every((v, i) => v === b[i]);
   }
-  function isXuanfei(qq) {
+  function isXuanfei_UNUSED(qq) {
     if (qq && qq.xuanfei) return true;
     const e = qq && qq.e ? qq.e : "";
     const q = qq && qq.q ? qq.q : "";
@@ -293,18 +293,16 @@
           b.classList.toggle("on", on);
           b.textContent = on ? "★" : "☆";
         }
-        const tl = typeLabel(qq), xf = isXuanfei(qq);
+        const tl = typeLabel(qq);
         const card = UI.el(`<div class="quiz-q" data-done="0" data-qi="${qi}">
           <div class="q-head">
             <span class="tag">第 ${qi + 1} 题</span>
             <span class="tag q-type q-type-${tl}">${TYPE_CN[tl] || "单选题"}</span>
-            ${xf ? `<span class="tag q-xuanfei">⚠ 选非题（请选错误/不正确项）</span>` : ""}
             <span class="q-time muted small" style="margin-left:auto"></span>
             <button class="pen-btn ${hasNote ? "has" : ""}" title="手写标注（Apple Pencil）">✏️${hasNote ? "•" : ""}</button>
             <button class="star-btn ${isFav() ? "on" : ""}" title="收藏题目">${isFav() ? "★" : "☆"}</button>
           </div>
           <div class="q">${nl2br(qq.q)}</div>
-          ${xf ? `<div class="q-xuanfei-note">⚠ 本题为「选非题」：请选出<b>错误 / 不正确</b>的一项（不是选正确的）</div>` : ""}
           ${isMulti(qq) ? `<div class="q-multi-hint muted small">本题为多选题，可选多个选项，选完后点「✓ 确认本题」或最后统一交卷。</div>` : ""}
           <div class="opts"></div>
           ${isMulti(qq) ? `<button class="btn sm q-confirm" style="display:none;margin:4px 0">✓ 确认本题</button>` : ""}
