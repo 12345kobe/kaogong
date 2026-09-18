@@ -67,6 +67,8 @@
       }
     }
     setActive(key);
+    // 更新日志气泡：进入某模块即视为已读该模块的更新
+    try { window.Changelog && Changelog.onRoute(key); } catch (e) {}
     const body = document.getElementById("pageBody"); body.innerHTML = "";
     try { MODULES[key].render(body); }
     catch (e) { body.innerHTML = `<div class="card empty">模块加载出错：${UI.esc(e.message)}</div>`; console.error(e); }
@@ -78,6 +80,8 @@
     try { document.body.classList.toggle("ai-mode", key === "ai"); } catch (e) {}
     // 把 PDF 导入的题册挂到对应模块的「自行刷题」入口
     try { mountPdfBooks(body, key); } catch (e) { console.error(e); }
+    // AI 举一反三：挂「xxAI出题」板块（该模块有 AI 生成的题目时才显示）
+    try { window.KGAIQuiz && KGAIQuiz.mount(body, key); } catch (e) { console.error(e); }
     // 每个模块都提供「专注计时」入口（上岸计时器）：点击带本模块名跳到计时器
     const fab = document.getElementById("focusFab");
     if (fab) {
@@ -774,6 +778,8 @@
     initSocial();
     window.addEventListener("hashchange", renderRoute);
     if (!location.hash) location.hash = "#/countdown";
+    // 更新日志：新版本首次打开自动弹出（点×/空白关闭），关闭后导航上标气泡
+    try { window.Changelog && Changelog.maybeShow(); } catch (e) { console.error(e); }
       if (DB.isLoggedIn()) {
         UI.toast("正在从云端拉取数据…");
         DB.pull().then(() => { DB._cloudReady = true; DB.startAutoSync(); renderRoute(); refreshTop(); })

@@ -131,6 +131,8 @@
   let returnHook = null;
   // 浮层关闭钩子：内嵌答题页（政治理论等）用浮层 AI 时，返回键＝关闭浮层而非路由导航
   let overlayClose = null;
+  // 「举一反三」上下文：最近一次来自答题/错题页的题目（AI 仿出同类题用）
+  let qCtx = null;
   function setReturnHook(fn) { returnHook = (typeof fn === "function") ? fn : null; }
   function ask(text, ret, keepModal, hook) {
     pending = text || "";
@@ -156,6 +158,8 @@
   function askQuestion(subject, qq, ua, ret, opts) {
     opts = opts || {};
     const A = i => String.fromCharCode(65 + i);
+    // 记录题目上下文：供「举一反三」仿出同类题（申论除外）
+    qCtx = { subject: subject, q: { q: qq.q, options: qq.options, a: qq.a, e: qq.e } };
     const optsTxt = (qq.options || []).map((o, i) => A(i) + ". " + (o == null ? "" : o)).join("\n");
     // 多选答案：多字母原样输出（"BCD"）；单选/判断：转字母
     const ansLabel = (qq.a == null) ? "（见解析）" : (typeof qq.a === "string" ? qq.a.toUpperCase() : A(qq.a));
@@ -179,8 +183,10 @@
 
   /* 内嵌答题页（政治理论等）专用：把 AI 以浮层模态打开，不切换路由，
      从而保留底层 quiz DOM 与全部答题记录；关闭浮层即回到原题位置。 */
-  function askOverlay(text, hook) {
+  function askOverlay(text, hook, ctx) {
     const UI = window.UI;
+    // 记录题目上下文（供「举一反三」）：内嵌答题页不经过 askQuestion，需显式传入
+    if (ctx && ctx.subject && ctx.q) qCtx = { subject: ctx.subject, q: ctx.q };
     const root = document.getElementById("modalRoot") || document.body;
     const mask = UI.el(`<div class="modal-mask ai-overlay-mask">
       <div class="modal ai-overlay" style="width:min(900px,96vw);height:92vh;max-height:92vh;display:flex;flex-direction:column;overflow:hidden">
@@ -225,7 +231,7 @@
     if (key) headers["Authorization"] = "Bearer " + key;
     const resp = await fetch(o.baseUrl || p.base, {
       method: "POST", headers: headers,
-      body: JSON.stringify({ model: model, messages: messages, temperature: getTemp(), max_tokens: Math.min(p.maxTok || 2000, 2000) })
+      body: JSON.stringify({ model: model, messages: messages, temperature: getTemp(), max_tokens: o.maxTok || Math.min(p.maxTok || 2000, 2000) })
     });
     if (!resp.ok) {
       let msg = "HTTP " + resp.status;
@@ -303,6 +309,9 @@
           <div id="aiMsgs" class="ai-msgs"></div>
           <div id="aiAtts" class="ai-atts"></div>
           <div class="ai-dock">
+            <div id="aiJyfsRow" style="display:none;margin-bottom:6px">
+              <button class="btn sm" id="aiJyfs" title="让 AI 仿照刚才的题目出几道同类题">💡 举一反三 · 出同类题</button>
+            </div>
             <textarea id="aiInput" rows="2" placeholder="输入问题，或粘贴 / 上传题目图片与 PDF。例如：这道题为什么选 B？"></textarea>
             <div class="ai-dock-row">
               <button class="btn ghost sm" id="aiPickImg">🖼 图片</button>
@@ -497,6 +506,7 @@
           const reply = await chat(messages, { providerId: pid, key: key, model: model });
           log.push({ role: "assistant", content: reply });
           setLog(log); renderMsgs();
+          showJyfs();
         } catch (e) {
           const p = msgs.querySelector("#aiPending"); if (p) p.remove();
           UI.toast("请求失败：" + e.message);
@@ -521,6 +531,74 @@
           renderAtts(); UI.toast("PDF 已解析，可补充问题后发送");
         } catch (e) { UI.toast("PDF 解析失败：" + e.message); }
       }
+
+      /* ===== 举一反三：AI 仿题出同类选择题并自动进入训练 ===== */
+      function showJyfs() {
+        const row = body.querySelector("#aiJyfsRow");
+        if (!row || !qCtx) return;
+        const modKey = (window.KGAIQuiz && KGAIQuiz.moduleForSubject(qCtx.subject)) || null;
+        // 除申论外都支持出题
+        row.style.display = (modKey && modKey !== "essay") ? "" : "none";
+      }
+      function parseQuestions(txt) {
+        let t = String(txt || "").replace(/```[a-z]*```?/g, "```").replace(/```/g, "\n").trim();
+        const s = t.indexOf("["), e = t.lastIndexOf("]");
+        if (s < 0 || e <= s) throw new Error("AI 未返回题目数据");
+        return JSON.parse(t.slice(s, e + 1));
+      }
+      function openJyfs() {
+        if (!qCtx) { UI.toast("先咨询一道题目，再点举一反三"); return; }
+        const modKey = KGAIQuiz.moduleForSubject(qCtx.subject);
+        if (!modKey || modKey === "essay") { UI.toast("该科目暂不支持出题"); return; }
+        const modTitle = (window.MODULES[modKey] || {}).title || qCtx.subject;
+        const mask = UI.el(`<div class="modal-mask"><div class="modal" style="max-width:460px">
+          <h3>💡 举一反三</h3>
+          <div class="muted small">AI 将仿照你咨询的题目，出几道同考点选择题（含答案与解析）。出题过程不展示，完成后自动进入「${esc(modTitle)}AI出题」板块开始训练。</div>
+          <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:10px" id="jyfsCnt">
+            ${[3, 4, 5, 6, 8, 10].map(n => `<button class="btn sm" data-n="${n}">${n} 题</button>`).join("")}
+          </div>
+          <div id="jyfsBusy" class="muted small" style="display:none;margin-top:10px">⏳ AI 正在出题，请稍候…（思考过程不展示，完成后自动跳转）</div>
+          <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn ghost" id="jyfsCancel">取消</button></div>
+        </div></div>`);
+        document.body.appendChild(mask);
+        mask.querySelector("#jyfsCancel").onclick = () => mask.remove();
+        mask.onclick = e => { if (e.target === mask) mask.remove(); };
+        const busy = mask.querySelector("#jyfsBusy");
+        mask.querySelectorAll("#jyfsCnt [data-n]").forEach(b => {
+          b.onclick = async () => {
+            const n = parseInt(b.dataset.n, 10);
+            mask.querySelectorAll("#jyfsCnt [data-n]").forEach(x => x.disabled = true);
+            busy.style.display = "";
+            const A = i => String.fromCharCode(65 + i);
+            const qq = qCtx.q;
+            const optsTxt = (qq.options || []).map((o, i) => A(i) + ". " + (o == null ? "" : o)).join("\n");
+            const prompt = `你是公务员考试命题专家。请仿照下面的「${qCtx.subject}」原题，再出 ${n} 道考查同一知识点、难度相近的单项选择题。\n要求：\n1) 每题必须包含题干、4个选项、正确答案、详细解析；\n2) 不与原题重复，围绕同一考点从不同角度命题；\n3) 只输出 JSON 数组，禁止输出 markdown 代码块标记或任何其他文字。格式：[{"q":"题干","options":["A内容","B内容","C内容","D内容"],"a":"B","e":"解析"}]，其中 "a" 是正确选项字母。\n\n【原题】\n${qq.q || ""}\n${optsTxt ? "【原题选项】\n" + optsTxt + "\n" : ""}【原题解析】${qq.e || "略"}`;
+            try {
+              const reply = await chat(
+                [{ role: "system", content: "你是公务员考试命题专家，只输出 JSON 数组，不输出任何其他文字。" },
+                 { role: "user", content: prompt }],
+                { maxTok: 6000 });
+              const qs = parseQuestions(reply);
+              const set = KGAIQuiz.addSet(modKey, qCtx.subject, qs);
+              if (!set) throw new Error("AI 出的题目格式不完整，请重试");
+              mask.remove();
+              UI.toast(`✅ 已生成 ${set.n} 道同类题，正在进入「${modTitle}AI出题」…`);
+              window.__aiQuizAuto = { mod: modKey, setId: set.id };
+              // 关闭浮层（内嵌答题场景），清掉返回钩子，直接跳到对应学科模块
+              if (typeof overlayClose === "function") { try { overlayClose(); } catch (e) {} }
+              returnHash = null; returnHook = null; returnAnchor = null;
+              location.hash = "#/" + modKey;
+            } catch (e) {
+              busy.style.display = "none";
+              mask.querySelectorAll("#jyfsCnt [data-n]").forEach(x => x.disabled = false);
+              UI.toast("出题失败：" + e.message);
+            }
+          };
+        });
+      }
+      body.querySelector("#aiJyfs").onclick = openJyfs;
+      // 进入时有历史 AI 回复且带题目上下文 → 直接显示按钮
+      if (log.some(m => m.role === "assistant")) showJyfs();
 
       sendBtn.onclick = send;
       input.addEventListener("keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) send(); });

@@ -43,7 +43,9 @@
       frontLabel = "正面", backLabel = "答案",
       shuffle = false, hardCheck = defaultCheck, onExit = null,
       noWrongbook = false,   // true：不把答错的再写回错题本（错题本里复习时用，避免自我重复）
-      onJudge = null         // (item, ok) => void：每次作答后的回调（供外部更新连续答对次数等）
+      onJudge = null,        // (item, ok) => void：每次作答后的回调（供外部更新连续答对次数等）
+      streakClean = 1,       // 本轮从未答错时，连续答对多少次即可消除
+      streakAfterWrong = 2   // 本轮答错过时，需要连续答对多少次才消除（其余模块可传 1 表示答一次就行）
     } = opts;
 
     if (!items.length) { UI.toast("暂无数据"); return; }
@@ -73,6 +75,18 @@
       .map(x => ({ ...x, _streak: EB.getRecord(group, x.id)?.correctStreak || 0 }));
     const wrongIndices = [];
     const seenStreaks = {};
+    /* 本轮答错过的 id：答错过的词条需要「连答两次对」才消除，没答错过的答对一次即可消除 */
+    const everWrong = new Set();
+    function needed(it) { return everWrong.has(it.id) ? streakAfterWrong : streakClean; }
+    function isCleared(it) { return (seenStreaks[it.id] || 0) >= needed(it); }
+    function streakHint(it) {
+      if (isCleared(it)) return "";
+      const s = seenStreaks[it.id] || 0, n = needed(it);
+      if (everWrong.has(it.id)) {
+        return `<div class="fc-streak warn">⚠ 本题答错过：需连对 ${n} 次才消除（当前 ${s}/${n}）</div>`;
+      }
+      return `<div class="fc-streak">答对 ${n} 次即可消除</div>`;
+    }
 
     function showTimer() {
       const sec = Math.max(0, Math.floor((Date.now() - startTime) / 1000));
@@ -90,7 +104,7 @@
     function next() {
       while (cur < queue.length) {
         const it = queue[cur];
-        if ((seenStreaks[it.id] || 0) >= 2) { cur++; continue; }
+        if (isCleared(it)) { cur++; continue; }
         return renderCard(it);
       }
       const remain = wrongIndices.filter(idx => idx < queue.length);
@@ -107,7 +121,7 @@
     /* 回到上一个词条（自动跳过本轮已连对2次消除的） */
     function goPrev() {
       let i = cur - 1;
-      while (i >= 0 && (seenStreaks[queue[i].id] || 0) >= 2) i--;
+      while (i >= 0 && isCleared(queue[i])) i--;
       if (i < 0) { UI.toast("已经是第一个了"); return; }
       cur = i;
       renderCard(queue[i]);
@@ -123,6 +137,7 @@
         cardEl.innerHTML = `
           <div class="fc-face fc-front">
             <div class="muted small">第 ${cur + 1} / ${queue.length} 题 · ${UI.esc(frontLabel)}</div>
+            ${streakHint(it)}
             <div class="fc-big">${UI.esc(it.prompt)}</div>
             <div class="muted small">点下方按钮看${UI.esc(backLabel)}</div>
           </div>
@@ -154,6 +169,7 @@
           if (flipped) {
             face.classList.add("flipped");
             face.innerHTML = `<div class="muted small">第 ${cur + 1} / ${queue.length} 题 · ${UI.esc(backLabel)}</div>
+              ${streakHint(it)}
               <div class="fc-big fc-ans">${UI.esc(it.answer)}</div>
               <div class="muted small">再点上方按钮可翻回正面核对，确认后点「记得 / 忘记」</div>`;
             flipBtn.textContent = "↩ 翻转回去";
@@ -183,6 +199,7 @@
         cardEl.innerHTML = `
           <div class="fc-face">
             <div class="muted small">第 ${cur + 1} / ${queue.length} 题 · ${UI.esc(frontLabel)} · 自行填写</div>
+            ${streakHint(it)}
             <div class="fc-big">${UI.esc(it.prompt)}</div>
             <div class="muted small" style="margin-top:8px">请填写${UI.esc(backLabel)}</div>
             <input id="fcIn" class="fc-input" autocomplete="off" placeholder="在此输入答案" />
@@ -219,7 +236,7 @@
     function recordAnswer(it, ok) {
       totalN++;
       if (ok) { correctN++; seenStreaks[it.id] = (seenStreaks[it.id] || 0) + 1; }
-      else { seenStreaks[it.id] = 0; wrongIndices.push(cur); }
+      else { seenStreaks[it.id] = 0; everWrong.add(it.id); wrongIndices.push(cur); }
       EB.updateAfterReview(group, it.id, ok);
       if (onJudge) { try { onJudge(it, ok); } catch (e) { console.warn("onJudge 回调出错", e); } }
       if (!ok && !noWrongbook) {
@@ -262,6 +279,7 @@
           .map(x => ({ ...x, _streak: EB.getRecord(group, x.id)?.correctStreak || 0 }));
         cur = 0; correctN = 0; totalN = 0; wrongIndices.length = 0;
         Object.keys(seenStreaks).forEach(k => delete seenStreaks[k]);
+        everWrong.clear();
         cardEl.outerHTML = `<div id="fcCard" class="fc-card"></div>`;
         setTimeout(next, 30);
       };

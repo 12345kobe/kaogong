@@ -509,6 +509,90 @@
           return { primary: it.prompt, secondary: "答：" + it.answer };
         });
       };
+      /* ===== 常识口诀88条（速记口诀 + 释义 + 实战题） ===== */
+      try {
+        const KJ = window.KJ88;
+        if (KJ && KJ.chapters && KJ.chapters.length) {
+          const entries = [];
+          KJ.chapters.forEach(c => (c.entries || []).forEach(e => entries.push(Object.assign({ chapter: c.name }, e))));
+          const kjCard = document.createElement("div");
+          kjCard.className = "card";
+          const chOpts = KJ.chapters.map((c, i) => `<option value="${i}">${UI.esc(c.name)}（${(c.entries || []).length}条）</option>`).join("");
+          kjCard.innerHTML = `
+            <h3>🧿 常识口诀88条</h3>
+            <div class="muted small">速记口诀（黄底红字）+ 释义 + 实战题。可背口诀、练题、随手写笔记（笔记永久保存，可在板内 ✕ 一键删除）。</div>
+            <div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap">
+              <select id="kjCh" style="max-width:220px">${chOpts}</select>
+              <button class="btn" id="kjBrowse">📖 背口诀</button>
+              <button class="btn" id="kjFlash">📇 口诀闪卡（背题）</button>
+              <button class="btn primary" id="kjQuiz">✍ 练实战题（本章）</button>
+            </div>
+            <div id="kjBody" style="margin-top:10px"></div>`;
+          body.appendChild(kjCard);
+          const kjBody = kjCard.querySelector("#kjBody");
+          function kjLine(s) {
+            let t = UI.esc(String(s || ""));
+            t = t.replace(/^([•·]\s*[^：:]{1,14})([：:])/, "<b>$1$2</b>");
+            t = t.replace(/^(\d{1,2}[.、)][^：:]{1,22})([：:])/, "<b>$1$2</b>");
+            return t;
+          }
+          kjCard.querySelector("#kjBrowse").onclick = () => {
+            const ci = parseInt(kjCard.querySelector("#kjCh").value, 10);
+            const es = (KJ.chapters[ci].entries || []);
+            const shHtml = (sh) => (!sh || !sh.q) ? "" : `
+              <div class="kj-sec">⚔️ 口诀实战</div>
+              <div class="kj-def">${kjLine(sh.q)}</div>
+              ${(sh.options || []).map((o, oi) => `<div class="kj-def">${String.fromCharCode(65 + oi)}. ${UI.esc(o)}</div>`).join("")}
+              <div class="kj-def"><b>【答案】</b>${typeof sh.a === "number" ? String.fromCharCode(65 + sh.a) : UI.esc(sh.a)}</div>
+              <div class="kj-def">${kjLine("【解析】" + (sh.e || ""))}</div>`;
+            kjBody.innerHTML = es.map((e, i) => `
+              <div class="kj-item">
+                <h4>✅ ${UI.esc(e.num)} ${UI.esc(e.title)} <span class="muted small">· ${UI.esc(e.chapter || "")}</span></h4>
+                <div class="kj-sec">📖 口诀速背</div>
+                <div>${(e.koujue || []).map(k => `<div><span class="kj-koujue">${UI.esc(k)}</span></div>`).join("")}</div>
+                <div class="kj-sec">📝 口诀释义</div>
+                ${(e.defs || []).map(l => `<div class="kj-def">${kjLine(l)}</div>`).join("") || '<div class="muted small">（无）</div>'}
+                ${(e.shizhan || []).map(shHtml).join("")}
+                <div class="row" style="margin-top:6px"><button class="btn ghost sm" data-hw="${ci}_${i}">✍ 手写笔记</button></div>
+              </div>`).join("");
+            kjBody.querySelectorAll("[data-hw]").forEach(b => {
+              b.onclick = () => {
+                const p = b.dataset.hw.split("_");
+                const e = (KJ.chapters[parseInt(p[0], 10)].entries || [])[parseInt(p[1], 10)];
+                if (e) UI.Handwriting.open({ subject: "常识口诀", id: "kj" + e.num });
+              };
+            });
+            try { kjBody.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e) {}
+          };
+          kjCard.querySelector("#kjFlash").onclick = () => {
+            if (!entries.length) { UI.toast("暂无口诀数据"); return; }
+            window.Flashcard.start({
+              title: "常识 · 口诀88条", subtitle: "先想口诀再翻面核对（答错过的需连对2次消除）",
+              group: "common_kj88", subject: SUBJECT,
+              items: entries.map(e => ({
+                id: "kj" + e.num,
+                prompt: e.num + " " + e.title,
+                answer: (e.koujue || []).join("；") + ((e.defs || []).length ? "\n" + e.defs.join("\n") : "")
+              })),
+              mode: "easy", frontLabel: "条目", backLabel: "口诀+释义", shuffle: false
+            });
+          };
+          kjCard.querySelector("#kjQuiz").onclick = () => {
+            const ci = parseInt(kjCard.querySelector("#kjCh").value, 10);
+            const es = (KJ.chapters[ci].entries || []);
+            const qs = [];
+            es.forEach(e => {
+              (e.shizhan || []).forEach((sh, si) => {
+                if (sh && sh.q && Array.isArray(sh.options)) {
+                  qs.push({ _id: "kjq" + e.num + "_" + si, q: sh.q, options: sh.options, a: sh.a, e: sh.e || "" });
+                }
+              });
+            });
+            if (!qs.length) { UI.toast("本章暂无实战题"); return; }
+            renderQuiz(kjCard, qs, SUBJECT, {});
+          };
+        }
+      } catch (e) { console.error("口诀88条板块出错", e); }
       try { body.appendChild(UI.notebook(SUBJECT, "common_main", body)); } catch (e) {}
     }
   };

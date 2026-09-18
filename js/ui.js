@@ -557,10 +557,16 @@
         function saveAndClose() {
           if (dirty) {
             if (session) {
-              // 会话模式：只写入内存缓存，不落盘；训练结束由 UI.Handwriting.clearSession() 清空
+              // 会话模式：写内存缓存（供本次训练内联显示）+ 永久落库（笔记永久保存，可在笔记导出中看到）
               const k = _hwKey(subject, id);
-              if (notes.strokes.length) _hwSession[k] = JSON.parse(JSON.stringify(notes)); else delete _hwSession[k];
-              if (onChange) onChange();
+              if (notes.strokes.length) {
+                _hwSession[k] = JSON.parse(JSON.stringify(notes));
+                notesRoot[subject][id] = JSON.parse(JSON.stringify(notes));
+              } else {
+                delete _hwSession[k];
+                if (notesRoot[subject][id]) delete notesRoot[subject][id];
+              }
+              DB.save(); if (onChange) onChange();
             } else {
               if (notes.strokes.length) notesRoot[subject][id] = notes; else if (saved) delete notesRoot[subject][id];
               DB.save(); if (onChange) onChange();
@@ -585,8 +591,12 @@
         };
         overlay.querySelector(".hw-tool.clear").onclick = () => {
           if (!notes.strokes.length) return;
-          notes.strokes = []; redo = []; dirty = true;
-          renderToOffscreen(); blit();
+          // 一键删除全部笔迹：需二次确认，防止误删
+          UI.confirm("确定删除本页全部笔迹吗？删除后不可恢复。").then(ok => {
+            if (!ok) return;
+            notes.strokes = []; redo = []; dirty = true;
+            renderToOffscreen(); blit();
+          });
         };
         overlay.querySelectorAll("[data-tool]").forEach(b => {
           b.onclick = () => {

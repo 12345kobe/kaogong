@@ -200,8 +200,8 @@
               if (window.KGAI.askQuestion) window.KGAI.askQuestion(subject, qq, ua, null, { keepModal: true, returnHook: modalHook });
               else if (window.KGAI.ask) window.KGAI.ask(text, null, true, modalHook);
             } else {
-              // 内嵌答题：开 AI 浮层，保留底层 quiz DOM 与全部答题记录
-              if (window.KGAI.askOverlay) window.KGAI.askOverlay(text, inlineHook);
+              // 内嵌答题：开 AI 浮层，保留底层 quiz DOM 与全部答题记录；带上题目上下文供「举一反三」
+              if (window.KGAI.askOverlay) window.KGAI.askOverlay(text, inlineHook, { subject: subject, q: { q: qq.q, options: qq.options, a: qq.a, e: qq.e } });
               else if (window.KGAI.askQuestion) window.KGAI.askQuestion(subject, qq, ua, null, { keepModal: true, returnHook: inlineHook });
             }
           } else { UI.toast("AI 模块未就绪"); }

@@ -480,6 +480,30 @@ body.light .hw-palette{background:rgba(255,255,255,.98);border-color:#d6dce6}
   background:rgba(255,107,129,.14);color:var(--red);font-size:13px;font-weight:700}
 .q-xuanfei-note b{color:var(--red)}
 
+/* ===== 更新日志 ===== */
+.cg-bubble{position:absolute;left:36px;top:-8px;max-width:170px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  font-size:11px;line-height:1;padding:5px 8px;border-radius:10px 10px 10px 2px;color:#fff;background:var(--red,#ff5c5c);
+  box-shadow:0 2px 8px rgba(0,0,0,.25);cursor:pointer;z-index:60;animation:cgPop .3s ease}
+@keyframes cgPop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
+.cg-item{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px dashed var(--line)}
+.cg-item-t{font-size:13px;line-height:1.55}
+
+/* ===== AI 出题板块 ===== */
+.aiq-list{margin:6px 0 10px}
+.aiq-list .tag{margin-left:6px}
+
+/* ===== 闪卡连答提示 ===== */
+.fc-streak{font-size:12px;color:var(--txt-dim);margin:2px 0}
+.fc-streak.warn{color:var(--red,#ff5c5c);font-weight:700}
+
+/* ===== 常识口诀88条 ===== */
+.kj-item{padding:10px 0;border-bottom:1px dashed var(--line)}
+.kj-item h4{margin:0 0 6px;font-size:15px}
+.kj-koujue{display:inline-block;background:#fff3a3;color:#c22b0f;font-weight:800;padding:2px 8px;border-radius:4px;margin:2px 0}
+.kj-sec{font-weight:800;margin:8px 0 4px}
+.kj-def{margin:4px 0}
+.kj-def b{font-weight:800}
+
 /* ===== AI 浮层（内嵌答题页询问 AI 用，保留底层答题 DOM） ===== */
 .ai-overlay-mask{ background:rgba(0,0,0,.5); z-index:200 }
 .ai-overlay{ background:var(--panel); box-shadow:0 18px 60px rgba(0,0,0,.5) }
