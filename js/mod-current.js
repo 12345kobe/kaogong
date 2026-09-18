@@ -826,10 +826,26 @@
       const hsImportBtn = hsBody.querySelector("#hsImport");
       if (hsImportBtn) hsImportBtn.onclick = openImportUrl;
 
+      let lastCrawlTs = 0;
       hsBody.querySelector("#hsRefresh").onclick = () => {
-        UI.toast("已触发抓取，稍后自动刷新最新热点…");
+        const now = Date.now();
+        if (now - lastCrawlTs < 3 * 60 * 1000) {
+          UI.toast("刚刚已触发过抓取，云端正在处理，请稍候再点");
+          setTimeout(loadHotspots, 3000);
+          return;
+        }
+        lastCrawlTs = now;
+        UI.toast("已触发云端抓取，约 1 分钟后更新，请稍候…");
         triggerCrawlDispatch();
-        setTimeout(loadHotspots, 6000);
+        // 轮询拉取：直到 updatedAt 变化（最多 8 次 × 15s），避免固定 6s 拉不到又让用户再点
+        const baseUpdated = (window.KG_HOTSPOTS && window.KG_HOTSPOTS.updatedAt) || "";
+        let tries = 0;
+        const timer = setInterval(() => {
+          tries++;
+          loadHotspots();
+          const up = (window.KG_HOTSPOTS && window.KG_HOTSPOTS.updatedAt) || "";
+          if ((up && up !== baseUpdated) || tries >= 8) clearInterval(timer);
+        }, 15000);
       };
 
       /* =========== 历史时政（全部归档：自动抓取 + 导入网页 + 我的记录） =========== */

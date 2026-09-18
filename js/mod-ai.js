@@ -129,6 +129,8 @@
   let returnAnchor = null; // 「返回」要定位到的具体题目（错题卡 data-ai="id"）；返回后滚动到该题并高亮
   // 返回键钩子（由外部模块注入，用于回到「上一道题」等更精细的场景；不设置则回退到来源路由）
   let returnHook = null;
+  // 浮层关闭钩子：内嵌答题页（政治理论等）用浮层 AI 时，返回键＝关闭浮层而非路由导航
+  let overlayClose = null;
   function setReturnHook(fn) { returnHook = (typeof fn === "function") ? fn : null; }
   function ask(text, ret, keepModal, hook) {
     pending = text || "";
@@ -155,8 +157,10 @@
     opts = opts || {};
     const A = i => String.fromCharCode(65 + i);
     const optsTxt = (qq.options || []).map((o, i) => A(i) + ". " + (o == null ? "" : o)).join("\n");
-    const myAns = (ua === undefined || ua === null || isNaN(ua)) ? "未作答" : A(ua);
-    const ansLabel = (qq.a == null) ? "（见解析）" : A(qq.a);
+    // 多选答案：多字母原样输出（"BCD"）；单选/判断：转字母
+    const ansLabel = (qq.a == null) ? "（见解析）" : (typeof qq.a === "string" ? qq.a.toUpperCase() : A(qq.a));
+    const myAns = (ua === undefined || ua === null) ? "未作答"
+      : (Array.isArray(ua) ? ua.slice().sort((x, y) => x - y).map(A).join("、") : (isNaN(ua) ? "未作答" : A(ua)));
     // 若来源页面上存在这道题的卡片（如错题本 data-ai="id"），记录锚点：返回时直接定位到这道题而不是页面顶部
     returnAnchor = null;
     try {
@@ -171,6 +175,43 @@
       (qq.e ? `【解析】${qq.e}\n` : "") +
       `\n我看了解析还是没弄懂，请用通俗的方式一步步讲清楚：这道题的考点是什么、正确选项为什么对、我的思路错在哪里。\n我的疑惑点：（请在这里补充）`;
     ask(txt, ret || location.hash, !!opts.keepModal, opts.returnHook || null);
+  }
+
+  /* 内嵌答题页（政治理论等）专用：把 AI 以浮层模态打开，不切换路由，
+     从而保留底层 quiz DOM 与全部答题记录；关闭浮层即回到原题位置。 */
+  function askOverlay(text, hook) {
+    const UI = window.UI;
+    const root = document.getElementById("modalRoot") || document.body;
+    const mask = UI.el(`<div class="modal-mask ai-overlay-mask">
+      <div class="modal ai-overlay" style="width:min(900px,96vw);height:92vh;max-height:92vh;display:flex;flex-direction:column;overflow:hidden">
+        <div class="ai-overlay-host" style="display:flex;flex-direction:column;flex:1;min-height:0"></div>
+      </div></div>`);
+    root.appendChild(mask);
+    const host = mask.querySelector(".ai-overlay-host");
+    // 关闭浮层：先执行返回钩子（定位到原题），再移除遮罩
+    overlayClose = () => {
+      try { if (typeof hook === "function") hook(); } catch (e) {}
+      try { mask.remove(); } catch (e) {}
+      overlayClose = null;
+    };
+    // 预填题目文本（render 内会读取 pending 写入输入框）
+    pending = text || "";
+    // 渲染 AI 面板到浮层（overlay 模式：返回键变为「关闭」）
+    try { MODULES.ai.render(host, { overlay: true }); }
+    catch (e) { host.innerHTML = '<div class="card empty">AI 面板加载出错：' + UI.esc(e.message) + '</div>'; }
+    // 背景点击关闭
+    mask.onclick = (e) => { if (e.target === mask) overlayClose(); };
+    // ESC 关闭（容错：浮层已关闭则仅移除监听）
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        if (typeof overlayClose === "function") overlayClose();
+        document.removeEventListener("keydown", onKey);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    // 输入框聚焦
+    const input = host.querySelector("#aiInput");
+    if (input) setTimeout(() => { try { input.focus(); } catch (e) {} }, 80);
   }
 
   /* ===== 调用（OpenAI 兼容，按当前服务商） ===== */
@@ -211,7 +252,7 @@
     getToken: getToken, setToken: setToken, hasCustom: hasCustom,
     getModel: getModel, setModel: setModel, modelInfo: modelInfo, canVision: canVision,
     getLog: getLog, setLog: setLog,
-    getTemp: getTemp, setTemp: setTemp, ask: ask, askQuestion: askQuestion, test: test, chat: chat,
+    getTemp: getTemp, setTemp: setTemp, ask: ask, askQuestion: askQuestion, askOverlay: askOverlay, test: test, chat: chat,
     setReturnHook: setReturnHook, getReturn: () => returnHash
   };
 
@@ -243,7 +284,7 @@
 
   window.MODULES.ai = {
     title: "AI 咨询", icon: "ai",
-    render(body) {
+    render(body, ropts) {
       const UI = window.UI;
       let log = getLog();
       let atts = [];   // 附件：{kind:'image'|'pdf', name, dataUrl, text}
@@ -512,7 +553,12 @@
       /* ===== 返回键（来自错题本 / 答题页的「AI 咨询」时显示，位于发送键左侧） ===== */
       const backBtn = body.querySelector("#aiBack");
       if (backBtn) {
-        if (returnHash) {
+        if (overlayClose) {
+          // 浮层模式：返回键＝关闭浮层（底层 quiz DOM 仍在，答题记录保留）
+          backBtn.style.display = "";
+          backBtn.textContent = "✕ 关闭";
+          backBtn.onclick = () => { try { overlayClose(); } catch (e) {} };
+        } else if (returnHash) {
           backBtn.style.display = "";
           backBtn.onclick = () => {
             const h = returnHash; const hook = returnHook; const anchor = returnAnchor;

@@ -55,14 +55,20 @@
       }
       timeEl.textContent = "最后更新：" + (data.updatedAt || "—") + "　共 " + data.chapters.length + " 章 / " + totalQuestions(data) + " 题";
       list.innerHTML = data.chapters.map((d, i) => {
-        const qs = (d.questions || []).map((q, qi) => `
+          const qs = (d.questions || []).map((q, qi) => {
+            // 多选：答案可能是 "BCD" 多字母，需逐字母判定正确项
+            const ansSet = (typeof q.a === "string")
+              ? q.a.toUpperCase().split("").map(c => c.charCodeAt(0) - 65).filter(x => x >= 0 && x <= 25)
+              : [q.a];
+            return `
           <div class="arc-q">
             <div class="arc-q-title">${i + 1}.${qi + 1} ${UI.esc(q.q)}</div>
             <div class="arc-opts">
-              ${q.options.map((o, oi) => `<span class="arc-opt ${oi === q.a ? "right" : ""}">${String.fromCharCode(65 + oi)}. ${UI.esc(o)}${oi === q.a ? " ✓" : ""}</span>`).join("")}
+              ${q.options.map((o, oi) => `<span class="arc-opt ${ansSet.indexOf(oi) >= 0 ? "right" : ""}">${String.fromCharCode(65 + oi)}. ${UI.esc(o)}${ansSet.indexOf(oi) >= 0 ? " ✓" : ""}</span>`).join("")}
             </div>
             ${q.e ? `<div class="arc-an"><b>解析：</b>${UI.esc(q.e)}</div>` : ""}
-          </div>`).join("");
+          </div>`;
+          }).join("");
         return `<div class="arc-item">
           <div class="arc-item-head" data-i="${i}">
             <span class="arc-month">第 ${i + 1} 章</span>
@@ -108,7 +114,7 @@
     }
 
     function recordHistory(qs, r) {
-      const items = qs.map(q => ({ q: q.q, options: (q.options || []).slice(), a: (typeof q.a === "string" ? q.a.charCodeAt(0) - 65 : q.a), e: q.e || "" }));
+      const items = qs.map(q => ({ q: q.q, options: (q.options || []).slice(), a: q.a, e: q.e || "" }));
       DB.state.mutiHistory = DB.state.mutiHistory || [];
       DB.state.mutiHistory.unshift({ date: DB.today() + " " + DB.fmtTime(new Date()), count: qs.length, correct: r.correct, total: r.total, items });
       DB.save();

@@ -251,7 +251,8 @@
     const qsForQuiz = questions.map(q => ({
       q: q.q,
       options: (q.options || []).slice(),
-      a: typeof q.a === "string" ? q.a.charCodeAt(0) - 65 : q.a,
+      // 保留答案原值：单选/判断为 0 基数字，多选为 "BCD" 等多字母字符串（不得截断成首字母）
+      a: q.a,
       e: q.e || "", optInfo: null, _kpId: p ? p.id : null, _qid: q.id,
     }));
     window.Quiz.start(quizHost, qsForQuiz, SUBJECT, {

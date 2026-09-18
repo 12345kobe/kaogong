@@ -464,8 +464,27 @@ body.light .hw-palette{background:rgba(255,255,255,.98);border-color:#d6dce6}
 .opt-exp.ok{border-color:var(--green);background:rgba(31,138,76,.10)}
 .oe-head{font-size:14px;margin-bottom:2px}
 .oe-tag{display:inline-block;margin-left:6px;font-size:11px;font-weight:800;color:#fff;background:var(--green);border-radius:6px;padding:1px 6px;vertical-align:middle}
+.oe-tag.bad{background:var(--red)}
 .oe-def{color:var(--txt);font-size:13px;line-height:1.6}
 .oe-ex{color:var(--txt-dim);font-size:12px;margin-top:2px}
+
+/* ===== 题型 / 选非 徽章 ===== */
+.tag.q-type{font-weight:800;border-color:var(--cyan);color:var(--cyan)}
+.tag.q-type-multi{background:rgba(52,231,228,.14)}
+.tag.q-type-judge{background:rgba(155,108,255,.14);border-color:var(--purple);color:var(--purple)}
+.tag.q-type-single{background:rgba(255,209,102,.14);border-color:var(--yellow);color:var(--yellow)}
+.tag.q-xuanfei{font-weight:800;border-color:var(--red);color:#fff;background:var(--red)}
+.q-multi-hint{margin:6px 0 2px}
+.q-confirm{margin:4px 0}
+.q-xuanfei-note{margin:6px 0 2px;padding:6px 10px;border:1px solid var(--red);border-radius:8px;
+  background:rgba(255,107,129,.14);color:var(--red);font-size:13px;font-weight:700}
+.q-xuanfei-note b{color:var(--red)}
+
+/* ===== AI 浮层（内嵌答题页询问 AI 用，保留底层答题 DOM） ===== */
+.ai-overlay-mask{ background:rgba(0,0,0,.5); z-index:200 }
+.ai-overlay{ background:var(--panel); box-shadow:0 18px 60px rgba(0,0,0,.5) }
+.ai-overlay-host{ width:100% }
+
 
 /* ===== 知识点复习（艾宾浩斯） ===== */
 .eb-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:10px 0 6px}

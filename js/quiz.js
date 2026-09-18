@@ -11,6 +11,38 @@
   const A = i => String.fromCharCode(65 + i);
   const nl2br = s => (s == null ? "" : UI.esc(s)).replace(/\n/g, "<br>");
 
+  /* ===== 多选 / 题型 / 选非 辅助 ===== */
+  function ansSet(qq) {
+    const a = qq.a;
+    if (a == null) return [];
+    if (typeof a === "string") return a.toUpperCase().split("").map(c => c.charCodeAt(0) - 65).filter(x => x >= 0 && x <= 25);
+    return [a];
+  }
+  function isMulti(qq) { return typeof qq.a === "string" && qq.a.length > 1; }
+  function ansText(qq) { return typeof qq.a === "string" ? qq.a.toUpperCase() : A(qq.a); }
+  function sameSet(x, y) {
+    if (!x || !y) return false;
+    const a = x.slice().sort((m, n) => m - n), b = y.slice().sort((m, n) => m - n);
+    return a.length === b.length && a.every((v, i) => v === b[i]);
+  }
+  function isXuanfei(qq) {
+    if (qq && qq.xuanfei) return true;
+    const e = qq && qq.e ? qq.e : "";
+    const q = qq && qq.q ? qq.q : "";
+    // 解析里明确标注「选非」
+    if (/本题为选非题|选非题[:：]|本题为.*选非/.test(e)) return true;
+    // 题干 / 解析含明确负向提问（请选错误 / 不正确 / 不属于 / 不包括 / 不恰当 / 未… 的一项）
+    if (/(不(正确|属于|包括|恰当|符合|选|能|准确|相符|涉及|体现|反映|纳入)|错误(?!.*正确)|不属于|不包括|不恰当|未(能|体现|反映|涉及|纳入|包括)|无(关|需))/.test(q + "\n" + e)) return true;
+    return false;
+  }
+  function typeLabel(qq) {
+    if (qq && qq.type) return qq.type;          // "multi" | "judge" | "single"
+    if (isMulti(qq)) return "multi";
+    if ((qq && qq.options || []).length === 2) return "judge";
+    return "single";
+  }
+  const TYPE_CN = { multi: "多选题", judge: "判断题", single: "单选题" };
+
   // 稳定的题目 ID（用于手写笔记持久化，同一道题跨会话可复用）
   function hashId(s) { let h = 0; for (let i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) >>> 0; } return h.toString(36); }
   function fmt(sec) { sec = Math.max(0, Math.round(sec)); const m = Math.floor(sec / 60), s = sec % 60; return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0"); }
@@ -133,45 +165,97 @@
       function askAI(qq, ua, qi) {
         try {
           if (window.KGAI) {
-            // 返回钩子：恢复被隐藏的答题弹窗，并定位回「那组题中的那一道」（作答状态保留）
-            const hook = (h) => {
-              document.querySelectorAll(".modal-mask").forEach(m => { try { m.style.display = ""; } catch (e) {} });
-              if (h && location.hash !== h) { try { location.hash = h; } catch (e) {} }
+            // 内嵌答题（政治理论等）容器不在 .modal-mask 内，跳 AI 路由会被 app.js 清空 pageBody，
+            // 导致答题记录全失；因此对「内嵌题」改用 AI 浮层（保留底层 quiz DOM 与 results），
+            // 对「模态框内题」（错题本等）保留原 keepModal 逻辑即可（模态在 modalRoot，不受影响）。
+            const inModal = container.closest && container.closest(".modal-mask");
+            // 多选答案文本：多字母原样输出（"BCD"）；单选/判断转字母
+            const ansLabel = ansText(qq);
+            const myAns = (ua == null) ? "未作答"
+              : (Array.isArray(ua) ? ua.slice().sort((x, y) => x - y).map(A).join("、") : (isNaN(ua) ? "未作答" : A(ua)));
+            const optsTxt = (qq.options || []).map((o, i) => A(i) + ". " + (o == null ? "" : o)).join("\n");
+            const text =
+              `【科目】${subject}\n` +
+              `【题目】${qq.q || ""}\n` +
+              (optsTxt ? `【选项】\n${optsTxt}\n` : "") +
+              `【我的答案】${myAns}\n` +
+              `【正确答案】${ansLabel}\n` +
+              (qq.e ? `【解析】${qq.e}\n` : "") +
+              `\n我看了解析还是没弄懂，请用通俗的方式一步步讲清楚：这道题的考点是什么、正确选项为什么对、我的思路错在哪里。\n我的疑惑点：（请在这里补充）`;
+            // 返回钩子（定位回那一道题并高亮）
+            const flashQi = () => {
               const c = container.querySelector('.quiz-q[data-qi="' + qi + '"]');
               if (c) { setTimeout(() => { try { c.scrollIntoView({ behavior: "smooth", block: "center" }); c.classList.add("qz-flash"); setTimeout(() => c.classList.remove("qz-flash"), 1800); } catch (e) {} }, 80); }
             };
-            if (window.KGAI.askQuestion) window.KGAI.askQuestion(subject, qq, ua, null, { keepModal: true, returnHook: hook });
-            else if (window.KGAI.ask) {
-              const optsTxt = (qq.options || []).map((o, i) => A(i) + ". " + (o == null ? "" : o)).join("\n");
-              const myAns = (ua === undefined || ua === null || isNaN(ua)) ? "未作答" : A(ua);
-              window.KGAI.ask(`【科目】${subject}\n【题目】${qq.q || ""}\n${optsTxt ? "【选项】\n" + optsTxt + "\n" : ""}【我的答案】${myAns}\n【正确答案】${A(qq.a)}\n${qq.e ? "【解析】" + qq.e + "\n" : ""}`, null, true, hook);
+            // 模态框内答题（错题本等）：返回时需恢复被隐藏的 modal 并跳回来源路由
+            const modalHook = (h) => {
+              document.querySelectorAll(".modal-mask").forEach(m => { try { m.style.display = ""; } catch (e) {} });
+              if (h && location.hash !== h) { try { location.hash = h; } catch (e) {} }
+              flashQi();
+            };
+            // 内嵌答题（政治理论等浮层）：底层 quiz DOM 未被销毁，无需重建，仅定位
+            const inlineHook = () => { flashQi(); };
+            if (inModal) {
+              // 模态框内答题：保持原 keepModal 逻辑，返回时由 returnHook 恢复 modal
+              if (window.KGAI.askQuestion) window.KGAI.askQuestion(subject, qq, ua, null, { keepModal: true, returnHook: modalHook });
+              else if (window.KGAI.ask) window.KGAI.ask(text, null, true, modalHook);
+            } else {
+              // 内嵌答题：开 AI 浮层，保留底层 quiz DOM 与全部答题记录
+              if (window.KGAI.askOverlay) window.KGAI.askOverlay(text, inlineHook);
+              else if (window.KGAI.askQuestion) window.KGAI.askQuestion(subject, qq, ua, null, { keepModal: true, returnHook: inlineHook });
             }
           } else { UI.toast("AI 模块未就绪"); }
         } catch (e) { UI.toast("跳转 AI 失败：" + e.message); }
       }
 
-      function revealCard(qi) {
+      function revealCard(qi, o) {
+        o = o || {};
         const card = container.querySelector(`.quiz-q[data-qi="${qi}"]`);
         if (!card || card.dataset.revealed === "1") return;
         const qq = questions[qi];
-        const ua = parseInt(card.dataset.ua, 10);
-        const right = ua === qq.a;
+        const multi = isMulti(qq);
+        // 解析用户作答：单选为 int；多选为数组
+        let ua;
+        if (multi) {
+          try { ua = JSON.parse(card.dataset.ua || "[]"); } catch (e) { ua = []; }
+          if (!Array.isArray(ua)) ua = [];
+        } else {
+          ua = parseInt(card.dataset.ua, 10);
+        }
+        const answer = ansSet(qq);
+        const right = multi ? sameSet(ua, answer) : (ua === qq.a);
         // 关键：把判定结果写回 results，否则 practice（练题）模式下 finish() 统计恒为 0 正确
         results[qi] = { ua: ua, right: right };
         card.dataset.revealed = "1"; card.dataset.done = "1";
         card.querySelectorAll(".opt").forEach((ob, oi) => {
           ob.classList.add("dim");
-          if (oi === qq.a) ob.classList.add("correct");
+          if (answer.indexOf(oi) >= 0) ob.classList.add("correct");
+          else if (multi && ua.indexOf(oi) >= 0) ob.classList.add("wrong");
         });
         const sel = card.querySelector(".opt.selected");
-        if (sel && !right) sel.classList.add("wrong");
+        if (sel && !right && !multi) sel.classList.add("wrong");
         const exp = card.querySelector(".exp");
         exp.style.display = "block";
-        let html = (right ? "✅ <b>回答正确！</b>" : "❌ <b>回答错误。</b> 正确答案：" + A(qq.a) + ". " + nl2br(qq.options[qq.a]));
+        const ansStr = answer.map(A).join("、");
+        let html = (right ? "✅ <b>回答正确！</b>" : "❌ <b>回答错误。</b> 正确答案：" + ansStr + ". ")
+          + nl2br(qq.options[answer[0]]);
+        // 多选题：逐选项标注正误，便于复盘
+        if (multi) {
+          html += '<div class="opt-exps">';
+          qq.options.forEach((o2, oi2) => {
+            const ok = answer.indexOf(oi2) >= 0;
+            const picked = ua.indexOf(oi2) >= 0;
+            html += '<div class="opt-exp' + (ok ? " ok" : "") + '">'
+              + '<div class="oe-head"><b>' + A(oi2) + ". " + nl2br(o2) + "</b>"
+              + (ok ? ' <span class="oe-tag">正确答案</span>' : (picked ? ' <span class="oe-tag bad">你选了</span>' : ""))
+              + "</div></div>";
+          });
+          html += "</div>";
+        }
         if (qq.optInfo && qq.optInfo.length) {
           html += '<div class="opt-exps">';
           qq.optInfo.forEach((oi, oi2) => {
-            const isCorrect = oi2 === qq.a;
+            const isCorrect = !multi && oi2 === qq.a;
             html += '<div class="opt-exp' + (isCorrect ? " ok" : "") + '">'
               + '<div class="oe-head"><b>' + A(oi2) + ". " + nl2br(oi.word) + "</b>"
               + (isCorrect ? ' <span class="oe-tag">正确答案</span>' : "")
@@ -186,7 +270,7 @@
         }
         exp.innerHTML = html;
         if (!right) {
-          if (!noRecordWrong) recordWrong(qq.subject || subject, qq, ua);
+          if (!o.silent && !noRecordWrong) recordWrong(qq.subject || subject, qq, ua);
           const askWrap = UI.el(`<div class="qz-ask"><button class="btn ghost sm ask-ai">🤖 没看懂？询问 AI</button></div>`);
           exp.appendChild(askWrap);
           askWrap.querySelector(".ask-ai").onclick = () => askAI(qq, ua, qi);
@@ -209,15 +293,21 @@
           b.classList.toggle("on", on);
           b.textContent = on ? "★" : "☆";
         }
+        const tl = typeLabel(qq), xf = isXuanfei(qq);
         const card = UI.el(`<div class="quiz-q" data-done="0" data-qi="${qi}">
           <div class="q-head">
             <span class="tag">第 ${qi + 1} 题</span>
+            <span class="tag q-type q-type-${tl}">${TYPE_CN[tl] || "单选题"}</span>
+            ${xf ? `<span class="tag q-xuanfei">⚠ 选非题（请选错误/不正确项）</span>` : ""}
             <span class="q-time muted small" style="margin-left:auto"></span>
             <button class="pen-btn ${hasNote ? "has" : ""}" title="手写标注（Apple Pencil）">✏️${hasNote ? "•" : ""}</button>
             <button class="star-btn ${isFav() ? "on" : ""}" title="收藏题目">${isFav() ? "★" : "☆"}</button>
           </div>
           <div class="q">${nl2br(qq.q)}</div>
+          ${xf ? `<div class="q-xuanfei-note">⚠ 本题为「选非题」：请选出<b>错误 / 不正确</b>的一项（不是选正确的）</div>` : ""}
+          ${isMulti(qq) ? `<div class="q-multi-hint muted small">本题为多选题，可选多个选项，选完后点「✓ 确认本题」或最后统一交卷。</div>` : ""}
           <div class="opts"></div>
+          ${isMulti(qq) ? `<button class="btn sm q-confirm" style="display:none;margin:4px 0">✓ 确认本题</button>` : ""}
           <div class="exp" style="display:none"></div></div>`);
         const optsWrap = card.querySelector(".opts");
 
@@ -241,19 +331,29 @@
         };
 
         qq.options.forEach((o, i) => {
-          const b = UI.el(`<button class="opt">${A(i)}. ${nl2br(o)}</button>`);
+          const b = UI.el(`<button class="opt" data-oi="${i}">${A(i)}. ${nl2br(o)}</button>`);
           b.onclick = () => {
             if (card.dataset.done === "1") return;
-            card.dataset.ua = i;
             const now = Date.now();
             // 每道题用时（自上一题作答以来的时间，首题自开始计时）
             qTimes[qi] = now - lastAnswer; lastAnswer = now;
             const qtEl = card.querySelector(".q-time");
             if (qtEl) qtEl.textContent = "⏱ 用时 " + fmt(qTimes[qi] / 1000);
-            if (mode === "practice") {
+            if (isMulti(qq)) {
+              // 多选：切换选择态，可同时选多项，不直接揭示
+              b.classList.toggle("selected");
+              const sel = Array.prototype.slice.call(optsWrap.querySelectorAll(".opt.selected"))
+                .map(x => parseInt(x.dataset.oi, 10)).sort((x, y) => x - y);
+              card.dataset.ua = JSON.stringify(sel);
+              results[qi] = { ua: sel, right: null };
+              Quiz._answered = answeredCount();
+              updateSubmitHint();
+              const cf = card.querySelector(".q-confirm"); if (cf) cf.style.display = sel.length ? "" : "none";
+            } else if (mode === "practice") {
               // 仅标记选择，不揭示
               optsWrap.querySelectorAll(".opt").forEach(ob => ob.classList.remove("selected"));
               b.classList.add("selected");
+              card.dataset.ua = i;
               results[qi] = { ua: i, right: null };
               Quiz._answered = answeredCount();
               updateSubmitHint();
@@ -267,6 +367,8 @@
           };
           optsWrap.appendChild(b);
         });
+        const cfm = card.querySelector(".q-confirm");
+        if (cfm) cfm.onclick = () => { if (card.dataset.done === "1") return; revealCard(qi); };
         container.appendChild(card);
       });
 
