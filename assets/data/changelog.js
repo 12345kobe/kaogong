@@ -3,6 +3,15 @@
 window.CHANGELOG = {
   logs: [
     {
+      version: "20260918o",
+      date: "2026-09-19",
+      title: "本次更新",
+      items: [
+        { mod: "common", text: "口诀88条上线「学习」模式：每组10条、艾宾浩斯复习、一/二/三级层次，原书橙色重点红色显示" },
+        { mod: "countdown", text: "「举一反三」按钮刷新后不再丢失；进入模块后更新气泡立即消失" }
+      ]
+    },
+    {
       version: "20260918n",
       date: "2026-09-19",
       title: "本次更新",

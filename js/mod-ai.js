@@ -131,8 +131,10 @@
   let returnHook = null;
   // 浮层关闭钩子：内嵌答题页（政治理论等）用浮层 AI 时，返回键＝关闭浮层而非路由导航
   let overlayClose = null;
-  // 「举一反三」上下文：最近一次来自答题/错题页的题目（AI 仿出同类题用）
+  // 「举一反三」上下文：最近一次来自答题/错题页的题目（AI 仿出同类题用）；持久化以免刷新丢失
   let qCtx = null;
+  function saveQCtx() { try { localStorage.setItem("kg_ai_qctx", JSON.stringify(qCtx)); } catch (e) {} }
+  function loadQCtx() { try { qCtx = JSON.parse(localStorage.getItem("kg_ai_qctx") || "null"); } catch (e) { qCtx = null; } }
   function setReturnHook(fn) { returnHook = (typeof fn === "function") ? fn : null; }
   function ask(text, ret, keepModal, hook) {
     pending = text || "";
@@ -160,6 +162,7 @@
     const A = i => String.fromCharCode(65 + i);
     // 记录题目上下文：供「举一反三」仿出同类题（申论除外）
     qCtx = { subject: subject, q: { q: qq.q, options: qq.options, a: qq.a, e: qq.e } };
+    saveQCtx();
     const optsTxt = (qq.options || []).map((o, i) => A(i) + ". " + (o == null ? "" : o)).join("\n");
     // 多选答案：多字母原样输出（"BCD"）；单选/判断：转字母
     const ansLabel = (qq.a == null) ? "（见解析）" : (typeof qq.a === "string" ? qq.a.toUpperCase() : A(qq.a));
@@ -186,7 +189,7 @@
   function askOverlay(text, hook, ctx) {
     const UI = window.UI;
     // 记录题目上下文（供「举一反三」）：内嵌答题页不经过 askQuestion，需显式传入
-    if (ctx && ctx.subject && ctx.q) qCtx = { subject: ctx.subject, q: ctx.q };
+    if (ctx && ctx.subject && ctx.q) { qCtx = { subject: ctx.subject, q: ctx.q }; saveQCtx(); }
     const root = document.getElementById("modalRoot") || document.body;
     const mask = UI.el(`<div class="modal-mask ai-overlay-mask">
       <div class="modal ai-overlay" style="width:min(900px,96vw);height:92vh;max-height:92vh;display:flex;flex-direction:column;overflow:hidden">
@@ -292,6 +295,7 @@
     title: "AI 咨询", icon: "ai",
     render(body, ropts) {
       const UI = window.UI;
+      loadQCtx();   // 恢复最近的题目上下文（刷新后「举一反三」仍可用）
       let log = getLog();
       let atts = [];   // 附件：{kind:'image'|'pdf', name, dataUrl, text}
       let model = getModel();

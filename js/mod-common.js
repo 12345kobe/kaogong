@@ -509,74 +509,177 @@
           return { primary: it.prompt, secondary: "答：" + it.answer };
         });
       };
-      /* ===== 常识口诀88条（速记口诀 + 释义 + 实战题） ===== */
+      /* ===== 常识口诀88条（学习 + 背口诀 + 实战练题；橙色标注→红色显示） ===== */
       try {
         const KJ = window.KJ88;
         if (KJ && KJ.chapters && KJ.chapters.length) {
           const entries = [];
           KJ.chapters.forEach(c => (c.entries || []).forEach(e => entries.push(Object.assign({ chapter: c.name }, e))));
+          const KJ_GROUP = "common_kj88";   // 艾宾浩斯调度分组
+          const EBc = window.Ebbinghaus;
           const kjCard = document.createElement("div");
           kjCard.className = "card";
           const chOpts = KJ.chapters.map((c, i) => `<option value="${i}">${UI.esc(c.name)}（${(c.entries || []).length}条）</option>`).join("");
           kjCard.innerHTML = `
             <h3>🧿 常识口诀88条</h3>
-            <div class="muted small">速记口诀（黄底红字）+ 释义 + 实战题。可背口诀、练题、随手写笔记（笔记永久保存，可在板内 ✕ 一键删除）。</div>
+            <div class="muted small">口诀与释义按原书排版分级展示（橙色标注以红色呈现）；学习按每组 10 条推进，复习按艾宾浩斯遗忘曲线安排；可练实战题、写手写笔记（永久保存）。</div>
             <div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap">
+              <button class="btn primary" id="kjLearn">📖 学习</button>
+              <button class="btn" id="kjBrowse">📑 通览全部</button>
               <select id="kjCh" style="max-width:220px">${chOpts}</select>
-              <button class="btn" id="kjBrowse">📖 背口诀</button>
-              <button class="btn" id="kjFlash">📇 口诀闪卡（背题）</button>
-              <button class="btn primary" id="kjQuiz">✍ 练实战题（本章）</button>
+              <button class="btn" id="kjQuiz">✍ 练实战题（本章）</button>
             </div>
             <div id="kjBody" style="margin-top:10px"></div>`;
           body.appendChild(kjCard);
           const kjBody = kjCard.querySelector("#kjBody");
-          function kjLine(s) {
-            let t = UI.esc(String(s || ""));
-            t = t.replace(/^([•·]\s*[^：:]{1,14})([：:])/, "<b>$1$2</b>");
-            t = t.replace(/^(\d{1,2}[.、)][^：:]{1,22})([：:])/, "<b>$1$2</b>");
-            return t;
+
+          /* 橙色区间 → 红色文本（注意先分段再转义，保证下标对齐） */
+          function kjHtml(t, o) {
+            t = String(t == null ? "" : t);
+            if (!o || !o.length) return UI.esc(t);
+            let out = "", prev = 0;
+            o.forEach(r => {
+              const s = Math.max(prev, r[0]), e2 = Math.min(t.length, r[1]);
+              if (e2 <= s) return;
+              out += UI.esc(t.slice(prev, s));
+              out += '<i class="kj-o">' + UI.esc(t.slice(s, e2)) + "</i>";
+              prev = e2;
+            });
+            out += UI.esc(t.slice(prev));
+            return out;
           }
+          /* 行内的「术语：」前导加粗 */
+          function kjLine(t, o) {
+            let html = kjHtml(t, o);
+            return html.replace(/^([\u4e00-\u9fffA-Za-z0-9（）()]{2,12})([:：])/, "<b>$1$2</b>");
+          }
+          /* 一条口诀的完整渲染（withSz：是否显示实战题） */
+          function entryHtml(e, withSz) {
+            let itemN = 0;
+            const defHtml = (d) => {
+              let h = "";
+              if (d.label) { h += `<div class="kj-l1"><span class="kj-lv">一级</span>${UI.esc(d.label)}</div>`; itemN = 0; }
+              if (d.t) {
+                itemN += 1;
+                const m = d.t.match(/^([\u4e00-\u9fffA-Za-z0-9（）()]{2,12})([:：])/);
+                const lead = m ? "<b>" + kjHtml(m[1]) + "</b>" + m[2] : "";
+                const rest = m ? kjLine(d.t.slice(m[0].length), (d.o || []).map(r => [Math.max(0, r[0] - m[0].length), r[1] - m[0].length])) : kjLine(d.t, d.o);
+                h += `<div class="kj-l2"><span class="kj-lv lv2">${itemN}</span>${lead}${rest}</div>`;
+              }
+              (d.subs || []).forEach(s => { h += `<div class="kj-l3"><span class="kj-lv lv3">三级</span>${kjLine(s.t, s.o)}</div>`; });
+              return h;
+            };
+            return `<div class="kj-item">
+              <h4>✅ ${UI.esc(e.num)} ${UI.esc(e.title)} <span class="muted small">· ${UI.esc(e.chapter || "")}</span></h4>
+              ${(e.koujue || []).length ? `<div class="kj-sec">📖 口诀速背</div>
+              ${(e.koujue || []).map(k => `<div><span class="kj-koujue">${kjHtml(k.t, k.o)}</span></div>`).join("")}` : ""}
+              ${(e.defs || []).length ? `<div class="kj-sec">📝 口诀释义</div>
+              ${(e.defs || []).map(defHtml).join("")}` : ""}
+              ${withSz ? (e.shizhan || []).map(sh => `
+                <div class="kj-sec">⚔️ 口诀实战</div>
+                <div class="kj-def">${kjLine(sh.q)}</div>
+                ${(sh.options || []).map((o, oi) => `<div class="kj-def">${String.fromCharCode(65 + oi)}. ${UI.esc(o)}</div>`).join("")}
+                <div class="kj-def"><b>【答案】</b>${typeof sh.a === "number" ? String.fromCharCode(65 + sh.a) : UI.esc(sh.a)}</div>
+                <div class="kj-def">${kjLine("【解析】" + (sh.e || ""))}</div>`).join("") : ""}
+              <div class="row" style="margin-top:6px"><button class="btn ghost sm" data-hw="${e.num}">✍ 手写笔记</button></div>
+            </div>`;
+          }
+          kjBody.addEventListener("click", (ev) => {
+            const b = ev.target.closest("[data-hw]");
+            if (!b) return;
+            const e = entries.find(x => x.num === b.dataset.hw);
+            if (e) UI.Handwriting.open({ subject: "常识口诀", id: "kj" + e.num });
+          });
+
+          /* ===== 学习模式：每组10条，学习/复习弹窗，艾宾浩斯调度，逐级返回 ===== */
+          const learnState = () => {
+            const st = DB.state.common = DB.state.common || {};
+            return st.kjLearn = st.kjLearn || { pos: 0 };
+          };
+          const dueList = () => entries.filter(e => {
+            const r = EBc.getRecord(KJ_GROUP, "kj" + e.num);
+            return !!(r && EBc.isDue(KJ_GROUP, "kj" + e.num));
+          });
+          function learnPage(start, mode, total) {
+            const PAGE = 10;
+            const list = mode === "review" ? total : entries;
+            const slice = list.slice(start, start + PAGE);
+            if (!slice.length) { UI.toast("没有需要处理的内容"); return; }
+            const isReview = mode === "review";
+            kjBody.innerHTML = `
+              <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
+                <b>${isReview ? "🔁 复习（艾宾浩斯到期）" : "📖 学习新内容"}</b>
+                <span class="muted small">${isReview ? "到期 " + total.length + " 条" : "已学 " + learnState().pos + " / " + entries.length + " 条"} · 本组 ${slice.length} 条</span>
+                <button class="btn ghost sm" id="kjBack">← 返回上一级</button>
+              </div>
+              ${slice.map(e => entryHtml(e, false)).join("")}
+              <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap">
+                ${start > 0 ? `<button class="btn" id="kjPrev">← 上一组</button>` : ""}
+                <button class="btn primary" id="kjDone">${start + PAGE < list.length ? "看完这组，继续 →" : (isReview ? "✓ 完成本组复习" : "✓ 学完本组")}</button>
+              </div>
+              <div id="kjNavMore"></div>`;
+            kjBody.querySelectorAll("[data-hw]").forEach(() => {});
+            kjBody.querySelector("#kjBack").onclick = () => { kjBody.innerHTML = ""; try { kjCard.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e) {} };
+            const doneBtn = kjBody.querySelector("#kjDone");
+            doneBtn.onclick = () => {
+              slice.forEach(e => { try { EBc.updateAfterReview(KJ_GROUP, "kj" + e.num, true); } catch (err) {} });
+              if (!isReview) { learnState().pos = Math.max(learnState().pos, start + slice.length); }
+              DB.save();
+              const nextStart = start + PAGE;
+              if (nextStart < list.length) {
+                UI.toast((isReview ? "本组复习完成 ✓" : "本组学习完成 ✓") + " 继续 " + (nextStart + 1) + "-" + Math.min(nextStart + PAGE, list.length) + " 条");
+                learnPage(nextStart, mode, total);
+              } else {
+                kjBody.innerHTML = `<div class="card center"><div style="font-size:20px">🎉 ${isReview ? "本轮复习全部完成" : "全部口诀学完了"}！</div>
+                  <div class="muted small" style="margin:6px 0">复习会按艾宾浩斯遗忘曲线安排，到期后点「学习」即可复习。</div>
+                  <button class="btn ghost" id="kjBack2">← 返回上一级</button></div>`;
+                const b2 = kjBody.querySelector("#kjBack2");
+                if (b2) b2.onclick = () => { kjBody.innerHTML = ""; };
+              }
+            };
+            const prevBtn = kjBody.querySelector("#kjPrev");
+            if (prevBtn) prevBtn.onclick = () => learnPage(Math.max(0, start - PAGE), mode, total);
+            try { kjBody.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e) {}
+          }
+          kjCard.querySelector("#kjLearn").onclick = () => {
+            const pos = learnState().pos;
+            const due = dueList();
+            const learnedN = entries.filter(e => EBc.getRecord(KJ_GROUP, "kj" + e.num)).length;
+            // 首次学习：直接开始
+            if (pos === 0 && !due.length) { learnPage(0, "learn"); return; }
+            const mask = UI.el(`<div class="modal-mask"><div class="modal" style="max-width:420px">
+              <h3>📖 常识口诀 · 学习</h3>
+              <div class="muted small">已学 ${learnedN} / ${entries.length} 条${due.length ? " · 到期待复习 " + due.length + " 条" : ""}</div>
+              <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:12px">
+                ${pos < entries.length ? `<button class="btn primary" id="kjGoLearn">📖 学习（从第 ${pos + 1} 条继续）</button>` : ""}
+                ${due.length ? `<button class="btn" id="kjGoReview">🔁 复习（${due.length} 条到期）</button>` : ""}
+                <button class="btn ghost" id="kjCancel">取消</button>
+              </div>
+            </div></div>`);
+            document.body.appendChild(mask);
+            const go = (fn) => { mask.remove(); fn(); };
+            const gl = mask.querySelector("#kjGoLearn");
+            if (gl) gl.onclick = () => go(() => learnPage(pos, "learn"));
+            const gr = mask.querySelector("#kjGoReview");
+            if (gr) gr.onclick = () => go(() => learnPage(0, "review", due));
+            mask.querySelector("#kjCancel").onclick = () => mask.remove();
+            mask.onclick = (e2) => { if (e2.target === mask) mask.remove(); };
+          };
+
+          /* ===== 通览全部（按章） ===== */
           kjCard.querySelector("#kjBrowse").onclick = () => {
             const ci = parseInt(kjCard.querySelector("#kjCh").value, 10);
             const es = (KJ.chapters[ci].entries || []);
-            const shHtml = (sh) => (!sh || !sh.q) ? "" : `
-              <div class="kj-sec">⚔️ 口诀实战</div>
-              <div class="kj-def">${kjLine(sh.q)}</div>
-              ${(sh.options || []).map((o, oi) => `<div class="kj-def">${String.fromCharCode(65 + oi)}. ${UI.esc(o)}</div>`).join("")}
-              <div class="kj-def"><b>【答案】</b>${typeof sh.a === "number" ? String.fromCharCode(65 + sh.a) : UI.esc(sh.a)}</div>
-              <div class="kj-def">${kjLine("【解析】" + (sh.e || ""))}</div>`;
-            kjBody.innerHTML = es.map((e, i) => `
-              <div class="kj-item">
-                <h4>✅ ${UI.esc(e.num)} ${UI.esc(e.title)} <span class="muted small">· ${UI.esc(e.chapter || "")}</span></h4>
-                <div class="kj-sec">📖 口诀速背</div>
-                <div>${(e.koujue || []).map(k => `<div><span class="kj-koujue">${UI.esc(k)}</span></div>`).join("")}</div>
-                <div class="kj-sec">📝 口诀释义</div>
-                ${(e.defs || []).map(l => `<div class="kj-def">${kjLine(l)}</div>`).join("") || '<div class="muted small">（无）</div>'}
-                ${(e.shizhan || []).map(shHtml).join("")}
-                <div class="row" style="margin-top:6px"><button class="btn ghost sm" data-hw="${ci}_${i}">✍ 手写笔记</button></div>
-              </div>`).join("");
-            kjBody.querySelectorAll("[data-hw]").forEach(b => {
-              b.onclick = () => {
-                const p = b.dataset.hw.split("_");
-                const e = (KJ.chapters[parseInt(p[0], 10)].entries || [])[parseInt(p[1], 10)];
-                if (e) UI.Handwriting.open({ subject: "常识口诀", id: "kj" + e.num });
-              };
-            });
+            kjBody.innerHTML = `
+              <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
+                <b>📑 ${UI.esc(KJ.chapters[ci].name)}</b>
+                <button class="btn ghost sm" id="kjBack">← 返回上一级</button>
+              </div>
+              ${es.map(e => entryHtml(e, true)).join("")}`;
+            kjBody.querySelector("#kjBack").onclick = () => { kjBody.innerHTML = ""; };
             try { kjBody.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e) {}
           };
-          kjCard.querySelector("#kjFlash").onclick = () => {
-            if (!entries.length) { UI.toast("暂无口诀数据"); return; }
-            window.Flashcard.start({
-              title: "常识 · 口诀88条", subtitle: "先想口诀再翻面核对（答错过的需连对2次消除）",
-              group: "common_kj88", subject: SUBJECT,
-              items: entries.map(e => ({
-                id: "kj" + e.num,
-                prompt: e.num + " " + e.title,
-                answer: (e.koujue || []).join("；") + ((e.defs || []).length ? "\n" + e.defs.join("\n") : "")
-              })),
-              mode: "easy", frontLabel: "条目", backLabel: "口诀+释义", shuffle: false
-            });
-          };
+
           kjCard.querySelector("#kjQuiz").onclick = () => {
             const ci = parseInt(kjCard.querySelector("#kjCh").value, 10);
             const es = (KJ.chapters[ci].entries || []);

@@ -499,6 +499,15 @@ body.light .hw-palette{background:rgba(255,255,255,.98);border-color:#d6dce6}
 .kj-sec{font-weight:800;margin:8px 0 4px}
 .kj-def{margin:4px 0}
 .kj-def b{font-weight:800}
+/* 橙色标注 → 红色 */
+.kj-o{color:#e02020;font-style:normal;font-weight:700}
+/* 一级/二级/三级层级 */
+.kj-l1{font-weight:800;font-size:14px;margin:10px 0 4px;padding:3px 10px;border-left:4px solid var(--cyan);background:rgba(52,231,228,.1);border-radius:0 6px 6px 0}
+.kj-lv{display:inline-block;font-size:10px;font-weight:800;color:#fff;background:var(--cyan);border-radius:4px;padding:1px 5px;margin-right:6px;vertical-align:2px}
+.kj-lv.lv2{background:var(--purple)}
+.kj-lv.lv3{background:var(--txt-dim)}
+.kj-l2{margin:6px 0 2px 8px;line-height:1.7;font-size:13.5px}
+.kj-l3{margin:4px 0 2px 26px;line-height:1.6;font-size:12.5px;color:var(--txt-dim)}
 
 /* ===== AI 浮层（内嵌答题页询问 AI 用，保留底层答题 DOM） ===== */
 .ai-overlay-mask{ background:rgba(0,0,0,.5); z-index:200 }
