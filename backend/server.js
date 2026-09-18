@@ -33,6 +33,28 @@ function saveSocial(s) { fs.writeFileSync(SOCIAL_FILE, JSON.stringify(s, null, 2
 function loadMessages() { try { return JSON.parse(fs.readFileSync(MESSAGES_FILE, "utf8")); } catch (e) { return {}; } }
 function saveMessages(m) { fs.writeFileSync(MESSAGES_FILE, JSON.stringify(m, null, 2)); }
 
+/* 个人时政记录（我的记录 + 导入的网页）同步存储：user -> { currentAffairs, hotspotsImports } */
+const HOTSPOTS_FILE = path.join(DATA_DIR, "hotspots.json");
+function loadHotspots() { try { return JSON.parse(fs.readFileSync(HOTSPOTS_FILE, "utf8")); } catch (e) { return {}; } }
+function saveHotspots(h) { fs.writeFileSync(HOTSPOTS_FILE, JSON.stringify(h, null, 2)); }
+if (!fs.existsSync(HOTSPOTS_FILE)) fs.writeFileSync(HOTSPOTS_FILE, "{}");
+/* 把两份时政数据「按 id 取并集 / 冲突取较新」地合并 */
+function mergeHotspots(cur, inc) {
+  const out = { currentAffairs: (cur && cur.currentAffairs) || [], hotspotsImports: (cur && cur.hotspotsImports) || [] };
+  const incCA = (inc && inc.currentAffairs) || [];
+  const incImp = (inc && inc.hotspotsImports) || [];
+  const caById = {}; out.currentAffairs.forEach(r => { if (r && r.id) caById[r.id] = r; });
+  incCA.forEach(r => {
+    if (!r || !r.id) return;
+    const ex = caById[r.id];
+    if (!ex) { caById[r.id] = r; out.currentAffairs.push(r); }
+    else if ((r.createdAt || 0) > (ex.createdAt || 0)) { const i = out.currentAffairs.indexOf(ex); out.currentAffairs[i] = r; caById[r.id] = r; }
+  });
+  const impById = {}; out.hotspotsImports.forEach(x => { if (x && x.id) impById[x.id] = x; });
+  incImp.forEach(x => { if (x && x.id && !impById[x.id]) { impById[x.id] = x; out.hotspotsImports.push(x); } });
+  return out;
+}
+
 /* ---------- 密码 / token ---------- */
 function hashPw(password, salt) {
   salt = salt || crypto.randomBytes(16).toString("hex");
@@ -118,6 +140,27 @@ app.post("/api/data", (req, res) => {
   users[user].data = data;
   saveUsers(users);
   res.json({ ok: true });
+});
+
+/* ============================================================
+   个人时政记录同步（我的记录 + 导入的网页）：跨设备 / 多端一致
+   ============================================================ */
+app.get("/api/hotspots", (req, res) => {
+  const user = auth(req, res); if (!user) return;
+  const all = loadHotspots();
+  res.json(all[user] || { currentAffairs: [], hotspotsImports: [] });
+});
+app.post("/api/hotspots", (req, res) => {
+  const user = auth(req, res); if (!user) return;
+  const body = req.body || {};
+  const all = loadHotspots();
+  const merged = mergeHotspots(all[user], {
+    currentAffairs: Array.isArray(body.currentAffairs) ? body.currentAffairs : [],
+    hotspotsImports: Array.isArray(body.hotspotsImports) ? body.hotspotsImports : []
+  });
+  all[user] = merged;
+  saveHotspots(all);
+  res.json(merged);
 });
 
 /* ============================================================

@@ -547,6 +547,8 @@
 
       // 时政记录：按 id 去重追加（云端同步 / 备份导入都不丢）
       out.currentAffairs = mergeArrById(out.currentAffairs, b.currentAffairs);
+      // 导入的网页（时事热点「导入网页」）：按 id 去重追加，跨设备一致
+      out.hotspotsImports = mergeArrById(out.hotspotsImports, b.hotspotsImports);
 
       // 范文用户标记 / 自编辑好词好句：phrases 本地非空优先；marks 按 phrase+type+color 合并去重
       out.essay.essaysEdit = out.essay.essaysEdit || {};

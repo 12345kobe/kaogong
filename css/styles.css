@@ -1053,6 +1053,11 @@ mark.kw{background:rgba(255,206,0,.38);color:inherit;padding:0 2px;border-radius
 .hs-btn{padding:6px 16px;border-radius:999px;border:1px solid transparent;background:linear-gradient(135deg,var(--cyan),var(--purple));color:#04121f;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;transition:.15s}
 .hs-btn:hover{filter:brightness(1.08)}
 .hs-btn:active{transform:scale(.97)}
+.hs-sync{font-size:12px;padding:3px 10px;border-radius:999px;white-space:nowrap;border:1px solid transparent}
+.hs-sync.ok{background:rgba(61,220,151,.16);color:var(--green);border-color:rgba(61,220,151,.3)}
+.hs-sync.err{background:rgba(255,99,99,.14);color:#ff6b6b;border-color:rgba(255,99,99,.3)}
+.hs-sync.off{background:rgba(159,176,216,.12);color:var(--txt-dim)}
+.hs-sync:not(.ok):not(.err):not(.off){background:rgba(120,170,255,.14);color:var(--link)}
 .hs-date{margin-bottom:10px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);overflow:hidden}
 .hs-date-h{display:flex;align-items:center;gap:8px;padding:10px 14px;cursor:pointer;user-select:none;font-size:15px;color:var(--txt)}
 .hs-date-h:hover{background:var(--panel2)}
@@ -1089,7 +1094,7 @@ mark.kw{background:rgba(255,206,0,.38);color:inherit;padding:0 2px;border-radius
   .hs-search{flex:1 1 auto;min-width:0;max-width:none}
 }
 
-/* ===== 微信式聊天/主页/学习记录（v=20260918f） ===== */
+/* ===== 微信式聊天/主页/学习记录（v=20260918g） ===== */
 /* 气泡头像 + 时间分隔 */
 .chat-row{display:flex;align-items:flex-start;gap:8px;margin:8px 12px}
 .chat-row.mine{flex-direction:row-reverse}

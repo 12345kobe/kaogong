@@ -40,6 +40,73 @@
     return DB.state.currentAffairs;
   }
 
+  /* ================= 时政记录云端同步（社交后端，像聊天那样跨设备 / 多端一致） ================= */
+  let _hsSyncTimer = null, _hsSyncing = false, _hsPulling = false;
+  let refreshCurrentViews = function () {};
+  function hsLoggedIn() { return !!(window.Social && Social.isConfigured && Social.isConfigured() && Social.isLoggedIn && Social.isLoggedIn()); }
+  function setHsSyncStatus(kind, msg) {
+    const el = document.getElementById("hsSyncStat");
+    if (!el) return;
+    if (kind === "ok") { el.textContent = "☁ 已同步"; el.className = "hs-sync ok"; }
+    else if (kind === "err") { el.textContent = "☁ 同步失败"; el.className = "hs-sync err"; }
+    else if (kind === "syncing") { el.textContent = "☁ 同步中…"; el.className = "hs-sync"; }
+    else if (kind === "off") { el.textContent = msg || "未登录社交账号（仅本机）"; el.className = "hs-sync off"; }
+  }
+  // 把服务端数据合并进本地（id 并集，冲突取较新 createdAt）
+  function mergeHotspotsFromServer(server) {
+    if (!server) return false;
+    let changed = false;
+    const ca = Array.isArray(DB.state.currentAffairs) ? DB.state.currentAffairs : (DB.state.currentAffairs = []);
+    const byId = {}; ca.forEach(r => { if (r && r.id) byId[r.id] = r; });
+    (server.currentAffairs || []).forEach(r => {
+      if (!r || !r.id) return;
+      const ex = byId[r.id];
+      if (!ex) { ca.push(r); byId[r.id] = r; changed = true; }
+      else if ((r.createdAt || 0) > (ex.createdAt || 0)) { const i = ca.indexOf(ex); if (i >= 0) { ca[i] = r; changed = true; } }
+    });
+    const imp = Array.isArray(DB.state.hotspotsImports) ? DB.state.hotspotsImports : (DB.state.hotspotsImports = []);
+    const ib = {}; imp.forEach(x => { if (x && x.id) ib[x.id] = x; });
+    (server.hotspotsImports || []).forEach(x => {
+      if (!x || !x.id || ib[x.id]) return;
+      imp.push(x); ib[x.id] = x; changed = true;
+    });
+    return changed;
+  }
+  async function pushHotspots() {
+    if (!hsLoggedIn() || _hsSyncing) return false;
+    _hsSyncing = true; setHsSyncStatus("syncing");
+    try {
+      const j = await Social.saveHotspots({
+        currentAffairs: DB.state.currentAffairs || [],
+        hotspotsImports: DB.state.hotspotsImports || []
+      });
+      if (j && (Array.isArray(j.currentAffairs) || Array.isArray(j.hotspotsImports))) {
+        if (mergeHotspotsFromServer(j)) DB.save();
+      }
+      setHsSyncStatus("ok");
+      return true;
+    } catch (e) { setHsSyncStatus("err"); return false; }
+    finally { _hsSyncing = false; }
+  }
+  function scheduleSyncHotspots() {
+    if (!hsLoggedIn()) { setHsSyncStatus("off"); return; }
+    if (_hsSyncTimer) clearTimeout(_hsSyncTimer);
+    _hsSyncTimer = setTimeout(() => { pushHotspots().then(() => { try { refreshCurrentViews(); } catch (e) {} }); }, 900);
+  }
+  async function pullHotspots() {
+    if (!hsLoggedIn()) { setHsSyncStatus("off"); return false; }
+    if (_hsPulling) return false;
+    _hsPulling = true; setHsSyncStatus("syncing");
+    try {
+      const j = await Social.getHotspots();
+      if (mergeHotspotsFromServer(j)) DB.save();
+      setHsSyncStatus("ok");
+      return true;
+    } catch (e) { setHsSyncStatus("err"); return false; }
+    finally { _hsPulling = false; }
+  }
+  window.syncHotspots = function () { return pullHotspots(); };
+
   /* ================= 一、解析「定制格式」的文字 ================= */
 
   const CN_NUM = { "一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10 };
@@ -256,6 +323,7 @@
     };
     store().push(rec);
     DB.save();
+    scheduleSyncHotspots();
     return rec;
   }
   function listRecords() {
@@ -274,16 +342,16 @@
       try { delete (DB.state.attachments["时政"] || {})["rec_" + id]; } catch (e) {}
       try { delete (DB.state.notes["申论"] || {})["essay_commentary_" + id]; } catch (e) {}
       try { delete (DB.state.attachments["申论"] || {})["essay_commentary_" + id]; } catch (e) {}
-      DB.save(); return true;
+      DB.save(); scheduleSyncHotspots(); return true;
     }
     return false;
   }
-  function setDate(id, date) { const r = getRecord(id); if (r) { r.date = date; DB.save(); } }
+  function setDate(id, date) { const r = getRecord(id); if (r) { r.date = date; r.createdAt = Date.now(); DB.save(); scheduleSyncHotspots(); } }
   function setTitle(id, title) {
     const r = getRecord(id); if (!r) return;
     const t = String(title == null ? "" : title).trim();
     r.title = t || (r.date || DB.today()) + " 时政";
-    DB.save();
+    r.createdAt = Date.now(); DB.save(); scheduleSyncHotspots();
   }
   function allQuestions(rec) {
     if (!rec) return [];
@@ -404,6 +472,8 @@
             <input id="hsSearch" class="hs-search" type="search" placeholder="🔍 搜索关键词（标题/正文/来源）"/>
             <button class="hs-btn" id="hsSearchBtn">搜索</button>
             <button class="btn sm ghost" id="hsImport">➕ 导入网页</button>
+            <button class="btn sm ghost" id="hsSync">☁ 同步</button>
+            <span id="hsSyncStat" class="hs-sync off">未登录社交账号（仅本机）</span>
             <button class="btn sm primary" id="hsRefresh">🔄 刷新</button>
           </div>
         </div>
@@ -745,6 +815,7 @@
                 const list = (DB.state.hotspotsImports = DB.state.hotspotsImports || []);
                 list.unshift(a);
                 DB.save();
+                scheduleSyncHotspots();
                 c(); renderHotspots();
                 UI.toast("已导入：" + a.title.slice(0, 20));
               } catch (e) { msg.textContent = "抓取失败：" + (e && e.message ? e.message : e); }
@@ -937,6 +1008,9 @@
 
       loadHotspots();
 
+      /* 进入本模块时，若已登录社交账号，自动拉取其他设备的时政记录并合并 */
+      pullHotspots().then(() => { try { refreshCurrentViews(); } catch (e) {} });
+
       /* —— 导入卡 —— */
       const today = DB.today();
       const card = UI.el(`<div class="card">
@@ -1018,6 +1092,19 @@
         recSec.open = true;
         recSec.scrollIntoView({ behavior: "smooth", block: "start" });
       };
+
+      /* —— 时政记录同步（社交后端，像聊天那样跨设备 / 多端一致）—— */
+      refreshCurrentViews = () => { try { renderList(); renderHotspots(); renderHist(); } catch (e) {} };
+      const hsSyncBtn = document.getElementById("hsSync");
+      if (hsSyncBtn) hsSyncBtn.onclick = async () => {
+        if (!hsLoggedIn()) { UI.toast("请先在「我的」登录社交账号，才能跨设备同步时政记录"); return; }
+        hsSyncBtn.disabled = true;
+        UI.toast("正在同步时政记录…");
+        try { await pushHotspots(); await pullHotspots(); refreshCurrentViews(); UI.toast("已同步：我的记录 + 导入网页"); }
+        catch (e) { UI.toast("同步失败：" + (e && e.message ? e.message : e)); }
+        finally { hsSyncBtn.disabled = false; }
+      };
+      setHsSyncStatus(hsLoggedIn() ? "ok" : "off");
 
       function renderRecords(host) {
         const arr = listRecords();

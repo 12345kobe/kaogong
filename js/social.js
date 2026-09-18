@@ -102,6 +102,10 @@ window.Social = (function () {
   async function uploadMedia(mime, data, name) { return api("/api/media", { method: "POST", body: JSON.stringify({ mime, data, name }) }); }
   function mediaUrl(url) { if (!url) return ""; if (/^https?:/.test(url)) return url; return base + url; }
 
+  /* ---------- 个人时政记录同步（我的记录 + 导入的网页） ---------- */
+  async function getHotspots() { return api("/api/hotspots"); }
+  async function saveHotspots(obj) { return api("/api/hotspots", { method: "POST", body: JSON.stringify(obj || {}) }); }
+
   /* ---------- 提醒 ---------- */
   async function sendRemind(who, text) { return api("/api/friend/remind", { method: "POST", body: JSON.stringify({ who, text }) }); }
   async function getReminders() { return api("/api/reminders"); }
@@ -139,6 +143,7 @@ window.Social = (function () {
     getProfile, saveProfile, getProfileOf,
     search, sendRequest, listRequests, accept, listFriends, setRemark, setSpecial, removeFriend,
     send, history, unread, markRead, uploadMedia, mediaUrl,
+    getHotspots, saveHotspots,
     sendRemind, getReminders, clearReminders,
     connectWs, on
   };

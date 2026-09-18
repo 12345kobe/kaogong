@@ -659,6 +659,8 @@
     Social.connectWs();
     // 学习记录同步到后端（好友主页可看）
     if (window.syncStudyRecords) { try { window.syncStudyRecords(); } catch (e) {} }
+    // 时政记录的「我的记录 / 导入网页」同步到社交后端（像聊天那样跨设备）
+    if (window.syncHotspots) { try { window.syncHotspots(); } catch (e) {} }
     // 未读数角标
     Social.on("unread", () => refreshSocialBadge());
     Social.on("message", () => { refreshSocialBadge(); });
