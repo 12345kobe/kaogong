@@ -1294,6 +1294,7 @@
   window.__parsePdfQuestions = parseQuestions;
   window.__parsePdfAnswers = parseAnswers;
   window.__pdfExtractText = extractText;
+  window.__pdfExtractPages = extractPages;
   window.__pdfTheoryToHtml = theoryToHtml;
   window.__pdfBuildSections = buildSections;
   window.__buildAnswerBook = buildAnswerBook;
@@ -1342,16 +1343,18 @@
       </div>`);
       root.appendChild(card);
 
-      /* ---------- AI 识图录入（拍照/截图直出，AI 为主、人工校对兜底） ---------- */
+      /* ---------- AI 识图/PDF 录入（图片视觉识别直出；PDF 先浏览器抽字再 AI 结构化） ---------- */
       const aiCard = UI.el(`<div class="card" style="margin-top:12px">
-        <h3>📷 AI 识图录入题目（拍照/截图直出，准确率高）</h3>
+        <h3>📷 AI 录入题目（支持照片/截图 与 PDF，准确率高）</h3>
         <div class="muted small">
-          ① 选一张题目照片/截图（支持多选，一次多张）→ 点「AI 识别」。会调用你「AI 咨询」里已配置的<b>可识图模型</b>（如 Gemini 2.0 Flash / GLM-4V-Flash，免费款即可）直接读出题干/选项/答案。<br>
+          ① 选<b>题目照片/截图</b>或 <b>PDF</b>（支持多选，一次多个）→ 点「AI 识别」。<br>
+          · 图片：调用「AI 咨询」里已配置的<b>可识图模型</b>（如 Gemini 2.0 Flash / GLM-4V-Flash）直接读出题干/选项/答案；<br>
+          · PDF：先在本机浏览器抽文字（不传服务器），再交给 AI 按结构拆题、补答案，比纯正则更稳。<br>
           ② 识别结果进入下方「识别结果」预览；答案没把握的标「待校对」，点每题的 <b>✏️ 校对</b> 手动补全（可从识别原文复制），核对后保存。<br>
-          若未配置 AI：去「设置 → AI 令牌」填一个支持识图的令牌即可。
+          若未配置 AI：去「设置 → AI 令牌」填一个支持识图/对话的令牌，或选「共享 AI」。
         </div>
         <div class="row" style="margin-top:10px;gap:10px;flex-wrap:wrap;align-items:center">
-          <input type="file" id="aiImg" accept="image/*" multiple />
+          <input type="file" id="aiImg" accept="image/*,application/pdf" multiple />
           <select id="aiSubj">${SUBJECTS.map(s => `<option value="${esc(SUBJECT_SHORT[s] || s)}">${esc(s)}</option>`).join("")}</select>
           <button class="btn primary" id="aiGo">🤖 AI 识别</button>
         </div>
@@ -1503,7 +1506,7 @@
       const aiStatus = aiCard.querySelector("#aiStatus");
       aiGo.onclick = async () => {
         const files = Array.from(aiImg.files || []);
-        if (!files.length) { UI.toast("请先选一张题目图片"); return; }
+        if (!files.length) { UI.toast("请先选题目图片或 PDF"); return; }
         if (!window.KGAI) { UI.toast("AI 模块未加载，请刷新重试"); return; }
         const _prov0 = window.KGAI.providerById(window.KGAI.getProvider());
         if (!_prov0.noKey && !window.KGAI.getToken && !window.KGAI.hasCustom()) { UI.toast("未配置 AI 令牌，请到「设置 → AI 令牌」填写，或选「共享 AI」"); return; }
@@ -1511,13 +1514,22 @@
         try {
           let all = [], done = 0;
           for (const f of files) {
-            aiStatus.innerHTML = `正在用 AI 识别第 <b>${done + 1}</b>/<b>${files.length}</b> 张…`;
-            const qs = await aiVisionQuestions(f, aiCard.querySelector("#aiSubj").value || "常识");
-            if (qs && qs.length) all = all.concat(qs);
+            const isPdf = /\.pdf$/i.test(f.name) || f.type === "application/pdf";
+            if (isPdf) {
+              aiStatus.innerHTML = `正在读取 PDF 第 <b>${done + 1}</b>/<b>${files.length}</b> 个（本机抽字，不上传服务器）…`;
+              const qs = await aiPdfQuestions(f, aiCard.querySelector("#aiSubj").value || "常识", (p, t) => {
+                aiStatus.innerHTML = `正在用 AI 解析 PDF「${esc(truncate(f.name, 14))}」第 <b>${p}</b>/<b>${t}</b> 页…`;
+              });
+              if (qs && qs.length) all = all.concat(qs);
+            } else {
+              aiStatus.innerHTML = `正在用 AI 识别第 <b>${done + 1}</b>/<b>${files.length}</b> 张…`;
+              const qs = await aiVisionQuestions(f, aiCard.querySelector("#aiSubj").value || "常识");
+              if (qs && qs.length) all = all.concat(qs);
+            }
             done++;
           }
           if (!all.length) {
-            aiStatus.innerHTML = '<span style="color:var(--red)">AI 未识别出题目：请确认图片清晰、且「AI 咨询」已配置可识图模型（如 Gemini 2.0 Flash / GLM-4V-Flash）。</span>';
+            aiStatus.innerHTML = '<span style="color:var(--red)">AI 未识别出题目：请确认图片清晰 / PDF 含文字，且「AI 咨询」已配置可用模型（图片用可识图模型，PDF 用对话模型，如 Gemini 2.0 Flash / GLM-4V-Flash）。</span>';
             return;
           }
           buildAiDraft(all, aiCard.querySelector("#aiSubj").value || "常识");
@@ -1562,6 +1574,39 @@
           { role: "user", content: content }
         ], { providerId: provId, model: model, key: key });
         return parseAiQuestions(text, subject);
+      }
+
+      function truncate(s, n) { s = String(s || ""); return s.length > n ? s.slice(0, n) + "…" : s; }
+
+      /* PDF：本机浏览器抽文字（不上传服务器）→ 按页交给 AI 文本模型拆题为结构化数组 */
+      async function aiPdfQuestions(file, subject, onPage) {
+        const provId = window.KGAI.getProvider();
+        const prov = window.KGAI.providerById(provId);
+        let model = window.KGAI.getModel();
+        const key = window.KGAI.getKey(provId);
+        if (!key && !prov.noKey && !window.KGAI.hasCustom()) throw new Error("未配置 AI 令牌，请到「设置 → AI 令牌」填写，或选「共享 AI」");
+        if (!window.__pdfExtractPages) throw new Error("PDF 解析组件未就绪，请刷新重试");
+        const out = [];
+        const r = await window.__pdfExtractPages(file);
+        const pages = (r && r.pages) || [];
+        const total = pages.length || 1;
+        for (let pi = 0; pi < pages.length; pi++) {
+          const txt = sanitizeText(pages[pi] || "").replace(/\s+/g, " ").trim();
+          if (onPage) onPage(pi + 1, total);
+          if (!txt) continue;
+          const sys = "你是公考题库录入助手。下面是一页公考题目的纯文字（已按版式抽取）。请严格只输出一个 JSON 数组（不要任何解释、不要 markdown 代码块、不要 ```），数组每个元素是 {\"q\":\"题干\",\"options\":[\"A选项\",\"B选项\",\"C选项\",\"D选项\"],\"a\":\"A\"或\"B\"或\"C\"或\"D\"（不确定填 null），\"e\":\"解析，可空\"}。选项必须 2-4 个，顺序与文字一致；若一题含多选，a 用数组。忽略页眉页脚、页码、非题目文字。";
+          const user = "请识别这一页公考题目，按要求只输出 JSON 数组：\n" + txt.slice(0, 6000);
+          let text;
+          try {
+            text = await window.KGAI.chat([
+              { role: "system", content: sys },
+              { role: "user", content: user }
+            ], { providerId: provId, model: model, key: key });
+          } catch (e) { throw new Error("第 " + (pi + 1) + " 页解析失败：" + (e.message || e)); }
+          const qs = parseAiQuestions(text, subject);
+          if (qs && qs.length) out.push.apply(out, qs);
+        }
+        return out;
       }
 
       function parseAiQuestions(text, subject) {
