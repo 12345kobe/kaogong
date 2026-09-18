@@ -1,5 +1,5 @@
 window.KG_HOTSPOTS_HISTORY = {
- "updatedAt": "2026-09-18 06:52",
+ "updatedAt": "2026-09-18 06:58",
  "count": 80,
  "items": [
   {
