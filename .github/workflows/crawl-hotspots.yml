@@ -32,7 +32,9 @@ jobs:
         run: |
           git config user.name "hotspots-bot"
           git config user.email "bot@kaogong.local"
-          git add assets/data/hotspots.js site/assets/data/hotspots.js assets/data/hotspot_history.js site/assets/data/hotspot_history.js
+          # 只提交抓取脚本真正写出、且线上实际提供服务的根路径文件
+          # （仓库已拍平，根目录下没有 site/ 目录，引用 site/... 会让 git add 直接报错导致整个抓取失败）
+          git add assets/data/hotspots.js assets/data/hotspot_history.js
           if git diff --cached --quiet; then
             echo "无变化，跳过提交"
           else
