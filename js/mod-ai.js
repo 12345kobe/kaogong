@@ -669,7 +669,7 @@
         const hasOrigImg = !!(isQuestion && qCtx.q && qCtx.q.img);
         const mask = UI.el(`<div class="modal-mask"><div class="modal" style="max-width:480px">
           <h3>💡 举一反三</h3>
-          <div class="muted small">AI 将仿照你刚才咨询的内容，出几道同考点选择题（含答案与解析）。出题过程不展示，完成后自动进入「${esc(modTitle)}AI出题」板块开始训练。</div>
+          <div class="muted small">AI 将围绕你刚才咨询的【考点】出几道同考点选择题（含答案与解析）。只保证考点一致，背景材料由 AI 自行设计，不会照搬原题题干。出题过程不展示，完成后自动进入「${esc(modTitle)}AI出题」板块开始训练。</div>
           <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:10px" id="jyfsCnt">
             ${[3, 4, 5, 6, 8, 10].map(n => `<button class="btn sm" data-n="${n}">${n} 题</button>`).join("")}
           </div>
@@ -708,14 +708,14 @@
             if (n < reqN) UI.toast("当前模型单次输出上限 1024，已自动改为每次最多 " + n + " 题");
             const leanNote = lowCap ? "\n注意：输出务必精炼——题干、选项简明扼要，每题解析不超过50字。" : "";
             // 通用出题风格 / 配图指令
-            const styleInstr = `\n4) 模仿原题的出题风格：若原题题干开头有「背景引入 / 情境铺垫」（如"某公司…""根据所给图形…""随着我国…""据某省统计…"等），新题也要采用同样风格的背景引入；保持语气、篇幅、选项的构造方式与原题一致；若原题无背景引入，新题也保持简洁直接。`;
+            const styleInstr = `\n4) 只要求「考查的考点相同」，不要照搬原题：题干的背景材料、情境、事例、数据一律由你自行设计（可以是不同场景、不同主体、不同数据）；严禁沿用原题的背景/例子/数字，也不要写出与原题题干雷同的句子。保持题型与难度一致即可，不必复刻原题的写法或背景引入。`;
             const imgInstr = `\n5) 每题可选择性给出 "imgPrompt"（字符串）：当该题适合配图（如涉及图形、图表、空间位置、地图、实物图示、逻辑关系图等）时填写，描述应为该题绘制的图片内容；不需要配图的题不要给该字段。`;
             const fmtNote = `；可选字段 "imgPrompt":"图片描述"`;
             let prompt;
             if (isQuestion && qCtx.q) {
               const qq = qCtx.q;
               const optsTxt = (qq.options || []).map((o, i) => A(i) + ". " + (o == null ? "" : o)).join("\n");
-              prompt = `你是公务员考试命题专家。请仿照下面的「${qCtx.subject}」原题，再出 ${n} 道考查同一知识点、难度相近的单项选择题。\n要求：\n1) 每题必须包含题干、4个选项、正确答案、详细解析；\n2) 不与原题重复，围绕同一考点从不同角度命题；\n3) 只输出 JSON 数组，禁止输出 markdown 代码块标记或任何其他文字。格式：[{"q":"题干","options":["A内容","B内容","C内容","D内容"],"a":"B","e":"解析"}]${fmtNote}，其中 "a" 是正确选项字母。\n${styleInstr}${imgInstr}${hasOrigImg ? "\n6) 原题附有一张图片（已随消息提供）。请仿照它，出同样需要看图理解的题；需要配图的题请给出 'imgPrompt'。" : ""}\n\n【原题】\n${qq.q || ""}\n${optsTxt ? "【原题选项】\n" + optsTxt + "\n" : ""}【原题解析】${qq.e || "略"}`;
+              prompt = `你是公务员考试命题专家。请参照下面「${qCtx.subject}」原题所考查的【知识点】，再出 ${n} 道考点相同、难度相近的单项选择题（背景材料、情境、数据都由你自行设计，不必与原题相同）。\n要求：\n1) 每题必须包含题干、4个选项、正确答案、详细解析；\n2) 不与原题重复，围绕同一考点从不同角度命题；\n3) 只输出 JSON 数组，禁止输出 markdown 代码块标记或任何其他文字。格式：[{"q":"题干","options":["A内容","B内容","C内容","D内容"],"a":"B","e":"解析"}]${fmtNote}，其中 "a" 是正确选项字母。\n${styleInstr}${imgInstr}${hasOrigImg ? "\n6) 原题附有一张图片（已随消息提供），说明这类题需要看图才能作答。你出的题可以是需要看图理解的同类题，但图片内容由你自定，不要照抄原题图片；需要配图的题请给出 'imgPrompt'。" : ""}\n\n【原题】\n${qq.q || ""}\n${optsTxt ? "【原题选项】\n" + optsTxt + "\n" : ""}【原题解析】${qq.e || "略"}`;
             } else {
               // 自由提问：基于对话主题（或长按指定的那条消息）出题
               const ctx = ov.ctxText || log.filter(m => m.role === "user").map(m => m.content || "").slice(-3).join("\n---\n");
