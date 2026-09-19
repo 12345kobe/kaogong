@@ -785,15 +785,22 @@
 
     /* 左下角悬浮标注按钮：点击进入笔记模式（手写见解），笔迹直接覆盖在内容上。
        UI.floatingAnno(subject, id, anchor) —— anchor 为要标记的阅读内容容器；
-       按钮作为 anchor 的子节点（随容器一起销毁），position:fixed 悬浮在左下角。 */
+       按钮为「全局常驻单例」，挂在 document.body（而非 pageBody），因此：
+       ① 模块内部任何重渲染（重置/下一组等会清空 pageBody）都不会把它删掉；
+       ② 每个模块进入时重新配置 subject/id/anchor 即可，保证所有模块都有手写悬浮窗。
+       （AI 咨询 / 设置 / 刷题页通过 UI.hideAnnoFab 隐藏） */
+    _annoFab: null,
+    _ensureAnnoFab() {
+      if (this._annoFab && this._annoFab.isConnected) return this._annoFab;
+      const b = el(`<button class="kg-anno-fab" title="标记笔记 · 写下你的见解">✍<span class="kg-anno-dot" style="display:none">•</span></button>`);
+      document.body.appendChild(b);
+      this._annoFab = b;
+      return b;
+    },
     floatingAnno(subject, id, anchor) {
       if (!anchor) return null;
-      // 单例：一页只保留一个悬浮手写按钮（后挂的替代先挂的；返回/重渲染时自动恢复各自的）
-      document.querySelectorAll(".kg-anno-fab").forEach(b => { if (!anchor.contains(b)) b.remove(); });
-      if (anchor.querySelector && anchor.querySelector(".kg-anno-fab")) return null; // 防重复挂载
-      const DB = window.DB;
-      const btn = el(`<button class="kg-anno-fab" title="标记笔记 · 写下你的见解">✍<span class="kg-anno-dot" style="display:none">•</span></button>`);
-      anchor.appendChild(btn);
+      const btn = this._ensureAnnoFab();
+      btn.style.display = "";
       function refreshDot() {
         const has = UI.Notes.has(subject, id);
         const dot = btn.querySelector(".kg-anno-dot");
@@ -810,6 +817,10 @@
       refreshDot();
       if (UI.Notes.has(subject, id)) refreshOverlay();
       return btn;
+    },
+    hideAnnoFab() {
+      const btn = this._ensureAnnoFab();
+      btn.style.display = "none";
     }
   };
 

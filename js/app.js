@@ -82,10 +82,14 @@
     try { mountPdfBooks(body, key); } catch (e) { console.error(e); }
     // AI 举一反三：挂「xxAI出题」板块（该模块有 AI 生成的题目时才显示）
     try { window.KGAIQuiz && KGAIQuiz.mount(body, key); } catch (e) { console.error(e); }
-    // 每个模块页挂「悬浮手写」按钮（笔记覆盖整页、永久保存；AI 咨询/设置/刷题页除外）
+    // 每个模块页挂「悬浮手写」按钮（笔记覆盖整页、永久保存；AI 咨询/设置/刷题页隐藏）
     try {
-      if (key !== "ai" && key !== "settings" && key !== "shuati" && UI.floatingAnno) {
-        UI.floatingAnno((MODULES[key] && MODULES[key].title) || key, "mod_" + key, body);
+      if (UI.floatingAnno) {
+        if (key === "ai" || key === "settings" || key === "shuati") {
+          UI.hideAnnoFab();
+        } else {
+          UI.floatingAnno((MODULES[key] && MODULES[key].title) || key, "mod_" + key, body);
+        }
       }
     } catch (e) { console.error(e); }
     // 每个模块都提供「专注计时」入口（上岸计时器）：点击带本模块名跳到计时器

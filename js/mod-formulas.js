@@ -2,7 +2,7 @@
    - 资料分析：原有公式板块保留
    - 新增「百化分闪卡」：覆盖 百化分 / 平方数 / 三次方 / 四次方 / 开根号 五类
      普通模式（闪卡：点击翻转）+ 困难模式（填空：百化分允许 0.3% 误差，其余精确）
-     按艾宾浩斯曲线调度；错题靠后重做；连续答对2次消除
+     按艾宾浩斯曲线调度；错题靠后重做；答对1次消除
      每次直接开始所有题；含计时 + 正确率
 */
 (function () {
@@ -102,7 +102,7 @@
         <h2 style="margin:0">📇 速算背诵练习（${mode === "hard" ? "困难模式 · 自行填写" : "普通模式 · 闪卡"}）</h2>
         <button class="btn ghost" id="goHome">← 返回主页面</button>
       </div>
-      <div class="muted small" style="margin:8px 0">模块：<b>${UI.esc(CATS[cat] || "全部")}</b> · 共 ${items.length} 条${shuffleOn ? "（已打乱）" : "（原顺序）"} · <b>全部练完才算一轮</b> · 答错的题目会自动靠后重做 · 累计答对2次自动消除</div>
+      <div class="muted small" style="margin:8px 0">模块：<b>${UI.esc(CATS[cat] || "全部")}</b> · 共 ${items.length} 条${shuffleOn ? "（已打乱）" : "（原顺序）"} · <b>全部练完才算一轮</b> · 答错的题目会自动靠后重做 · 答对1次自动消除</div>
       <div id="fcStats" class="eb-stats"></div>
       <div id="fcCard" class="fc-card"></div>
     `;
@@ -136,11 +136,11 @@
     }
 
     function next() {
-      // 取下一条未答对的（仍在队列里、且未达 streak>=2）
+      // 取下一条未答对的（仍在队列里、且未达 streak>=1）
       while (cur < queue.length) {
         const it = queue[cur];
         const streak = seenStreaks[it.prompt] || 0;
-        if (streak >= 2) { cur++; continue; }
+        if (streak >= 1) { cur++; continue; }
         return renderCard(it);
       }
       // 队列已耗尽；若仍有错题，靠后再次出现
@@ -157,10 +157,10 @@
       endSession();
     }
 
-    /* 回到上一个（自动跳过本轮已连对2次消除的） */
+    /* 回到上一个（自动跳过本轮已答对1次消除的） */
     function goPrev() {
       let i = cur - 1;
-      while (i >= 0 && (seenStreaks[queue[i].prompt] || 0) >= 2) i--;
+      while (i >= 0 && (seenStreaks[queue[i].prompt] || 0) >= 1) i--;
       if (i < 0) { UI.toast("已经是第一个了"); return; }
       cur = i;
       renderCard(queue[i]);

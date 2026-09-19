@@ -136,7 +136,7 @@
       </div>
       <div class="row" style="margin:8px 0;flex-wrap:wrap;gap:8px">
         <label><input type="checkbox" id="shuf"/> 打乱顺序</label>
-        <span class="muted small">每次${BATCH}题（小于则全部） · 累计答对2次自动消除</span>
+        <span class="muted small">每次${BATCH}题（小于则全部） · 答对1次自动消除</span>
       </div>
       <div id="review-host"></div>`;
     host.appendChild(m);
@@ -199,10 +199,10 @@
           });
           DB.save();
 
-          // 消除正确率到2的错题
+          // 消除正确率到1的错题（答对1次即消除）
           const removed = [];
           DB.state.wrongbook[subject] = (DB.state.wrongbook[subject] || []).filter(w => {
-            if ((w.correctStreak || 0) >= 2) {
+            if ((w.correctStreak || 0) >= 1) {
               removed.push(w);
               return false;
             }
@@ -210,7 +210,7 @@
           });
           if (removed.length) {
             DB.save();
-            UI.toast(`已自动消除 ${removed.length} 道（连续答对2次）`);
+            UI.toast(`已自动消除 ${removed.length} 道（答对1次）`);
             syncDailyReviewTodos();
           }
 
@@ -218,7 +218,7 @@
           const tip = document.createElement("div");
           tip.className = "muted small";
           tip.style.marginTop = "10px";
-          tip.innerHTML = `<b>本次正确率 ${correct}/${total}</b> · 累计答对2次的错题已自动消除。`;
+          tip.innerHTML = `<b>本次正确率 ${correct}/${total}</b> · 累计答对1次的错题已自动消除。`;
           reviewHost.appendChild(tip);
 
           const remainAfter = (DB.state.wrongbook[subject] || []).filter(w => batch.some(b => b.id === w.id));
@@ -268,9 +268,19 @@
     render(body) {
       const DB = window.DB, UI = window.UI;
       let cur = SUBJECTS[0];
+      // 迁移：旧规则要求「连对2次」才消除，已答对1次却卡着的错题按新规则（答对1次即消除）直接清掉
+      (function migrate() {
+        let changed = false;
+        SUBJECTS.forEach(s => {
+          const arr = DB.state.wrongbook[s] || [];
+          const kept = arr.filter(w => (w.correctStreak || 0) < 1);
+          if (kept.length !== arr.length) { DB.state.wrongbook[s] = kept; changed = true; }
+        });
+        if (changed) DB.save();
+      })();
 
       const panel = UI.el(`<div class="card"><h3>📕 错题本</h3>
-        <div class="muted small">所有练习错题按科目汇总，标注作答日期。系统每天自动生成「X错题复习」待办，<b>累计答对2次自动消除</b>。</div>
+        <div class="muted small">所有练习错题按科目汇总，标注作答日期。系统每天自动生成「X错题复习」待办，<b>答对1次自动消除</b>。</div>
         <div class="row" style="margin:10px 0" id="tabs"></div>
         <div class="row" style="margin-bottom:10px;gap:8px;flex-wrap:wrap;align-items:center">
           <span class="muted small">📅 日期范围</span>
@@ -331,7 +341,7 @@
 
       // 今日错题复习面板（自动生成待办 + 一键复习）
       const reviewCard = UI.el(`<div class="card"><h3>📅 今日错题复习（自动）</h3>
-        <div class="muted small">系统自动扫描各科错题，每天生成对应的「错题复习」任务；完成复习后会更新累计正确率与时长。默认每次 5 题（可打乱），累计答对 2 次自动消除。</div>
+        <div class="muted small">系统自动扫描各科错题，每天生成对应的「错题复习」任务；完成复习后会更新累计正确率与时长。默认每次 5 题（可打乱），答对 1 次自动消除。</div>
         <div id="reviewList" style="margin-top:10px"></div>
       </div>`);
       body.appendChild(reviewCard);

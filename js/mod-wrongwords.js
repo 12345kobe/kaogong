@@ -1,7 +1,7 @@
 /* 模块：错词本（言语 700词释义练习答错的词）
    - 自动收集「词语释义练习」中答错的词
    - 列表展示：词语 / 正确释义 / 例句 / 首次错误日期 / 复习次数 / 连续答对
-   - 复习：按「释义四选一」重新作答，累计答对 2 次自动消除
+   - 复习：按「释义四选一」重新作答，答对 1 次自动消除
    - 支持导出 PDF
 */
 (function () {
@@ -67,11 +67,15 @@
   /* 可复用：把错词本渲染进任意容器（言语理解模块的「词语释义练习」下面 / 独立的「错词本」导航） */
   function renderWrongWords(host, opts) {
       opts = opts || {};
+      // 迁移：旧规则「连对2次」消除，已答对1次卡着的错词按新规则（答对1次即消除）直接清掉
+      const list0 = getList();
+      const kept = list0.filter(w => (w.correctStreak || 0) < 1);
+      if (kept.length !== list0.length) { DB.state.wrongwords = kept; DB.save(); }
       const list = getList();
 
       const card = UI.el(`<div class="card">
         <h3>📗 错词本（词语释义）</h3>
-        <div class="muted small">「言语理解 → 词语释义练习」中答错的词会自动汇集到这里。可随时复习（释义四选一），<b>累计答对 2 次自动消除</b>。</div>
+        <div class="muted small">「言语理解 → 词语释义练习」中答错的词会自动汇集到这里。可随时复习（释义四选一），<b>答对 1 次自动消除</b>。</div>
         <div id="wwStats" class="eb-stats" style="margin:10px 0"></div>
         <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">
           <button class="btn primary" id="wwReview">▶ 开始复习（${Math.min(BATCH, list.length)}词）</button>
@@ -91,7 +95,7 @@
         card.querySelector("#wwStats").innerHTML = `
           <div class="eb-stat"><span class="n">${arr.length}</span><span class="l">错词总数</span></div>
           <div class="eb-stat" id="wwDueStat" style="cursor:pointer" title="点击：学习 / 测试"><span class="n">${due}</span><span class="l">待复习 · 点此</span></div>
-          <div class="eb-stat"><span class="n">${near}</span><span class="l">答对1次(再1次消除)</span></div>`;
+          <div class="eb-stat"><span class="n">${near}</span><span class="l">答对1次即消除</span></div>`;
         const dueEl = card.querySelector("#wwDueStat");
         if (dueEl) dueEl.onclick = () => {
           const list0 = getList().filter(w => (w.correctStreak || 0) === 0);
@@ -124,7 +128,7 @@
         arr.slice().reverse().forEach(it => {
           const row = UI.el(`<div class="todo" style="flex-direction:column;align-items:flex-start;gap:6px">
             <div><span class="chip">${UI.esc(it.date || "")}</span> <b style="font-size:15px">${UI.esc(it.word)}</b>
-              <span class="muted small">${it.group ? UI.esc(it.group) + " · " : ""}已复习 ${it.reviewCount || 0} 次 · 连续答对 ${it.correctStreak || 0}/2</span></div>
+              <span class="muted small">${it.group ? UI.esc(it.group) + " · " : ""}已复习 ${it.reviewCount || 0} 次 · 连续答对 ${it.correctStreak || 0} 次（答对1次消除）</span></div>
             <div class="small" style="color:#34e7e4">释义：${UI.esc(it.def || "")}</div>
             ${it.ex ? `<div class="small" style="color:#9fb0d8">例句：${UI.esc(it.ex)}</div>` : ""}
             <input placeholder="笔记…" value="${UI.esc(it.note || "")}" data-note="${it.id}" style="font-size:13px"/>
@@ -160,10 +164,10 @@
           },
           onDone: () => {
             const before = getList().length;
-            DB.state.wrongwords = getList().filter(x => (x.correctStreak || 0) < 2);
+            DB.state.wrongwords = getList().filter(x => (x.correctStreak || 0) < 1);
             const removed = before - DB.state.wrongwords.length;
             DB.save();
-            if (removed) UI.toast(`🎉 已消除 ${removed} 个错词（连续答对2次）`);
+            if (removed) UI.toast(`🎉 已消除 ${removed} 个错词（答对1次）`);
             renderList();
             card.querySelector("#wwReview").textContent = `▶ 开始复习（${Math.min(BATCH, getList().length)}词）`;
           },
