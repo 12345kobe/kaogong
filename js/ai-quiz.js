@@ -99,6 +99,20 @@
     function start(setId) {
       const set = st.sets.find(s => s.id === setId) || st.sets[0];
       if (!set) return;
+      // 综合AI出题：AI 聊天页不放内嵌答题（避免题目「在页面底部出来」），改为弹窗全屏训练
+      if (key === "ai") {
+        const mask = UI.el(`<div class="modal-mask"><div class="modal" style="max-width:820px;max-height:90vh;overflow:auto">
+          <h3>🤖 综合AI出题 · ${esc(set.subject || "综合")} · ${set.n} 题</h3>
+          <div class="aiq-modal-quiz"></div>
+          <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn ghost aiq-close">收起</button></div>
+        </div></div>`);
+        document.body.appendChild(mask);
+        mask.querySelector(".aiq-close").onclick = () => mask.remove();
+        try {
+          window.Quiz.start(mask.querySelector(".aiq-modal-quiz"), set.questions.map(q => Object.assign({}, q)), set.subject || "综合AI出题", {});
+        } catch (e) { console.error(e); mask.remove(); UI.toast("训练启动失败：" + e.message); }
+        return;
+      }
       quizHost.innerHTML = "";
       const c = document.createElement("div");
       quizHost.appendChild(c);

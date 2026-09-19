@@ -418,20 +418,72 @@
 
       function renderMsgs() {
         if (!log.length) {
-          msgs.innerHTML = `<div class="empty">还没有对话。可以直接粘贴题目图片、上传 PDF，或输入你的疑问。</div>`;
+          msgs.innerHTML = `<div class="empty">还没有对话。可以直接粘贴题目图片、上传 PDF，或输入你的疑问。<br/>💡 <b>长按任意消息</b>可「引用提问」或「举一反三出题」。</div>`;
           return;
         }
-        msgs.innerHTML = log.map(m => {
+        msgs.innerHTML = log.map((m, i) => {
           let html = "";
           if (m.images && m.images.length) {
             html += m.images.map(u => `<img class="ai-img" src="${u}" alt="附图"/>`).join("");
           }
-          return `<div class="ai-msg ${m.role === "user" ? "user" : "bot"}">
+          return `<div class="ai-msg ${m.role === "user" ? "user" : "bot"}" data-i="${i}">
             <div class="ai-who">${m.role === "user" ? "我" : "AI"}</div>
             <div class="ai-text">${UI.md(m.content)}${html}</div>
           </div>`;
         }).join("");
+        // 长按消息 → 菜单（引用提问 / 举一反三出题 / 复制）；桌面端右键同样生效
+        Array.prototype.forEach.call(msgs.querySelectorAll(".ai-msg"), el => {
+          const i = parseInt(el.dataset.i, 10);
+          let lpTimer = null;
+          const cancel = () => { if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; } };
+          el.addEventListener("touchstart", () => { cancel(); lpTimer = setTimeout(() => { lpTimer = null; msgMenu(i); }, 480); }, { passive: true });
+          el.addEventListener("touchmove", cancel, { passive: true });
+          el.addEventListener("touchend", cancel);
+          el.addEventListener("touchcancel", cancel);
+          el.addEventListener("contextmenu", e => { e.preventDefault(); msgMenu(i); });
+        });
         scrollBottom();
+      }
+
+      /* 长按消息菜单：引用提问 / 举一反三出题 / 复制 */
+      function msgMenu(i) {
+        const m = log[i];
+        if (!m) return;
+        const text = String(m.content || "").trim();
+        const preview = text ? text.slice(0, 160) : (m.images && m.images.length ? "（图片消息）" : "（空消息）");
+        const mask = UI.el(`<div class="modal-mask"><div class="modal" style="max-width:460px">
+          <h3>${m.role === "user" ? "💬 我的消息" : "🤖 AI 回复"}</h3>
+          <div class="muted small" style="max-height:110px;overflow:auto;word-break:break-all">${esc(preview)}${text.length > 160 ? "…" : ""}</div>
+          <div class="row" style="flex-direction:column;gap:8px;margin-top:12px;align-items:stretch">
+            <button class="btn" id="mmQuote">💬 引用这条消息提问</button>
+            <button class="btn" id="mmJyfs">💡 按这条消息举一反三出题</button>
+            <button class="btn ghost" id="mmCopy">📋 复制原文</button>
+            <button class="btn ghost" id="mmCancel">取消</button>
+          </div>
+        </div></div>`);
+        document.body.appendChild(mask);
+        const close = () => mask.remove();
+        mask.onclick = e => { if (e.target === mask) close(); };
+        mask.querySelector("#mmCancel").onclick = close;
+        mask.querySelector("#mmCopy").onclick = () => {
+          close();
+          try { navigator.clipboard.writeText(text).then(() => UI.toast("已复制"), () => UI.toast("复制失败")); }
+          catch (e) { UI.toast("复制失败"); }
+        };
+        mask.querySelector("#mmQuote").onclick = () => {
+          close();
+          const clipped = text.length > 400 ? text.slice(0, 400) + "…" : text;
+          input.value = (input.value ? input.value + "\n" : "") + "【引用】" + clipped + "\n我的问题：";
+          try { input.focus(); input.setSelectionRange(input.value.length, input.value.length); } catch (e) {}
+          UI.toast("已引用，请继续输入你的问题");
+        };
+        mask.querySelector("#mmJyfs").onclick = () => {
+          close();
+          if (!text) { UI.toast("这条消息没有文字内容，无法据此出题"); return; }
+          const mk = (window.KGAIQuiz && KGAIQuiz.moduleForSubject(text)) || null;
+          if (mk === "essay") { UI.toast("申论内容暂不支持出题"); return; }
+          openJyfs({ ctxText: text.slice(0, 1500), modKey: mk });
+        };
       }
 
       /* ===== ⚙ 设置（服务商 / 密钥 / 模型 / 随机性） ===== */
@@ -605,9 +657,10 @@
         if (s < 0 || e <= s) throw new Error("AI 未返回题目数据");
         return JSON.parse(t.slice(s, e + 1));
       }
-      function openJyfs() {
-        if (!log.some(m => m.role === "assistant")) { UI.toast("请先发起一次 AI 咨询，再点举一反三"); return; }
-        const modKey = detectModKey();
+      function openJyfs(ov) {
+        ov = ov || {};
+        if (!ov.ctxText && !log.some(m => m.role === "assistant")) { UI.toast("请先发起一次 AI 咨询，再点举一反三"); return; }
+        const modKey = (ov.modKey !== undefined) ? ov.modKey : detectModKey();
         if (modKey === "essay") { UI.toast("申论暂不支持出题"); return; }
         const isQuestion = !!(qCtx && qCtx.q);
         const boardKey = modKey || "ai";                 // 自由提问且无明确科目 → 归入「综合」
@@ -664,8 +717,8 @@
               const optsTxt = (qq.options || []).map((o, i) => A(i) + ". " + (o == null ? "" : o)).join("\n");
               prompt = `你是公务员考试命题专家。请仿照下面的「${qCtx.subject}」原题，再出 ${n} 道考查同一知识点、难度相近的单项选择题。\n要求：\n1) 每题必须包含题干、4个选项、正确答案、详细解析；\n2) 不与原题重复，围绕同一考点从不同角度命题；\n3) 只输出 JSON 数组，禁止输出 markdown 代码块标记或任何其他文字。格式：[{"q":"题干","options":["A内容","B内容","C内容","D内容"],"a":"B","e":"解析"}]${fmtNote}，其中 "a" 是正确选项字母。\n${styleInstr}${imgInstr}${hasOrigImg ? "\n6) 原题附有一张图片（已随消息提供）。请仿照它，出同样需要看图理解的题；需要配图的题请给出 'imgPrompt'。" : ""}\n\n【原题】\n${qq.q || ""}\n${optsTxt ? "【原题选项】\n" + optsTxt + "\n" : ""}【原题解析】${qq.e || "略"}`;
             } else {
-              // 自由提问：基于对话主题出题
-              const ctx = log.filter(m => m.role === "user").map(m => m.content || "").slice(-3).join("\n---\n");
+              // 自由提问：基于对话主题（或长按指定的那条消息）出题
+              const ctx = ov.ctxText || log.filter(m => m.role === "user").map(m => m.content || "").slice(-3).join("\n---\n");
               const topic = (qCtx && qCtx.subject) ? qCtx.subject : (modTitle !== "综合" ? modTitle : "公务员考试相关知识点");
               prompt = `你是公务员考试命题专家。根据下面用户咨询的内容，围绕其关心的「${topic}」知识点，出 ${n} 道考查该知识点、难度相近的单项选择题。\n要求：\n1) 每题必须包含题干、4个选项、正确答案、详细解析；\n2) 紧贴用户咨询的主题，从常见考点、易错点角度命题；\n3) 只输出 JSON 数组，禁止输出 markdown 代码块标记或任何其他文字。格式：[{"q":"题干","options":["A内容","B内容","C内容","D内容"],"a":"B","e":"解析"}]${fmtNote}，其中 "a" 是正确选项字母。\n${styleInstr}${imgInstr}\n\n【用户咨询内容】\n${ctx}`;
             }
