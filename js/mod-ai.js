@@ -56,16 +56,14 @@
       keyHint: "SiliconFlow API Key", keyUrl: "https://cloud.siliconflow.cn/account/ak",
       models: [
         { id: "Qwen/Qwen2.5-7B-Instruct", label: "Qwen2.5 7B", note: "免费", vision: false },
-        { id: "THUDM/glm-4-9b-chat", label: "GLM-4 9B", note: "免费", vision: false },
-        { id: "deepseek-ai/DeepSeek-V3", label: "DeepSeek V3", note: "低价", vision: false }
+        { id: "THUDM/glm-4-9b-chat", label: "GLM-4 9B", note: "免费", vision: false }
       ] },
     { id: "zhipu", label: "智谱 GLM（glm-4-flash 免费）", base: "https://open.bigmodel.cn/api/paas/v4/chat/completions",
       keyHint: "智谱 API Key", keyUrl: "https://open.bigmodel.cn/usercenter/apikeys", maxTok: 1024,
       models: [
-        { id: "glm-4-flash", label: "GLM-4-Flash", note: "免费", vision: false },
-        { id: "glm-4-air", label: "GLM-4-Air", note: "低价", vision: false },
-        { id: "glm-4v-flash", label: "GLM-4V-Flash", note: "可识图", vision: true },
-        { id: "cogview-3-flash", label: "CogView-3-Flash（AI 生图）", note: "生图·举一反三配套出题", vision: false, image: true }
+        { id: "glm-4-flash", label: "GLM-4-Flash", note: "免费", vision: false, maxOut: 4095 },
+        { id: "glm-4v-flash", label: "GLM-4V-Flash", note: "可识图", vision: true, maxOut: 1024 },
+        { id: "cogview-3-flash", label: "CogView-3-Flash（AI 生图）", note: "生图·举一反三配套出题", vision: false, image: true, maxOut: 1024 }
       ] },
     { id: "ollama", label: "本地 Ollama（完全免费 · 离线）", base: "http://localhost:11434/v1/chat/completions",
       keyHint: "无需 Key（留空即可）", keyUrl: "https://ollama.com/download", noKey: true,
@@ -109,9 +107,15 @@
   function modelStore(id) { return "kg_ai_model_" + id; }
   function getModel(id) {
     id = id || getProviderId();
-    try { const m = localStorage.getItem(modelStore(id)); if (m) return m; } catch (e) {}
-    if (id === "github") { try { const m = localStorage.getItem("kg_ai_model"); if (m) return m; } catch (e) {} }
-    return providerById(id).models[0].id;
+    const p = providerById(id);
+    let m = "";
+    try { m = localStorage.getItem(modelStore(id)) || ""; } catch (e) {}
+    if (!m && id === "github") { try { m = localStorage.getItem("kg_ai_model") || ""; } catch (e) {} }
+    // 存的模型已下架/是生图模型（不该当对话模型）→ 回退第一个非生图模型
+    const hit = p.models.filter(x => x.id === m)[0];
+    if (m && hit && !hit.image) return m;
+    const first = p.models.filter(x => !x.image)[0] || p.models[0];
+    return first.id;
   }
   function setModel(v, id) { id = id || getProviderId(); try { localStorage.setItem(modelStore(id), v); } catch (e) {} }
   function modelInfo(pid, mid) { const p = providerById(pid); return p.models.filter(m => m.id === mid)[0] || { id: mid, label: mid, note: "", vision: false }; }
@@ -232,12 +236,19 @@
     const pid = o.providerId || getProviderId();
     const p = providerById(pid);
     const key = (o.key != null ? o.key : getKey(pid));
-    const model = o.model || getModel(pid);
+    let model = o.model || getModel(pid);
+    // 生图模型（CogView 等）不能对话：自动换回该服务商第一个对话模型
+    if (modelInfo(pid, model).image) {
+      const fb = p.models.filter(x => !x.image)[0];
+      if (fb) model = fb.id;
+    }
     const headers = { "Content-Type": "application/json" };
     if (key) headers["Authorization"] = "Bearer " + key;
+    // max_tokens 按模型/服务商上限钳制（如智谱 GLM-4V-Flash 输出上限 1024，超了会报「max_tokens参数非法」）
+    const outCap = modelInfo(pid, model).maxOut || p.maxTok || 2000;
     const resp = await fetch(o.baseUrl || p.base, {
       method: "POST", headers: headers,
-      body: JSON.stringify({ model: model, messages: messages, temperature: getTemp(), max_tokens: o.maxTok || Math.min(p.maxTok || 2000, 2000) })
+      body: JSON.stringify({ model: model, messages: messages, temperature: getTemp(), max_tokens: Math.min(o.maxTok || outCap, outCap) })
     });
     if (!resp.ok) {
       let msg = "HTTP " + resp.status;
@@ -362,11 +373,18 @@
       function renderModels() {
         const pid = getProviderId();
         const prov = providerById(pid);
-        modelsBox.innerHTML = prov.models.filter(m => !m.image).map(m =>
+        modelsBox.innerHTML = prov.models.map(m =>
           `<button class="ai-chip ${m.id === model ? "on" : ""}" data-id="${m.id}">${esc(m.label)}<span class="ai-chip-n">${esc(m.note || "")}</span></button>`
         ).join("");
         modelsBox.querySelectorAll(".ai-chip").forEach(b => {
-          b.onclick = () => { model = b.dataset.id; setModel(model, pid); renderModels(); renderHead(); };
+          b.onclick = () => {
+            // 生图模型只作展示：不需要选中，配好智谱密钥后在「举一反三」里勾选即可生成配图
+            if (modelInfo(pid, b.dataset.id).image) {
+              UI.toast("🎨 " + modelInfo(pid, b.dataset.id).label + " 是生图模型：无需选中，配好智谱密钥后在「举一反三」勾选「生成配套图片」即可");
+              return;
+            }
+            model = b.dataset.id; setModel(model, pid); renderModels(); renderHead();
+          };
         });
       }
       function renderHead() {
@@ -463,7 +481,7 @@
           hint.innerHTML = p.noKey ? "" : (k ? `✅ 已保存：<code>${esc(maskTok(k))}</code>` : `⚠️ 尚未配置密钥：${esc(p.keyHint)}`);
           mask.querySelector("#gTok").placeholder = k ? "已配置，留空保持不变；填新值可覆盖" : ("粘贴 " + p.keyHint);
           const ml = mask.querySelector("#gModelList");
-          ml.innerHTML = p.models.filter(m => !m.image).map(m => `<option value="${esc(m.id)}">${esc(m.label)}${m.note ? " · " + esc(m.note) : ""}</option>`).join("");
+          ml.innerHTML = p.models.map(m => `<option value="${esc(m.id)}">${esc(m.label)}${m.note ? " · " + esc(m.note) : ""}</option>`).join("");
           mask.querySelector("#gModel").value = getModel(pid);
         }
         mask.querySelector("#gProv").onchange = e => { pid = e.target.value; sync(); };
@@ -614,10 +632,28 @@
         const busy = mask.querySelector("#jyfsBusy");
         mask.querySelectorAll("#jyfsCnt [data-n]").forEach(b => {
           b.onclick = async () => {
-            const n = parseInt(b.dataset.n, 10);
+            const reqN = parseInt(b.dataset.n, 10);
             mask.querySelectorAll("#jyfsCnt [data-n]").forEach(x => x.disabled = true);
             busy.style.display = "";
             const A = i => String.fromCharCode(65 + i);
+            // 先确定实际用来出题的模型：原题带图要走识图模型（把图一并发给 AI）
+            let vision = null;
+            if (hasOrigImg) {
+              const curPid = getProviderId();
+              if (canVision(curPid, getModel(curPid))) vision = { pid: curPid, model: getModel(curPid), key: getKey(curPid) };
+              else {
+                const pv = providerById(curPid).models.find(m => m.vision);
+                if (pv) vision = { pid: curPid, model: pv.id, key: getKey(curPid) };
+                else if (zhipuKey) vision = { pid: "zhipu", model: "glm-4v-flash", key: zhipuKey };
+              }
+            }
+            // 输出上限低的模型（如智谱 GLM-4V-Flash 单次最多 1024 tokens）：限制题数 + 解析精简，防止 JSON 被截断报错
+            const effPid = vision ? vision.pid : getProviderId();
+            const effMid = vision ? vision.model : getModel(effPid);
+            const lowCap = (modelInfo(effPid, effMid).maxOut || 1024) <= 1024;
+            const n = lowCap ? Math.min(reqN, 4) : reqN;
+            if (n < reqN) UI.toast("当前模型单次输出上限 1024，已自动改为每次最多 " + n + " 题");
+            const leanNote = lowCap ? "\n注意：输出务必精炼——题干、选项简明扼要，每题解析不超过50字。" : "";
             // 通用出题风格 / 配图指令
             const styleInstr = `\n4) 模仿原题的出题风格：若原题题干开头有「背景引入 / 情境铺垫」（如"某公司…""根据所给图形…""随着我国…""据某省统计…"等），新题也要采用同样风格的背景引入；保持语气、篇幅、选项的构造方式与原题一致；若原题无背景引入，新题也保持简洁直接。`;
             const imgInstr = `\n5) 每题可选择性给出 "imgPrompt"（字符串）：当该题适合配图（如涉及图形、图表、空间位置、地图、实物图示、逻辑关系图等）时填写，描述应为该题绘制的图片内容；不需要配图的题不要给该字段。`;
@@ -633,18 +669,8 @@
               const topic = (qCtx && qCtx.subject) ? qCtx.subject : (modTitle !== "综合" ? modTitle : "公务员考试相关知识点");
               prompt = `你是公务员考试命题专家。根据下面用户咨询的内容，围绕其关心的「${topic}」知识点，出 ${n} 道考查该知识点、难度相近的单项选择题。\n要求：\n1) 每题必须包含题干、4个选项、正确答案、详细解析；\n2) 紧贴用户咨询的主题，从常见考点、易错点角度命题；\n3) 只输出 JSON 数组，禁止输出 markdown 代码块标记或任何其他文字。格式：[{"q":"题干","options":["A内容","B内容","C内容","D内容"],"a":"B","e":"解析"}]${fmtNote}，其中 "a" 是正确选项字母。\n${styleInstr}${imgInstr}\n\n【用户咨询内容】\n${ctx}`;
             }
+            prompt += leanNote;
             try {
-              // 原题带图片：挑一个支持识图的模型，把图片一并发给 AI
-              let vision = null;
-              if (hasOrigImg) {
-                const curPid = getProviderId();
-                if (canVision(curPid, getModel(curPid))) vision = { pid: curPid, model: getModel(curPid), key: getKey(curPid) };
-                else {
-                  const pv = providerById(curPid).models.find(m => m.vision);
-                  if (pv) vision = { pid: curPid, model: pv.id, key: getKey(curPid) };
-                  else if (zhipuKey) vision = { pid: "zhipu", model: "glm-4v-flash", key: zhipuKey };
-                }
-              }
               const imgEnabled = zhipuKey && mask.querySelector("#jyfsImg") && mask.querySelector("#jyfsImg").checked;
               let userContent;
               if (vision && qCtx.q && qCtx.q.img) {
