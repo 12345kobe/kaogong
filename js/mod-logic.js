@@ -1,4 +1,4 @@
-/* 模块：逻辑判断
+/* 模块：判断推理
    - 类比推理板块（来自《类比常识积累手册》）：按「篇 / 专题」组织，保留「考点直击」原排版；
    - 学完可点「开始做题」走通用 Quiz 引擎（自动记错题 / 正确率 / 错题本）。
 */
@@ -10,7 +10,7 @@
   function esc(s) { return (s == null ? "" : String(s)).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
   window.MODULES.logic = {
-    title: "逻辑判断", icon: "logic",
+    title: "判断推理", icon: "logic",
     render(body) {
       const DB = window.DB, UI = window.UI, LH = window.LearnedHistory;
       const DATA = window.ANALOGY || { units: [] };
@@ -32,10 +32,10 @@
           return;
         }
         let html = `<div class="card">
-          <h3>🧠 逻辑判断</h3>
+          <h3>🧠 判断推理</h3>
           <div class="muted small">本模块含「类比推理板块」：${units.length} 个专题 / ${units.reduce((a, u) => a + u.points.length, 0)} 个考点 / ${units.reduce((a, u) => a + u.questions.length, 0)} 道真题自测。先学「考点直击」，再点「开始做题」巩固。</div>
         </div>`;
-        // 必会对应关系：作为逻辑判断下的一个可折叠小板块（默认折叠，用户点开）
+        // 必会对应关系：作为判断推理下的一个可折叠小板块（默认折叠，用户点开）
         html += `<details class="kg-det"><summary class="kg-det-s"><span class="kg-det-t">📐 必会对应关系（类比推理·每日一题）</span><span class="kg-det-arrow">▸</span></summary><div class="kg-det-b" id="relSec"></div></details>`;
         chapters.forEach(ch => {
           html += `<details class="kg-det"><summary class="kg-det-s"><span class="kg-det-t">📘 ${esc(ch)}</span><span class="muted small" style="font-weight:400;color:var(--txt-dim)">${map[ch].length} 个专题</span><span class="kg-det-arrow">▸</span></summary>

@@ -75,7 +75,7 @@
       </div>`;
 
       // ===== 录入答题（按学科，一一对应）=====
-      const recSubs = (window.KG_SUBJECTS || ["言语理解", "资料分析", "数量关系", "逻辑判断", "常识判断", "政治理论", "申论"]);
+      const recSubs = (window.KG_SUBJECTS || ["言语理解", "资料分析", "数量关系", "判断推理", "常识判断", "政治理论", "申论"]);
       const recOpts = recSubs.map(s => `<option value="${UI.esc(s)}">${UI.esc(s)}</option>`).join("");
       html += `<div class="card stat-rec">
         <h3>✍️ 录入答题（按学科）</h3>
@@ -98,7 +98,7 @@
         const vol = c ? c.total : 0;
         const color = palette[i % palette.length];
         const row = UI.el(`<div class="acc-row">
-          <div class="acc-name">${k}</div>
+          <div class="acc-name">${(window.KGSubjectFull ? KGSubjectFull(k) : k)}</div>
           <div class="acc-bar"><i style="width:${pct}%;background:${color}"></i></div>
           <div class="acc-pct">${pct}%</div>
           <div class="acc-vol muted small">${vol} 题</div>

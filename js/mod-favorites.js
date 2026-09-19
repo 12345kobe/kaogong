@@ -143,7 +143,7 @@
       SUBJECTS.forEach(subject => {
         const items = DB.state.favorites[subject] = DB.state.favorites[subject] || [];
         total += items.length;
-        const card = UI.el(`<div class="card fav-card"><h3>${esc(subject)} · ${items.length} 题</h3><div class="fav-list"></div></div>`);
+        const card = UI.el(`<div class="card fav-card"><h3>${esc((window.KGSubjectFull ? KGSubjectFull(subject) : subject))} · ${items.length} 题</h3><div class="fav-list"></div></div>`);
         const list = card.querySelector(".fav-list");
         if (!items.length) {
           list.innerHTML = `<div class="muted small">暂无收藏</div>`;

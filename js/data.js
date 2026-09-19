@@ -7,11 +7,17 @@
 
   // ★ 学科模块统一表（计时 / 刷题 / 录入答题 共用，保证一一对应）
   // 完整名用于下拉展示，短名用于 accuracyCumulative / 学习计划等存储主键
-  window.KG_SUBJECTS = ["言语理解", "资料分析", "数量关系", "逻辑判断", "常识判断", "政治理论", "申论"];
+  window.KG_SUBJECTS = ["言语理解", "资料分析", "数量关系", "判断推理", "常识判断", "政治理论", "申论"];
   window.KG_SUBJECT_SHORT = {
-    "言语理解": "言语", "资料分析": "资料", "数量关系": "数量", "逻辑判断": "逻辑",
+    "言语理解": "言语", "资料分析": "资料", "数量关系": "数量", "判断推理": "逻辑",
     "常识判断": "常识", "政治理论": "政治", "申论": "申论"
   };
+  // 短名 → 展示全名（统计 / 收藏 / 错题本等内部以短名存储，UI 全部显示全名）
+  window.KG_SUBJECT_LABEL = {
+    "言语": "言语理解", "资料": "资料分析", "逻辑": "判断推理", "政治": "政治理论",
+    "数量": "数量关系", "常识": "常识判断", "申论": "申论", "时政": "时政"
+  };
+  window.KGSubjectFull = function (s) { return (window.KG_SUBJECT_LABEL && window.KG_SUBJECT_LABEL[s]) || s || ""; };
 
   // ★ 云端同步后端地址：优先读取 js/config.js 的 APP_CONFIG.SYNC_API_URL
   const SYNC_API_URL = (window.APP_CONFIG && window.APP_CONFIG.SYNC_API_URL) || "";

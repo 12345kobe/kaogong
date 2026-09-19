@@ -224,7 +224,7 @@
               else if (window.KGAI.ask) window.KGAI.ask(text, null, true, modalHook);
             } else {
               // 内嵌答题：开 AI 浮层，保留底层 quiz DOM 与全部答题记录；带上题目上下文供「举一反三」
-              if (window.KGAI.askOverlay) window.KGAI.askOverlay(text, inlineHook, { subject: subject, q: { q: qq.q, options: qq.options, a: qq.a, e: qq.e } });
+              if (window.KGAI.askOverlay) window.KGAI.askOverlay(text, inlineHook, { subject: subject, q: { q: qq.q, options: qq.options, a: qq.a, e: qq.e, img: qq.img || null } });
               else if (window.KGAI.askQuestion) window.KGAI.askQuestion(subject, qq, ua, null, { keepModal: true, returnHook: inlineHook });
             }
           } else { UI.toast("AI 模块未就绪"); }
@@ -326,6 +326,7 @@
             <button class="star-btn ${isFav() ? "on" : ""}" title="收藏题目">${isFav() ? "★" : "☆"}</button>
           </div>
           <div class="q">${nl2br(qq.q)}</div>
+          ${(qq.img ? '<div class="q-img-wrap"><img class="q-img" src="' + UI.esc(qq.img) + '" alt="配图" onerror="this.style.display=\'none\'"/></div>' : '')}
           ${isMulti(qq) ? `<div class="q-multi-hint muted small">本题为多选题，可选多个选项，选完后点「✓ 确认本题」或最后统一交卷。</div>` : ""}
           <div class="opts"></div>
           ${isMulti(qq) ? `<button class="btn sm q-confirm" style="display:none;margin:4px 0">✓ 确认本题</button>` : ""}
@@ -396,7 +397,7 @@
 
       function recordWrong(subject, qq, ua) {
         const arr = DB.state.wrongbook[subject] = DB.state.wrongbook[subject] || [];
-        arr.push({ id: DB.uid(), q: qq.q, options: qq.options.slice(), a: qq.a, ua: ua, date: DB.today(), e: qq.e || "", optInfo: qq.optInfo || null, note: "", img: "" });
+        arr.push({ id: DB.uid(), q: qq.q, options: qq.options.slice(), a: qq.a, ua: ua, date: DB.today(), e: qq.e || "", optInfo: qq.optInfo || null, note: "", img: qq.img || "" });
         DB.save();
         // 自动写入对应模块「待办事项」：X 错题 N 道（复盘后删去）
         autoTodoOnWrong(subject, qq);

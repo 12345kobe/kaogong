@@ -114,7 +114,7 @@
     try { books = api.list(subj) || []; } catch (e) { return; }
     if (!books.length) return;
 
-    const sec = UI.section("📚 我导入的题册（" + subj + "）");
+    const sec = UI.section("📚 我导入的题册（" + (window.KGSubjectFull ? KGSubjectFull(subj) : subj) + "）");
     body.appendChild(sec);
     const box = sec.querySelector(".kg-det-b");
 

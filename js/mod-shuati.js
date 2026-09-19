@@ -43,7 +43,7 @@
   function getFontColor() { try { return localStorage.getItem("kg_shuati_fontcolor") || ""; } catch (e) { return ""; } }
   function setFontColor(v) { try { if (v) localStorage.setItem("kg_shuati_fontcolor", v); else localStorage.removeItem("kg_shuati_fontcolor"); } catch (e) {} }
   function subjOpts(sel) {
-    const subs = (window.KG_SUBJECTS || ["言语理解", "资料分析", "数量关系", "逻辑判断", "常识判断", "政治理论", "申论"]);
+    const subs = (window.KG_SUBJECTS || ["言语理解", "资料分析", "数量关系", "判断推理", "常识判断", "政治理论", "申论"]);
     return '<option value="">（不选学科）</option>' + subs.map(s => `<option value="${esc(s)}" ${sel === s ? "selected" : ""}>${esc(s)}</option>`).join("");
   }
 

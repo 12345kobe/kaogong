@@ -45,7 +45,7 @@
         a = letters.length > 1 ? letters : (letters.charCodeAt(0) - 65);
       }
       if (typeof a !== "number" || a < 0 || a >= options.length) return;
-      out.push({ q: String(q.q).trim(), options: options, a: a, e: String(q.e || "").trim() });
+      out.push({ q: String(q.q).trim(), options: options, a: a, e: String(q.e || "").trim(), img: (q.img || null) });
     });
     return out;
   }

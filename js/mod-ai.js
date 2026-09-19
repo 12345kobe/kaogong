@@ -64,7 +64,8 @@
       models: [
         { id: "glm-4-flash", label: "GLM-4-Flash", note: "免费", vision: false },
         { id: "glm-4-air", label: "GLM-4-Air", note: "低价", vision: false },
-        { id: "glm-4v-flash", label: "GLM-4V-Flash", note: "可识图", vision: true }
+        { id: "glm-4v-flash", label: "GLM-4V-Flash", note: "可识图", vision: true },
+        { id: "cogview-3-flash", label: "CogView-3-Flash（AI 生图）", note: "生图·举一反三配套出题", vision: false, image: true }
       ] },
     { id: "ollama", label: "本地 Ollama（完全免费 · 离线）", base: "http://localhost:11434/v1/chat/completions",
       keyHint: "无需 Key（留空即可）", keyUrl: "https://ollama.com/download", noKey: true,
@@ -163,7 +164,7 @@
     opts = opts || {};
     const A = i => String.fromCharCode(65 + i);
     // 记录题目上下文：供「举一反三」仿出同类题（申论除外）
-    qCtx = { subject: subject, q: { q: qq.q, options: qq.options, a: qq.a, e: qq.e } };
+    qCtx = { subject: subject, q: { q: qq.q, options: qq.options, a: qq.a, e: qq.e, img: qq.img || null } };
     saveQCtx();
     const optsTxt = (qq.options || []).map((o, i) => A(i) + ". " + (o == null ? "" : o)).join("\n");
     // 多选答案：多字母原样输出（"BCD"）；单选/判断：转字母
@@ -191,7 +192,7 @@
   function askOverlay(text, hook, ctx) {
     const UI = window.UI;
     // 记录题目上下文（供「举一反三」）：内嵌答题页不经过 askQuestion，需显式传入
-    if (ctx && ctx.subject && ctx.q) { qCtx = { subject: ctx.subject, q: ctx.q }; saveQCtx(); }
+    if (ctx && ctx.subject && ctx.q) { qCtx = { subject: ctx.subject, q: Object.assign({}, ctx.q, { img: (ctx.q && ctx.q.img) || null }) }; saveQCtx(); }
     const root = document.getElementById("modalRoot") || document.body;
     const mask = UI.el(`<div class="modal-mask ai-overlay-mask">
       <div class="modal ai-overlay" style="width:min(900px,96vw);height:92vh;max-height:92vh;display:flex;flex-direction:column;overflow:hidden">
@@ -256,8 +257,26 @@
     ], o);
   }
 
+  /* 用智谱 CogView-3-Flash 生成配套图片：返回图片 URL 或 dataURL（失败抛错，由调用方兜底） */
+  async function genImage(prompt) {
+    const key = getKey("zhipu");
+    if (!key) throw new Error("未配置智谱密钥（请在 ⚙ 里选「智谱 GLM」并填入 API Key）");
+    const resp = await fetch("https://open.bigmodel.cn/api/paas/v4/images/generations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
+      body: JSON.stringify({ model: "cogview-3-flash", prompt: String(prompt || "").slice(0, 800), n: 1, size: "1024x1024" })
+    });
+    if (!resp.ok) { let m = "HTTP " + resp.status; try { const j = await resp.json(); m = (j.error && (j.error.message || j.error)) || m; } catch (e) {} throw new Error(m); }
+    const j = await resp.json();
+    const item = (j.data && j.data[0]) || {};
+    if (item.url) return item.url;
+    if (item.b64_json) return "data:image/png;base64," + item.b64_json;
+    throw new Error("生图结果为空");
+  }
+
   window.KGAI = {
     PROVIDERS: PROVIDERS, providerById: providerById,
+    genImage: genImage,
     getProvider: getProviderId, setProvider: setProviderId,
     getKey: getKey, setKey: setKey,
     getToken: getToken, setToken: setToken, hasCustom: hasCustom,
@@ -343,7 +362,7 @@
       function renderModels() {
         const pid = getProviderId();
         const prov = providerById(pid);
-        modelsBox.innerHTML = prov.models.map(m =>
+        modelsBox.innerHTML = prov.models.filter(m => !m.image).map(m =>
           `<button class="ai-chip ${m.id === model ? "on" : ""}" data-id="${m.id}">${esc(m.label)}<span class="ai-chip-n">${esc(m.note || "")}</span></button>`
         ).join("");
         modelsBox.querySelectorAll(".ai-chip").forEach(b => {
@@ -444,7 +463,7 @@
           hint.innerHTML = p.noKey ? "" : (k ? `✅ 已保存：<code>${esc(maskTok(k))}</code>` : `⚠️ 尚未配置密钥：${esc(p.keyHint)}`);
           mask.querySelector("#gTok").placeholder = k ? "已配置，留空保持不变；填新值可覆盖" : ("粘贴 " + p.keyHint);
           const ml = mask.querySelector("#gModelList");
-          ml.innerHTML = p.models.map(m => `<option value="${esc(m.id)}">${esc(m.label)}${m.note ? " · " + esc(m.note) : ""}</option>`).join("");
+          ml.innerHTML = p.models.filter(m => !m.image).map(m => `<option value="${esc(m.id)}">${esc(m.label)}${m.note ? " · " + esc(m.note) : ""}</option>`).join("");
           mask.querySelector("#gModel").value = getModel(pid);
         }
         mask.querySelector("#gProv").onchange = e => { pid = e.target.value; sync(); };
@@ -575,12 +594,17 @@
         const isQuestion = !!(qCtx && qCtx.q);
         const boardKey = modKey || "ai";                 // 自由提问且无明确科目 → 归入「综合」
         const modTitle = modKey ? ((window.MODULES[modKey] || {}).title || modKey) : "综合";
-        const mask = UI.el(`<div class="modal-mask"><div class="modal" style="max-width:460px">
+        const zhipuKey = getKey("zhipu");
+        const hasOrigImg = !!(isQuestion && qCtx.q && qCtx.q.img);
+        const mask = UI.el(`<div class="modal-mask"><div class="modal" style="max-width:480px">
           <h3>💡 举一反三</h3>
           <div class="muted small">AI 将仿照你刚才咨询的内容，出几道同考点选择题（含答案与解析）。出题过程不展示，完成后自动进入「${esc(modTitle)}AI出题」板块开始训练。</div>
           <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:10px" id="jyfsCnt">
             ${[3, 4, 5, 6, 8, 10].map(n => `<button class="btn sm" data-n="${n}">${n} 题</button>`).join("")}
           </div>
+          ${zhipuKey
+            ? `<label class="row" style="margin-top:10px;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="jyfsImg" checked/> 🎨 用 CogView 为题目生成配套图片（需智谱密钥）</label>`
+            : `<div class="muted small" style="margin-top:10px">⚠️ 未配置智谱密钥，「生图出题」暂不可用（去 ⚙ 选「智谱 GLM」填 Key 即可）。</div>`}
           <div id="jyfsBusy" class="muted small" style="display:none;margin-top:10px">⏳ AI 正在出题，请稍候…（思考过程不展示，完成后自动跳转）</div>
           <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn ghost" id="jyfsCancel">取消</button></div>
         </div></div>`);
@@ -594,27 +618,62 @@
             mask.querySelectorAll("#jyfsCnt [data-n]").forEach(x => x.disabled = true);
             busy.style.display = "";
             const A = i => String.fromCharCode(65 + i);
+            // 通用出题风格 / 配图指令
+            const styleInstr = `\n4) 模仿原题的出题风格：若原题题干开头有「背景引入 / 情境铺垫」（如"某公司…""根据所给图形…""随着我国…""据某省统计…"等），新题也要采用同样风格的背景引入；保持语气、篇幅、选项的构造方式与原题一致；若原题无背景引入，新题也保持简洁直接。`;
+            const imgInstr = `\n5) 每题可选择性给出 "imgPrompt"（字符串）：当该题适合配图（如涉及图形、图表、空间位置、地图、实物图示、逻辑关系图等）时填写，描述应为该题绘制的图片内容；不需要配图的题不要给该字段。`;
+            const fmtNote = `；可选字段 "imgPrompt":"图片描述"`;
             let prompt;
             if (isQuestion && qCtx.q) {
               const qq = qCtx.q;
               const optsTxt = (qq.options || []).map((o, i) => A(i) + ". " + (o == null ? "" : o)).join("\n");
-              prompt = `你是公务员考试命题专家。请仿照下面的「${qCtx.subject}」原题，再出 ${n} 道考查同一知识点、难度相近的单项选择题。\n要求：\n1) 每题必须包含题干、4个选项、正确答案、详细解析；\n2) 不与原题重复，围绕同一考点从不同角度命题；\n3) 只输出 JSON 数组，禁止输出 markdown 代码块标记或任何其他文字。格式：[{"q":"题干","options":["A内容","B内容","C内容","D内容"],"a":"B","e":"解析"}]，其中 "a" 是正确选项字母。\n\n【原题】\n${qq.q || ""}\n${optsTxt ? "【原题选项】\n" + optsTxt + "\n" : ""}【原题解析】${qq.e || "略"}`;
+              prompt = `你是公务员考试命题专家。请仿照下面的「${qCtx.subject}」原题，再出 ${n} 道考查同一知识点、难度相近的单项选择题。\n要求：\n1) 每题必须包含题干、4个选项、正确答案、详细解析；\n2) 不与原题重复，围绕同一考点从不同角度命题；\n3) 只输出 JSON 数组，禁止输出 markdown 代码块标记或任何其他文字。格式：[{"q":"题干","options":["A内容","B内容","C内容","D内容"],"a":"B","e":"解析"}]${fmtNote}，其中 "a" 是正确选项字母。\n${styleInstr}${imgInstr}${hasOrigImg ? "\n6) 原题附有一张图片（已随消息提供）。请仿照它，出同样需要看图理解的题；需要配图的题请给出 'imgPrompt'。" : ""}\n\n【原题】\n${qq.q || ""}\n${optsTxt ? "【原题选项】\n" + optsTxt + "\n" : ""}【原题解析】${qq.e || "略"}`;
             } else {
               // 自由提问：基于对话主题出题
               const ctx = log.filter(m => m.role === "user").map(m => m.content || "").slice(-3).join("\n---\n");
               const topic = (qCtx && qCtx.subject) ? qCtx.subject : (modTitle !== "综合" ? modTitle : "公务员考试相关知识点");
-              prompt = `你是公务员考试命题专家。根据下面用户咨询的内容，围绕其关心的「${topic}」知识点，出 ${n} 道考查该知识点、难度相近的单项选择题。\n要求：\n1) 每题必须包含题干、4个选项、正确答案、详细解析；\n2) 紧贴用户咨询的主题，从常见考点、易错点角度命题；\n3) 只输出 JSON 数组，禁止输出 markdown 代码块标记或任何其他文字。格式：[{"q":"题干","options":["A内容","B内容","C内容","D内容"],"a":"B","e":"解析"}]，其中 "a" 是正确选项字母。\n\n【用户咨询内容】\n${ctx}`;
+              prompt = `你是公务员考试命题专家。根据下面用户咨询的内容，围绕其关心的「${topic}」知识点，出 ${n} 道考查该知识点、难度相近的单项选择题。\n要求：\n1) 每题必须包含题干、4个选项、正确答案、详细解析；\n2) 紧贴用户咨询的主题，从常见考点、易错点角度命题；\n3) 只输出 JSON 数组，禁止输出 markdown 代码块标记或任何其他文字。格式：[{"q":"题干","options":["A内容","B内容","C内容","D内容"],"a":"B","e":"解析"}]${fmtNote}，其中 "a" 是正确选项字母。\n${styleInstr}${imgInstr}\n\n【用户咨询内容】\n${ctx}`;
             }
             try {
+              // 原题带图片：挑一个支持识图的模型，把图片一并发给 AI
+              let vision = null;
+              if (hasOrigImg) {
+                const curPid = getProviderId();
+                if (canVision(curPid, getModel(curPid))) vision = { pid: curPid, model: getModel(curPid), key: getKey(curPid) };
+                else {
+                  const pv = providerById(curPid).models.find(m => m.vision);
+                  if (pv) vision = { pid: curPid, model: pv.id, key: getKey(curPid) };
+                  else if (zhipuKey) vision = { pid: "zhipu", model: "glm-4v-flash", key: zhipuKey };
+                }
+              }
+              const imgEnabled = zhipuKey && mask.querySelector("#jyfsImg") && mask.querySelector("#jyfsImg").checked;
+              let userContent;
+              if (vision && qCtx.q && qCtx.q.img) {
+                userContent = [{ type: "text", text: prompt }, { type: "image_url", image_url: { url: qCtx.q.img } }];
+              } else {
+                if (hasOrigImg && !vision) prompt += "\n（注：原题含图片，但当前无可用识图模型，请仅按题干文字出题。）";
+                userContent = prompt;
+              }
               const reply = await chat(
                 [{ role: "system", content: "你是公务员考试命题专家，只输出 JSON 数组，不输出任何其他文字。" },
-                 { role: "user", content: prompt }],
-                { maxTok: 6000 });
+                 { role: "user", content: userContent }],
+                vision ? { providerId: vision.pid, model: vision.model, key: vision.key, maxTok: 6000 } : { maxTok: 6000 });
               const qs = parseQuestions(reply);
+              // 用 CogView 为需要配图的题生成图片（best-effort，失败不阻断出题）
+              let genNote = "";
+              if (imgEnabled) {
+                let ok = 0, fail = 0;
+                for (const q of qs) {
+                  if (q && q.imgPrompt) {
+                    try { q.img = await genImage(q.imgPrompt); ok++; }
+                    catch (e) { fail++; console.warn("CogView 生图失败", e); }
+                  }
+                }
+                if (ok || fail) genNote = `（${ok} 题已生成配套图片${fail ? "，" + fail + " 题生图失败" : ""}）`;
+              }
               const set = KGAIQuiz.addSet(boardKey, isQuestion ? (qCtx.subject || modTitle) : modTitle, qs);
               if (!set) throw new Error("AI 出的题目格式不完整，请重试");
               mask.remove();
-              UI.toast(`✅ 已生成 ${set.n} 道同类题，正在进入「${modTitle}AI出题」…`);
+              UI.toast(`✅ 已生成 ${set.n} 道同类题，正在进入「${modTitle}AI出题」…${genNote}`);
               window.__aiQuizAuto = { mod: boardKey, setId: set.id };
               // 关闭浮层（内嵌答题场景），清掉返回钩子，直接跳到对应学科模块
               if (typeof overlayClose === "function") { try { overlayClose(); } catch (e) {} }

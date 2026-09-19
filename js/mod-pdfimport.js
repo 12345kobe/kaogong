@@ -16,7 +16,7 @@
   "use strict";
   window.MODULES = window.MODULES || {};
 
-  const SUBJECTS = window.KG_SUBJECTS || ["言语理解", "资料分析", "数量关系", "逻辑判断", "常识判断", "政治理论", "申论"];
+  const SUBJECTS = window.KG_SUBJECTS || ["言语理解", "资料分析", "数量关系", "判断推理", "常识判断", "政治理论", "申论"];
   const SUBJECT_SHORT = window.KG_SUBJECT_SHORT || {};
   const PDF_CDNS = [
     "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js",
@@ -45,7 +45,7 @@
 
   const TYPE_WORDS = [
     "言语理解", "判断推理", "数量关系", "资料分析", "常识判断", "政治理论",
-    "逻辑判断", "图形推理", "类比推理", "定义判断", "逻辑填空", "片段阅读",
+    "判断推理", "图形推理", "类比推理", "定义判断", "逻辑填空", "片段阅读",
     "语句表达", "语句排序", "文章阅读", "数字推理", "数学运算",
     "法律常识", "经济常识", "科技常识", "人文常识", "地理常识", "历史常识",
     "归纳概括", "综合分析", "提出对策", "贯彻执行", "文章写作",
