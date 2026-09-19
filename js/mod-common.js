@@ -618,13 +618,12 @@
                 <span class="muted small">${isReview ? "到期 " + total.length + " 条" : "已学 " + learnState().pos + " / " + entries.length + " 条"} · 本组 ${slice.length} 条</span>
                 <button class="btn ghost sm" id="kjBack">← 返回上一级</button>
               </div>
-              ${slice.map(e => entryHtml(e, false)).join("")}
+              ${slice.map(e => entryHtml(e, true)).join("")}
               <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap">
                 ${start > 0 ? `<button class="btn" id="kjPrev">← 上一组</button>` : ""}
                 <button class="btn primary" id="kjDone">${start + PAGE < list.length ? "看完这组，继续 →" : (isReview ? "✓ 完成本组复习" : "✓ 学完本组")}</button>
               </div>
               <div id="kjNavMore"></div>`;
-            kjBody.querySelectorAll("[data-hw]").forEach(() => {});
             kjBody.querySelector("#kjBack").onclick = () => { kjBody.innerHTML = ""; try { kjCard.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e) {} };
             const doneBtn = kjBody.querySelector("#kjDone");
             doneBtn.onclick = () => {

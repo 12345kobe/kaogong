@@ -74,10 +74,12 @@
         { id: "deepseek-r1:7b", label: "DeepSeek-R1 7B", note: "本地", vision: false }
       ] },
     { id: "shared", label: "共享 AI（免配置 · 女友直接用）", base: SHARED_AI_BASE,
-      keyHint: "无需密钥（服务端已配置，打开即用）", keyUrl: "https://open.bigmodel.cn/usercenter/apikeys", noKey: true,
+      keyHint: "无需密钥（服务端已配置 GitHub 免费模型，打开即用）", keyUrl: "https://github.com/settings/tokens", noKey: true,
       models: [
-        { id: "glm-4v-flash", label: "GLM-4V-Flash（识图·免费）", note: "可识图·推荐", vision: true },
-        { id: "glm-4-flash", label: "GLM-4-Flash（纯文字·免费）", note: "免费", vision: false }
+        { id: "gpt-4.1-mini", label: "GPT-4.1 mini（推荐·可识图）", note: "可识图·推荐", vision: true },
+        { id: "gpt-4o-mini", label: "GPT-4o mini（可识图）", note: "可识图", vision: true },
+        { id: "DeepSeek-R1", label: "DeepSeek-R1（推理型）", note: "不识图", vision: false },
+        { id: "Meta-Llama-3.3-70B", label: "Llama 3.3 70B", note: "不识图", vision: false }
       ] }
   ];
   const SYS = "你是一名资深公务员考试（行测+申论）辅导老师。回答要简洁、准确、贴合中国考情，必要时给出解题步骤与易错点。中文作答。";
@@ -513,8 +515,15 @@
           showJyfs();
         } catch (e) {
           const p = msgs.querySelector("#aiPending"); if (p) p.remove();
-          UI.toast("请求失败：" + e.message);
-          msgs.innerHTML += `<div class="ai-msg bot"><div class="ai-who">AI</div><div class="ai-text" style="color:var(--red)">请求失败：${esc(e.message)}<br>（点右上角 ⚙ 检查：服务商 / 密钥 / 模型名；401/403 多为密钥无效或权限不足；本地 Ollama 需先启动服务）</div></div>`;
+          const em = e.message || "";
+          const isAuth = /401|403|unauthor|expired|invalid|token|密钥|令牌/.test(em);
+          if (pid === "shared" && isAuth) {
+            UI.toast("共享 AI 暂不可用（服务端密钥失效）");
+            msgs.innerHTML += `<div class="ai-msg bot"><div class="ai-who">AI</div><div class="ai-text" style="color:var(--red)">共享 AI 暂不可用：${esc(em)}<br>任选其一即可恢复：<br>① 点右上角 ⚙ → 服务商选「GitHub Models / Gemini / Groq」→ 填一个<b>免费</b>密钥（⚙ 里附获取链接），立即能用；<br>② 或让开发者在 Railway 刷新服务端密钥（加 AI_GITHUB_KEY 即可）。</div></div>`;
+          } else {
+            UI.toast("请求失败：" + em);
+            msgs.innerHTML += `<div class="ai-msg bot"><div class="ai-who">AI</div><div class="ai-text" style="color:var(--red)">请求失败：${esc(em)}<br>（点右上角 ⚙ 检查：服务商 / 密钥 / 模型名；401/403 多为密钥无效或权限不足；本地 Ollama 需先启动服务）</div></div>`;
+          }
         } finally { sendBtn.disabled = false; busy = false; }
       }
 
@@ -537,12 +546,21 @@
       }
 
       /* ===== 举一反三：AI 仿题出同类选择题并自动进入训练 ===== */
+      // 推断「出题板块」所属科目：优先用题目上下文；自由提问则从对话里识别
+      function detectModKey() {
+        if (qCtx && qCtx.subject) {
+          return (window.KGAIQuiz && KGAIQuiz.moduleForSubject(qCtx.subject)) || null;
+        }
+        const text = log.filter(m => m.role === "user").map(m => m.content || "").join("\n");
+        return (window.KGAIQuiz && KGAIQuiz.moduleForSubject(text)) || null;
+      }
       function showJyfs() {
         const row = body.querySelector("#aiJyfsRow");
-        if (!row || !qCtx) return;
-        const modKey = (window.KGAIQuiz && KGAIQuiz.moduleForSubject(qCtx.subject)) || null;
-        // 除申论外都支持出题
-        row.style.display = (modKey && modKey !== "essay") ? "" : "none";
+        if (!row) return;
+        // 必须先有 AI 回复；申论暂不支持出题
+        const hasReply = log.some(m => m.role === "assistant");
+        const mk = detectModKey();
+        row.style.display = (hasReply && mk !== "essay") ? "" : "none";
       }
       function parseQuestions(txt) {
         let t = String(txt || "").replace(/```[a-z]*```?/g, "```").replace(/```/g, "\n").trim();
@@ -551,13 +569,15 @@
         return JSON.parse(t.slice(s, e + 1));
       }
       function openJyfs() {
-        if (!qCtx) { UI.toast("先咨询一道题目，再点举一反三"); return; }
-        const modKey = KGAIQuiz.moduleForSubject(qCtx.subject);
-        if (!modKey || modKey === "essay") { UI.toast("该科目暂不支持出题"); return; }
-        const modTitle = (window.MODULES[modKey] || {}).title || qCtx.subject;
+        if (!log.some(m => m.role === "assistant")) { UI.toast("请先发起一次 AI 咨询，再点举一反三"); return; }
+        const modKey = detectModKey();
+        if (modKey === "essay") { UI.toast("申论暂不支持出题"); return; }
+        const isQuestion = !!(qCtx && qCtx.q);
+        const boardKey = modKey || "ai";                 // 自由提问且无明确科目 → 归入「综合」
+        const modTitle = modKey ? ((window.MODULES[modKey] || {}).title || modKey) : "综合";
         const mask = UI.el(`<div class="modal-mask"><div class="modal" style="max-width:460px">
           <h3>💡 举一反三</h3>
-          <div class="muted small">AI 将仿照你咨询的题目，出几道同考点选择题（含答案与解析）。出题过程不展示，完成后自动进入「${esc(modTitle)}AI出题」板块开始训练。</div>
+          <div class="muted small">AI 将仿照你刚才咨询的内容，出几道同考点选择题（含答案与解析）。出题过程不展示，完成后自动进入「${esc(modTitle)}AI出题」板块开始训练。</div>
           <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:10px" id="jyfsCnt">
             ${[3, 4, 5, 6, 8, 10].map(n => `<button class="btn sm" data-n="${n}">${n} 题</button>`).join("")}
           </div>
@@ -574,24 +594,38 @@
             mask.querySelectorAll("#jyfsCnt [data-n]").forEach(x => x.disabled = true);
             busy.style.display = "";
             const A = i => String.fromCharCode(65 + i);
-            const qq = qCtx.q;
-            const optsTxt = (qq.options || []).map((o, i) => A(i) + ". " + (o == null ? "" : o)).join("\n");
-            const prompt = `你是公务员考试命题专家。请仿照下面的「${qCtx.subject}」原题，再出 ${n} 道考查同一知识点、难度相近的单项选择题。\n要求：\n1) 每题必须包含题干、4个选项、正确答案、详细解析；\n2) 不与原题重复，围绕同一考点从不同角度命题；\n3) 只输出 JSON 数组，禁止输出 markdown 代码块标记或任何其他文字。格式：[{"q":"题干","options":["A内容","B内容","C内容","D内容"],"a":"B","e":"解析"}]，其中 "a" 是正确选项字母。\n\n【原题】\n${qq.q || ""}\n${optsTxt ? "【原题选项】\n" + optsTxt + "\n" : ""}【原题解析】${qq.e || "略"}`;
+            let prompt;
+            if (isQuestion && qCtx.q) {
+              const qq = qCtx.q;
+              const optsTxt = (qq.options || []).map((o, i) => A(i) + ". " + (o == null ? "" : o)).join("\n");
+              prompt = `你是公务员考试命题专家。请仿照下面的「${qCtx.subject}」原题，再出 ${n} 道考查同一知识点、难度相近的单项选择题。\n要求：\n1) 每题必须包含题干、4个选项、正确答案、详细解析；\n2) 不与原题重复，围绕同一考点从不同角度命题；\n3) 只输出 JSON 数组，禁止输出 markdown 代码块标记或任何其他文字。格式：[{"q":"题干","options":["A内容","B内容","C内容","D内容"],"a":"B","e":"解析"}]，其中 "a" 是正确选项字母。\n\n【原题】\n${qq.q || ""}\n${optsTxt ? "【原题选项】\n" + optsTxt + "\n" : ""}【原题解析】${qq.e || "略"}`;
+            } else {
+              // 自由提问：基于对话主题出题
+              const ctx = log.filter(m => m.role === "user").map(m => m.content || "").slice(-3).join("\n---\n");
+              const topic = (qCtx && qCtx.subject) ? qCtx.subject : (modTitle !== "综合" ? modTitle : "公务员考试相关知识点");
+              prompt = `你是公务员考试命题专家。根据下面用户咨询的内容，围绕其关心的「${topic}」知识点，出 ${n} 道考查该知识点、难度相近的单项选择题。\n要求：\n1) 每题必须包含题干、4个选项、正确答案、详细解析；\n2) 紧贴用户咨询的主题，从常见考点、易错点角度命题；\n3) 只输出 JSON 数组，禁止输出 markdown 代码块标记或任何其他文字。格式：[{"q":"题干","options":["A内容","B内容","C内容","D内容"],"a":"B","e":"解析"}]，其中 "a" 是正确选项字母。\n\n【用户咨询内容】\n${ctx}`;
+            }
             try {
               const reply = await chat(
                 [{ role: "system", content: "你是公务员考试命题专家，只输出 JSON 数组，不输出任何其他文字。" },
                  { role: "user", content: prompt }],
                 { maxTok: 6000 });
               const qs = parseQuestions(reply);
-              const set = KGAIQuiz.addSet(modKey, qCtx.subject, qs);
+              const set = KGAIQuiz.addSet(boardKey, isQuestion ? (qCtx.subject || modTitle) : modTitle, qs);
               if (!set) throw new Error("AI 出的题目格式不完整，请重试");
               mask.remove();
               UI.toast(`✅ 已生成 ${set.n} 道同类题，正在进入「${modTitle}AI出题」…`);
-              window.__aiQuizAuto = { mod: modKey, setId: set.id };
+              window.__aiQuizAuto = { mod: boardKey, setId: set.id };
               // 关闭浮层（内嵌答题场景），清掉返回钩子，直接跳到对应学科模块
               if (typeof overlayClose === "function") { try { overlayClose(); } catch (e) {} }
               returnHash = null; returnHook = null; returnAnchor = null;
-              location.hash = "#/" + modKey;
+              const curKey = (location.hash.replace("#/", "") || "countdown");
+              if (boardKey === curKey) {
+                // 已在该模块页：hash 不变不会触发重渲染，手动刷新以挂载板块并自动开训
+                if (typeof window.renderRoute === "function") window.renderRoute();
+              } else {
+                location.hash = "#/" + boardKey;
+              }
             } catch (e) {
               busy.style.display = "none";
               mask.querySelectorAll("#jyfsCnt [data-n]").forEach(x => x.disabled = false);
@@ -667,6 +701,9 @@
           backBtn.style.display = "none";
         }
       }
+
+      // 自由提问生成的「综合AI出题」板块（无明确科目时归入此项）
+      try { window.KGAIQuiz && KGAIQuiz.mount(body, "ai"); } catch (e) { console.error(e); }
     }
   };
 })();

@@ -35,7 +35,7 @@
     const out = [];
     (qs || []).forEach(q => {
       if (!q || !q.q || !Array.isArray(q.options) || q.options.length < 2) return;
-      const options = q.options.slice(0, 4).map(o => String(o == null ? "" : o).trim());
+      const options = q.options.slice(0, 4).map(o => String(o == null ? "" : o).trim().replace(/^\s*[A-Ja-j]\s*[\.、．:：]\s*/, ""));
       while (options.length && !options[options.length - 1]) options.pop();
       if (options.length < 2) return;
       let a = q.a;
@@ -74,7 +74,7 @@
     const st = (DB.state.aiQuiz || {})[key];
     if (!st || !st.sets || !st.sets.length) return;
     const m = MOD[key];
-    const title = (m && m.title ? m.title : key) + "AI出题";
+    const title = (key === "ai") ? "综合AI出题" : ((m && m.title ? m.title : key) + "AI出题");
     const sec = UI.section("🤖 " + title + "（累计 " + st.total + " 题 · " + st.sets.length + " 组）");
     body.appendChild(sec);
     const box = sec.querySelector(".kg-det-b");

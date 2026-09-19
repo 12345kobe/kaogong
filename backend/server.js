@@ -481,37 +481,72 @@ app.get("/api/fetch-url", async (req, res) => {
 });
 
 /* ---------- 共享 AI 代理：前端「共享 AI（免配置）」通道 ----------
-   智谱 API Key 仅在服务端（Railway 环境变量 ZHIPU_API_KEY）持有，
-   绝不进入前端源码 / 公开仓库，避免 key 泄露被他人盗刷额度。
+   多服务商密钥容灾：任一密钥有效即可用，避免单把密钥过期导致全员 AI 瘫痪。
+   密钥只在服务端（Railway 环境变量）持有，绝不进入前端源码 / 公开仓库。
+   支持：GitHub Models(AI_GITHUB_KEY) · 智谱(ZHIPU_API_KEY) · Gemini(AI_GEMINI_KEY)。
    前端零配置（无需填 key），任何人打开本应用即可直接用 AI。 ---------- */
 const AI_ALLOWED_ORIGINS = [/\.github\.io$/, /\.railway\.app$/];
-const AI_MODELS = ["glm-4v-flash", "glm-4-flash", "glm-4-plus", "glm-4-air", "glm-4-airx", "glm-4v-plus"];
+// 每个服务商：(1) 模型名匹配规则 (2) 上游地址 (3) 密钥环境变量 (4) 单请求最大输出上限
+const AI_PROVIDERS = [
+  { name: "github", match: /^(gpt-|DeepSeek|Meta-Llama|o[0-9]|Phi|Mistral|Cohere)/i,
+    base: "https://models.inference.ai.azure.com/chat/completions", env: "AI_GITHUB_KEY", cap: 8000 },
+  { name: "zhipu", match: /^glm/i,
+    base: "https://open.bigmodel.cn/api/paas/v4/chat/completions", env: "ZHIPU_API_KEY", cap: 4000 },
+  { name: "gemini", match: /^gemini/i,
+    base: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", env: "AI_GEMINI_KEY", cap: 8000 }
+];
+function aiPickProvider(model) {
+  const p = AI_PROVIDERS.find(p => p.match.test(model || ""));
+  return p || AI_PROVIDERS[0];
+}
 app.post("/api/ai-proxy", async (req, res) => {
   const origin = req.headers.origin || "";
   if (origin && !AI_ALLOWED_ORIGINS.some(r => r.test(origin))) {
     return res.status(403).json({ error: "来源不被允许" });
   }
-  const key = process.env.ZHIPU_API_KEY;
-  if (!key) return res.status(503).json({ error: "服务端未配置 ZHIPU_API_KEY（请在 Railway 变量中添加）" });
   const { model, messages, temperature, max_tokens } = req.body || {};
   if (!model || !Array.isArray(messages)) return res.status(400).json({ error: "缺少 model 或 messages" });
-  if (AI_MODELS.indexOf(model) < 0) return res.status(400).json({ error: "模型不在允许列表：" + model });
-  try {
-    const r = await fetch("https://open.bigmodel.cn/api/paas/v4/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature: typeof temperature === "number" ? Math.max(0, Math.min(1, temperature)) : 0.3,
-        max_tokens: Math.min(/^glm-4v/.test(model) ? 1024 : 4000, Number(max_tokens) || 2000)
-      })
-    });
-    const t = await r.text();
-    if (!r.ok) { try { return res.status(r.status).json(JSON.parse(t)); } catch (e) { return res.status(r.status).json({ error: t.slice(0, 300) }); } }
-    res.set("Content-Type", "application/json");
-    res.send(t);
-  } catch (e) { res.status(500).json({ error: "AI 代理异常：" + (e && e.message ? e.message : e) }); }
+  // 优先用模型匹配的服务商，其余按「有密钥」顺序兜底（单把密钥过期可自动切换到另一把）
+  const pref = aiPickProvider(model);
+  const ordered = [pref, ...AI_PROVIDERS.filter(p => p.name !== pref.name)];
+  let lastErr = null, tried = 0;
+  for (const prov of ordered) {
+    const key = process.env[prov.env];
+    if (!key) continue;            // 该服务商未配置密钥 → 跳过
+    // 兜底服务商若不支持原模型名，自动换成该服务商的默认模型（避免「模型不存在」报错）
+    const useModel = prov.match.test(model || "")
+      ? model
+      : (prov.name === "github" ? "gpt-4.1-mini" : prov.name === "gemini" ? "gemini-2.0-flash" : "glm-4-flash");
+    tried++;
+    try {
+      const r = await fetch(prov.base, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
+        body: JSON.stringify({
+          model: useModel,
+          messages,
+          temperature: typeof temperature === "number" ? Math.max(0, Math.min(1, temperature)) : 0.3,
+          max_tokens: Math.min(prov.cap, Number(max_tokens) || 2000)
+        })
+      });
+      const t = await r.text();
+      if (!r.ok) {
+        let parsed; try { parsed = JSON.parse(t); } catch (e) {}
+        const msg = (parsed && (parsed.error && (parsed.error.message || parsed.error) || parsed.message)) || t.slice(0, 200);
+        // 鉴权/过期类错误 → 尝试下一个可用服务商；其它错误直接返回
+        if (/401|403|unauthor|expired|invalid|token/i.test(String(msg))) { lastErr = "[" + prov.name + "] " + msg; continue; }
+        return res.status(r.status).json({ error: msg });
+      }
+      res.set("Content-Type", "application/json");
+      res.send(t);
+      return;
+    } catch (e) { lastErr = "[" + prov.name + "] " + (e && e.message ? e.message : e); }
+  }
+  res.status(503).json({
+    error: tried === 0
+      ? "服务端未配置任何 AI 密钥（请在 Railway 变量中添加 AI_GITHUB_KEY / ZHIPU_API_KEY / AI_GEMINI_KEY 之一；推荐免费的 GitHub Token 作为 AI_GITHUB_KEY）。"
+      : ("所有可用密钥均失败：" + lastErr)
+  });
 });
 
 app.get("/api/health", (req, res) => res.json({ ok: true }));

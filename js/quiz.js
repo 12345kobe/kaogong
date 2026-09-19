@@ -10,6 +10,8 @@
   const DB = window.DB, UI = window.UI;
   const A = i => String.fromCharCode(65 + i);
   const nl2br = s => (s == null ? "" : UI.esc(s)).replace(/\n/g, "<br>");
+  /* 兼容选项自带 "A. " 前缀的数据（PDF/AI 提取），去掉后由渲染统一加字母，避免 "A. A. xxx" */
+  const optText = o => String(o == null ? "" : o).replace(/^\s*([A-Ja-j])\s*[\.、．:：]\s*/, "");
 
   /* ===== 多选 / 题型 / 选非 辅助 ===== */
   function ansSet(qq) {
@@ -24,6 +26,12 @@
     if (!x || !y) return false;
     const a = x.slice().sort((m, n) => m - n), b = y.slice().sort((m, n) => m - n);
     return a.length === b.length && a.every((v, i) => v === b[i]);
+  }
+  /* 单选题的正确答案索引：兼容答案为数字(0基)或字母字符串("D")两种数据格式。
+     用户作答统一存为数字，判定必须两边都归一到数字，否则 "D" 永远不等于 3 → 全判错。 */
+  function answerIdx(qq) {
+    const s = ansSet(qq);
+    return s.length ? s[0] : qq.a;
   }
   function isXuanfei_UNUSED(qq) {
     if (qq && qq.xuanfei) return true;
@@ -52,8 +60,23 @@
       opts = opts || {};
       const noStats = !!opts.noStats;
       const noRecordWrong = !!opts.noRecordWrong; // 错题本「重做本题」用：避免重复写入错题本
-      // 进入答题时隐藏所有悬浮标注按钮，避免与「交卷」按钮在左下角重叠
-      try { document.querySelectorAll(".kg-anno-fab").forEach(f => { f.style.display = "none"; }); } catch (e) {}
+      // 进入答题时隐藏所有悬浮标注按钮，避免与「交卷」按钮在左下角重叠；
+      // 答题容器被销毁（关闭弹窗/离开页面）或交卷后自动恢复，否则悬浮手写按钮会永久消失
+      try {
+        const fabs = Array.prototype.slice.call(document.querySelectorAll(".kg-anno-fab"));
+        fabs.forEach(f => { f.style.display = "none"; });
+        Quiz._restoreFabs = () => {
+          fabs.forEach(f => { if (f.isConnected) f.style.display = ""; });
+          if (Quiz._fabObs) { try { Quiz._fabObs.disconnect(); } catch (e) {} Quiz._fabObs = null; }
+          Quiz._restoreFabs = null;
+        };
+        if (fabs.length && typeof MutationObserver !== "undefined") {
+          Quiz._fabObs = new MutationObserver(() => {
+            if (!container.isConnected && Quiz._restoreFabs) { const rf = Quiz._restoreFabs; rf(); }
+          });
+          Quiz._fabObs.observe(document.body, { childList: true, subtree: true });
+        }
+      } catch (e) {}
       // 模式：优先 opts.mode，否则全局设置，默认 practice（练题）
       const mode = opts.mode || (DB.state.settings && DB.state.settings.quizMode) || "practice";
       if (Quiz._handler) { try { document.removeEventListener("keydown", Quiz._handler); } catch (e) {} Quiz._handler = null; }
@@ -223,7 +246,7 @@
           ua = parseInt(card.dataset.ua, 10);
         }
         const answer = ansSet(qq);
-        const right = multi ? sameSet(ua, answer) : (ua === qq.a);
+        const right = multi ? sameSet(ua, answer) : (ua === answerIdx(qq));
         // 关键：把判定结果写回 results，否则 practice（练题）模式下 finish() 统计恒为 0 正确
         results[qi] = { ua: ua, right: right };
         card.dataset.revealed = "1"; card.dataset.done = "1";
@@ -238,7 +261,7 @@
         exp.style.display = "block";
         const ansStr = answer.map(A).join("、");
         let html = (right ? "✅ <b>回答正确！</b>" : "❌ <b>回答错误。</b> 正确答案：" + ansStr + ". ")
-          + nl2br(qq.options[answer[0]]);
+          + nl2br(optText(qq.options[answer[0]]));
         // 多选题：逐选项标注正误，便于复盘
         if (multi) {
           html += '<div class="opt-exps">';
@@ -255,7 +278,7 @@
         if (qq.optInfo && qq.optInfo.length) {
           html += '<div class="opt-exps">';
           qq.optInfo.forEach((oi, oi2) => {
-            const isCorrect = !multi && oi2 === qq.a;
+            const isCorrect = !multi && oi2 === answerIdx(qq);
             html += '<div class="opt-exp' + (isCorrect ? " ok" : "") + '">'
               + '<div class="oe-head"><b>' + A(oi2) + ". " + nl2br(oi.word) + "</b>"
               + (isCorrect ? ' <span class="oe-tag">正确答案</span>' : "")
@@ -329,7 +352,7 @@
         };
 
         qq.options.forEach((o, i) => {
-          const b = UI.el(`<button class="opt" data-oi="${i}">${A(i)}. ${nl2br(o)}</button>`);
+          const b = UI.el(`<button class="opt" data-oi="${i}">${A(i)}. ${nl2br(optText(o))}</button>`);
           b.onclick = () => {
             if (card.dataset.done === "1") return;
             const now = Date.now();
@@ -356,8 +379,9 @@
               Quiz._answered = answeredCount();
               updateSubmitHint();
             } else {
-              // 背题：立即揭示
-              results[qi] = { ua: i, right: i === qq.a };
+              // 背题：立即揭示（必须先写 dataset.ua，revealCard 靠它重新解析作答，否则恒判"未作答/答错"）
+              card.dataset.ua = i;
+              results[qi] = { ua: i, right: i === answerIdx(qq) };
               Quiz._answered = answeredCount();
               revealCard(qi);
               maybeFinish();
@@ -382,6 +406,8 @@
         if (liveTimer) clearInterval(liveTimer);
         if (Quiz._timer) { try { clearInterval(Quiz._timer); } catch (e) {} Quiz._timer = null; }
         if (Quiz._handler) { try { document.removeEventListener("keydown", Quiz._handler); } catch (e) {} Quiz._handler = null; }
+        // 交卷：恢复此前隐藏的悬浮手写按钮
+        try { if (Quiz._restoreFabs) Quiz._restoreFabs(); } catch (e) {}
         // 训练结束：丢弃本次会话的题面手写笔迹（符合「结束训练/切模块不再保存笔迹」）
         try { UI.Handwriting.clearSession(); } catch (e) {}
         const correct = results.filter(r => r && r.right).length;

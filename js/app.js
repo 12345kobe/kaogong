@@ -96,6 +96,7 @@
     }
     lastKey = key;
   }
+  window.renderRoute = renderRoute;  // 供同路由强制重渲染（如 AI 出题后停留在 AI 页时刷新板块）
 
   /* ===== PDF 导入的题册：挂到对应模块的「自行刷题」入口 =====
      题册由 js/mod-pdfimport.js 解析并存入 DB.state.pdfBooks，通过 window.KGPdfBooks 读取。
