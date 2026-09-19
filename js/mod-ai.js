@@ -671,7 +671,7 @@
           <h3>💡 举一反三</h3>
           <div class="muted small">AI 将围绕你刚才咨询的【考点】出几道同考点选择题（含答案与解析）。只保证考点一致，背景材料由 AI 自行设计，不会照搬原题题干。出题过程不展示，完成后自动进入「${esc(modTitle)}AI出题」板块开始训练。</div>
           <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:10px" id="jyfsCnt">
-            ${[3, 4, 5, 6, 8, 10].map(n => `<button class="btn sm" data-n="${n}">${n} 题</button>`).join("")}
+            ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => `<button class="btn sm" data-n="${n}">${n} 题</button>`).join("")}
           </div>
           ${zhipuKey
             ? `<label class="row" style="margin-top:10px;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="jyfsImg" checked/> 🎨 用 CogView 为题目生成配套图片（需智谱密钥）</label>`
@@ -700,43 +700,70 @@
                 else if (zhipuKey) vision = { pid: "zhipu", model: "glm-4v-flash", key: zhipuKey };
               }
             }
-            // 输出上限低的模型（如智谱 GLM-4V-Flash 单次最多 1024 tokens）：限制题数 + 解析精简，防止 JSON 被截断报错
+            // 模型单次输出上限（如智谱 GLM-4V-Flash 只有 1024）：决定单次能出几题、是否要精简输出
             const effPid = vision ? vision.pid : getProviderId();
             const effMid = vision ? vision.model : getModel(effPid);
             const lowCap = (modelInfo(effPid, effMid).maxOut || 1024) <= 1024;
-            const n = lowCap ? Math.min(reqN, 4) : reqN;
-            if (n < reqN) UI.toast("当前模型单次输出上限 1024，已自动改为每次最多 " + n + " 题");
+            // 1~10 题全支持：单次装不下时自动分批生成后合并
+            const n = reqN;
+            const batchSize = lowCap ? 4 : 5;     // 单次请求能容纳的题量
+            const rounds = Math.max(1, Math.ceil(n / batchSize));
             const leanNote = lowCap ? "\n注意：输出务必精炼——题干、选项简明扼要，每题解析不超过50字。" : "";
             // 通用出题风格 / 配图指令
             const styleInstr = `\n4) 只要求「考查的考点相同」，不要照搬原题：题干的背景材料、情境、事例、数据一律由你自行设计（可以是不同场景、不同主体、不同数据）；严禁沿用原题的背景/例子/数字，也不要写出与原题题干雷同的句子。保持题型与难度一致即可，不必复刻原题的写法或背景引入。`;
             const imgInstr = `\n5) 每题可选择性给出 "imgPrompt"（字符串）：当该题适合配图（如涉及图形、图表、空间位置、地图、实物图示、逻辑关系图等）时填写，描述应为该题绘制的图片内容；不需要配图的题不要给该字段。`;
             const fmtNote = `；可选字段 "imgPrompt":"图片描述"`;
-            let prompt;
-            if (isQuestion && qCtx.q) {
-              const qq = qCtx.q;
-              const optsTxt = (qq.options || []).map((o, i) => A(i) + ". " + (o == null ? "" : o)).join("\n");
-              prompt = `你是公务员考试命题专家。请参照下面「${qCtx.subject}」原题所考查的【知识点】，再出 ${n} 道考点相同、难度相近的单项选择题（背景材料、情境、数据都由你自行设计，不必与原题相同）。\n要求：\n1) 每题必须包含题干、4个选项、正确答案、详细解析；\n2) 不与原题重复，围绕同一考点从不同角度命题；\n3) 只输出 JSON 数组，禁止输出 markdown 代码块标记或任何其他文字。格式：[{"q":"题干","options":["A内容","B内容","C内容","D内容"],"a":"B","e":"解析"}]${fmtNote}，其中 "a" 是正确选项字母。\n${styleInstr}${imgInstr}${hasOrigImg ? "\n6) 原题附有一张图片（已随消息提供），说明这类题需要看图才能作答。你出的题可以是需要看图理解的同类题，但图片内容由你自定，不要照抄原题图片；需要配图的题请给出 'imgPrompt'。" : ""}\n\n【原题】\n${qq.q || ""}\n${optsTxt ? "【原题选项】\n" + optsTxt + "\n" : ""}【原题解析】${qq.e || "略"}`;
-            } else {
-              // 自由提问：基于对话主题（或长按指定的那条消息）出题
-              const ctx = ov.ctxText || log.filter(m => m.role === "user").map(m => m.content || "").slice(-3).join("\n---\n");
-              const topic = (qCtx && qCtx.subject) ? qCtx.subject : (modTitle !== "综合" ? modTitle : "公务员考试相关知识点");
-              prompt = `你是公务员考试命题专家。根据下面用户咨询的内容，围绕其关心的「${topic}」知识点，出 ${n} 道考查该知识点、难度相近的单项选择题。\n要求：\n1) 每题必须包含题干、4个选项、正确答案、详细解析；\n2) 紧贴用户咨询的主题，从常见考点、易错点角度命题；\n3) 只输出 JSON 数组，禁止输出 markdown 代码块标记或任何其他文字。格式：[{"q":"题干","options":["A内容","B内容","C内容","D内容"],"a":"B","e":"解析"}]${fmtNote}，其中 "a" 是正确选项字母。\n${styleInstr}${imgInstr}\n\n【用户咨询内容】\n${ctx}`;
+            // 按当前批次题量构造 prompt（extra：已出题目的清单，避免重复）
+            function buildPrompt(cnt, extra) {
+              let p;
+              if (isQuestion && qCtx.q) {
+                const qq = qCtx.q;
+                const optsTxt = (qq.options || []).map((o, i) => A(i) + ". " + (o == null ? "" : o)).join("\n");
+                p = `你是公务员考试命题专家。请参照下面「${qCtx.subject}」原题所考查的【知识点】，再出 ${cnt} 道考点相同、难度相近的单项选择题（背景材料、情境、数据都由你自行设计，不必与原题相同）。\n要求：\n1) 每题必须包含题干、4个选项、正确答案、详细解析；\n2) 不与原题重复，围绕同一考点从不同角度命题；\n3) 只输出 JSON 数组，禁止输出 markdown 代码块标记或任何其他文字。格式：[{"q":"题干","options":["A内容","B内容","C内容","D内容"],"a":"B","e":"解析"}]${fmtNote}，其中 "a" 是正确选项字母。\n${styleInstr}${imgInstr}${hasOrigImg ? "\n6) 原题附有一张图片（已随消息提供），说明这类题需要看图才能作答。你出的题可以是需要看图理解的同类题，但图片内容由你自定，不要照抄原题图片；需要配图的题请给出 'imgPrompt'。" : ""}\n\n【原题】\n${qq.q || ""}\n${optsTxt ? "【原题选项】\n" + optsTxt + "\n" : ""}【原题解析】${qq.e || "略"}`;
+              } else {
+                // 自由提问：基于对话主题（或长按指定的那条消息）出题
+                const ctx = ov.ctxText || log.filter(m => m.role === "user").map(m => m.content || "").slice(-3).join("\n---\n");
+                const topic = (qCtx && qCtx.subject) ? qCtx.subject : (modTitle !== "综合" ? modTitle : "公务员考试相关知识点");
+                p = `你是公务员考试命题专家。根据下面用户咨询的内容，围绕其关心的「${topic}」知识点，出 ${cnt} 道考查该知识点、难度相近的单项选择题。\n要求：\n1) 每题必须包含题干、4个选项、正确答案、详细解析；\n2) 紧贴用户咨询的主题，从常见考点、易错点角度命题；\n3) 只输出 JSON 数组，禁止输出 markdown 代码块标记或任何其他文字。格式：[{"q":"题干","options":["A内容","B内容","C内容","D内容"],"a":"B","e":"解析"}]${fmtNote}，其中 "a" 是正确选项字母。\n${styleInstr}${imgInstr}\n\n【用户咨询内容】\n${ctx}`;
+              }
+              return p + leanNote + (extra || "");
             }
-            prompt += leanNote;
             try {
               const imgEnabled = zhipuKey && mask.querySelector("#jyfsImg") && mask.querySelector("#jyfsImg").checked;
-              let userContent;
-              if (vision && qCtx.q && qCtx.q.img) {
-                userContent = [{ type: "text", text: prompt }, { type: "image_url", image_url: { url: qCtx.q.img } }];
-              } else {
-                if (hasOrigImg && !vision) prompt += "\n（注：原题含图片，但当前无可用识图模型，请仅按题干文字出题。）";
-                userContent = prompt;
+              // 分批调用：低输出上限的模型靠多轮合并凑够题量（如 GLM-4V-Flash 每批 4 题）
+              const all = [];
+              for (let r = 0; r < rounds; r++) {
+                const cnt = Math.min(batchSize, n - all.length);
+                if (cnt <= 0) break;
+                if (rounds > 1) busy.textContent = `⏳ AI 正在出题…（第 ${r + 1}/${rounds} 批，共 ${n} 题）`;
+                const already = all.length
+                  ? "\n\n【本批已出过的题，严禁再出相同或高度相似的】\n" + all.map((q, i) => (i + 1) + ". " + String(q.q || "").slice(0, 60)).join("\n")
+                  : "";
+                let prompt = buildPrompt(cnt, already);
+                let userContent;
+                if (vision && qCtx.q && qCtx.q.img) {
+                  userContent = [{ type: "text", text: prompt }, { type: "image_url", image_url: { url: qCtx.q.img } }];
+                } else {
+                  if (hasOrigImg && !vision) prompt += "\n（注：原题含图片，但当前无可用识图模型，请仅按题干文字出题。）";
+                  userContent = prompt;
+                }
+                const reply = await chat(
+                  [{ role: "system", content: "你是公务员考试命题专家，只输出 JSON 数组，不输出任何其他文字。" },
+                   { role: "user", content: userContent }],
+                  vision ? { providerId: vision.pid, model: vision.model, key: vision.key, maxTok: 6000 } : { maxTok: 6000 });
+                const got = parseQuestions(reply) || [];
+                got.forEach(q => { if (q && q.q) all.push(q); });
+                if (all.length >= n) break;
               }
-              const reply = await chat(
-                [{ role: "system", content: "你是公务员考试命题专家，只输出 JSON 数组，不输出任何其他文字。" },
-                 { role: "user", content: userContent }],
-                vision ? { providerId: vision.pid, model: vision.model, key: vision.key, maxTok: 6000 } : { maxTok: 6000 });
-              const qs = parseQuestions(reply);
+              // 去重（题目可能跨批重复）后截取到目标题量
+              const seen = {}; const qs = [];
+              all.forEach(q => {
+                const k = String(q.q || "").replace(/\s+/g, "");
+                if (!k || seen[k]) return;
+                seen[k] = 1; qs.push(q);
+              });
+              qs.length = Math.min(qs.length, n);
+              if (!qs.length) throw new Error("AI 未返回可用的题目数据，请重试");
               // 用 CogView 为需要配图的题生成图片（best-effort，失败不阻断出题）
               let genNote = "";
               if (imgEnabled) {
