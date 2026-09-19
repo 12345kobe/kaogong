@@ -96,6 +96,19 @@
       });
     }
 
+    /* 交卷后「再来一组」：默认让 AI 再出一组新题并直接进入训练（不再刷新页面） */
+    function again(set) {
+      if (!(window.KGAI && KGAI.jyfsAuto)) { UI.toast("自动生成新题暂不可用，请到 AI 咨询页出题"); return; }
+      const ref = (set.questions && set.questions[0]) || null;
+      let ctx = "";
+      if (ref) {
+        ctx = "【参考题（同考点，出新题）】\n" + String(ref.q || "") + "\n"
+          + (ref.options || []).map((x, i) => "ABCD"[i] + ". " + x).join("\n")
+          + (ref.e ? "\n【解析】" + ref.e : "");
+      } else if (set.subject) ctx = "【科目】" + set.subject;
+      KGAI.jyfsAuto(set.n || 5, { modKey: key, subject: set.subject || "", ctxText: ctx, useImg: false });
+    }
+
     function start(setId) {
       const set = st.sets.find(s => s.id === setId) || st.sets[0];
       if (!set) return;
@@ -109,7 +122,8 @@
         document.body.appendChild(mask);
         mask.querySelector(".aiq-close").onclick = () => mask.remove();
         try {
-          window.Quiz.start(mask.querySelector(".aiq-modal-quiz"), set.questions.map(q => Object.assign({}, q)), set.subject || "综合AI出题", {});
+          window.Quiz.start(mask.querySelector(".aiq-modal-quiz"), set.questions.map(q => Object.assign({}, q)), set.subject || "综合AI出题",
+            { onAgain: () => { mask.remove(); again(set); } });
         } catch (e) { console.error(e); mask.remove(); UI.toast("训练启动失败：" + e.message); }
         return;
       }
@@ -119,7 +133,8 @@
       try {
         quizHost.scrollIntoView({ behavior: "smooth", block: "start" });
       } catch (e) {}
-      window.Quiz.start(c, set.questions.map(q => Object.assign({}, q)), set.subject || (m && m.title) || "AI出题", {});
+      window.Quiz.start(c, set.questions.map(q => Object.assign({}, q)), set.subject || (m && m.title) || "AI出题",
+        { onAgain: () => again(set) });
     }
 
     renderList();
