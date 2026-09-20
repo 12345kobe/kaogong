@@ -3,6 +3,14 @@
 window.CHANGELOG = {
   logs: [
     {
+      version: "20260920e",
+      date: "2026-09-20",
+      title: "修复出题报错 Can't find variable: parseQuestions",
+      items: [
+        { mod: "ai", text: "修复举一反三/再来一组出题时报「Can't find variable: parseQuestions」的问题：出题核心重构时题目解析函数留在了 AI 页内部，模块级核心函数取不到，已提升到模块级。生图功能本身无问题，可正常勾选使用" }
+      ]
+    },
+    {
       version: "20260920d",
       date: "2026-09-20",
       title: "AI出题「再来一组」自动生成新题",

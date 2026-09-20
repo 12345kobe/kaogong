@@ -290,6 +290,12 @@
   /* ===== 举一反三 · 出题核心（模块级：AI 页按钮与「下一组自动生成新题」共用） =====
      o = { n, ctxText, modKey, subject, useImg, onProgress }
      返回 { qs, boardKey, modTitle, subject, genNote } */
+  function parseQuestions(txt) {
+    let t = String(txt || "").replace(/```[a-z]*```?/g, "```").replace(/```/g, "\n").trim();
+    const s = t.indexOf("["), e = t.lastIndexOf("]");
+    if (s < 0 || e <= s) throw new Error("AI 未返回题目数据");
+    return JSON.parse(t.slice(s, e + 1));
+  }
   async function jyfsCore(o) {
     o = o || {};
     const n = Math.max(1, Math.min(10, parseInt(o.n, 10) || 5));
@@ -793,12 +799,6 @@
         const hasReply = log.some(m => m.role === "assistant");
         const mk = detectModKey();
         row.style.display = (hasReply && mk !== "essay") ? "" : "none";
-      }
-      function parseQuestions(txt) {
-        let t = String(txt || "").replace(/```[a-z]*```?/g, "```").replace(/```/g, "\n").trim();
-        const s = t.indexOf("["), e = t.lastIndexOf("]");
-        if (s < 0 || e <= s) throw new Error("AI 未返回题目数据");
-        return JSON.parse(t.slice(s, e + 1));
       }
       function openJyfs(ov) {
         ov = ov || {};
