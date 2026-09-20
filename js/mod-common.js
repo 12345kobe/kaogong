@@ -663,16 +663,13 @@
               <h3>📖 常识口诀 · 学习</h3>
               <div class="muted small">已学 ${learnedN} / ${entries.length} 条${due.length ? " · 到期待复习 " + due.length + " 条" : ""}${vStart >= 0 ? " · 上次浏览到第 " + (vStart + 1) + " 条" : ""}</div>
               <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:12px">
-                ${showResume ? `<button class="btn primary" id="kjGoResume">⏯ 继续上次浏览（第 ${vStart + 1} 条）</button>` : ""}
-                ${pos < entries.length ? `<button class="btn ${showResume ? "" : "primary"}" id="kjGoLearn">📖 学习（从第 ${pos + 1} 条继续）</button>` : ""}
+                ${pos < entries.length ? `<button class="btn primary" id="kjGoLearn">📖 学习（从第 ${pos + 1} 条继续）</button>` : ""}
                 ${due.length ? `<button class="btn" id="kjGoReview">🔁 复习（${due.length} 条到期）</button>` : ""}
                 <button class="btn ghost" id="kjCancel">取消</button>
               </div>
             </div></div>`);
             document.body.appendChild(mask);
             const go = (fn) => { mask.remove(); fn(); };
-            const gr2 = mask.querySelector("#kjGoResume");
-            if (gr2) gr2.onclick = () => go(() => { if (v.type === "review") learnPage(0, "review", due); else learnPage(vStart, "learn"); });
             const gl = mask.querySelector("#kjGoLearn");
             if (gl) gl.onclick = () => go(() => learnPage(pos, "learn"));
             const gr = mask.querySelector("#kjGoReview");
@@ -698,21 +695,6 @@
           }
           kjCard.querySelector("#kjBrowse").onclick = () => {
             const ci = parseInt(kjCard.querySelector("#kjCh").value, 10);
-            const v = (DB.state.common && DB.state.common.kjView) || null;
-            const cn = (KJ.chapters[ci] && KJ.chapters[ci].name) || "";
-            if (v && v.type === "browse" && typeof v.chapter === "number" && (Date.now() - (v.ts || 0) < 7 * 864e5) && v.chapter !== ci) {
-              const pc = (KJ.chapters[v.chapter] && KJ.chapters[v.chapter].name) || ("第" + (v.chapter + 1) + "章");
-              UI.modal({
-                title: "📑 继续上次浏览？",
-                body: `<p class="muted small" style="line-height:1.8">上次通览到「<b>${UI.esc(pc)}</b>」，是否从该章继续？<br>当前下拉选择的是「<b>${UI.esc(cn)}</b>」。</p>`,
-                width: "440px",
-                actions: [
-                  { label: "从「" + (pc.length > 8 ? pc.slice(0, 8) + "…" : pc) + "」继续", cls: "primary", onClick: (m, c) => { c(); openBrowse(v.chapter); } },
-                  { label: "按当前章节", cls: "ghost", onClick: (m, c) => { c(); openBrowse(ci); } }
-                ]
-              });
-              return;
-            }
             openBrowse(ci);
           };
 
@@ -730,6 +712,43 @@
             if (!qs.length) { UI.toast("本章暂无实战题"); return; }
             renderQuiz(kjCard, qs, SUBJECT, {});
           };
+
+          /* ===== 进入常识口诀板块：主动询问是否从上次浏览处继续 ===== */
+          try {
+            const kv = (DB.state.common && DB.state.common.kjView) || null;
+            const freshKv = kv && kv.ts && (Date.now() - kv.ts < 7 * 864e5);
+            if (!freshKv) { /* 7 天内无浏览记录，不弹 */ }
+            else {
+              const isLearn = (kv.type === "learn" || kv.type === "review");
+              const isBrowse = (kv.type === "browse");
+              // 同一会话内、同一位置只提示一次；位置变了再提示；杀后台重开（新会话）会再提示
+              const sig = "kjResume_" + (isLearn ? ("L" + (kv.start || 0)) : ("B" + (kv.chapter)));
+              let shown = false;
+              try { shown = sessionStorage.getItem(sig) === "1"; } catch (e) {}
+              if (!shown) {
+                try { sessionStorage.setItem(sig, "1"); } catch (e) {}
+                const chName = (isBrowse && KJ.chapters[kv.chapter]) ? KJ.chapters[kv.chapter].name : "";
+                const desc = isLearn ? `上次浏览到「第 ${(kv.start || 0) + 1} 条」`
+                  : (isBrowse ? `上次通览到「${chName}」` : "");
+                const acts = [];
+                if (isLearn) acts.push({
+                  label: "📖 回到上次浏览处（第 " + ((kv.start || 0) + 1) + " 条）", cls: "primary",
+                  onClick: (m, c) => { c(); if (kv.type === "review") { learnPage(0, "review", dueList()); } else { learnPage(kv.start || 0, "learn"); } }
+                });
+                if (isBrowse) acts.push({
+                  label: "📑 回到上次通览（" + (chName.length > 10 ? chName.slice(0, 10) + "…" : chName) + "）", cls: "primary",
+                  onClick: (m, c) => { c(); openBrowse(kv.chapter); }
+                });
+                acts.push({ label: "不用了", cls: "ghost", onClick: (m, c) => c() });
+                UI.modal({
+                  title: "🧿 常识口诀88条 · 继续上次浏览？",
+                  body: `<p class="muted small" style="line-height:1.8">检测到你 ${desc}，是否跳转到上次的位置继续？</p>`,
+                  width: "460px",
+                  actions: acts
+                });
+              }
+            }
+          } catch (e) {}
         }
       } catch (e) { console.error("口诀88条板块出错", e); }
       try { body.appendChild(UI.notebook(SUBJECT, "common_main", body)); } catch (e) {}
