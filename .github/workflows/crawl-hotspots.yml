@@ -11,6 +11,11 @@ on:
 permissions:
   contents: write
 
+# 串行化：多个触发（定时+手动连点）排队执行，避免并发 git push 互相拒绝（fetch first）
+concurrency:
+  group: crawl-hotspots
+  cancel-in-progress: false
+
 jobs:
   crawl:
     runs-on: ubuntu-latest
@@ -38,6 +43,8 @@ jobs:
           if git diff --cached --quiet; then
             echo "无变化，跳过提交"
           else
-            git commit -m "chore: 时事热点自动抓取 $(date +'%Y-%m-%d %H:%M')"
-            git push
+            # [railway skip]：纯数据提交无需重新部署后端，避免 Railway 反复构建/失败通知
+            git commit -m "chore: 时事热点自动抓取 $(date +'%Y-%m-%d %H:%M') [railway skip]"
+            git pull --rebase origin main
+            git push || { sleep 3; git pull --rebase origin main && git push; }
           fi

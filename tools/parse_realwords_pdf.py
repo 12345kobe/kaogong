@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 """解析《言语必背实词成语(2).pdf》：
-   - 前半「言语热点实词(实词30 个)」：每条实词有 ① ② ③ 释义 + 辨析 + 搭配；
-     词条名只在引号内提及，需推断（优先取紧跟『多与/有/为/侧重』等连词的引号词）。
-   - 后半「易混成语30 组」：以「(近五年考频N 次)(近五年考频N 次)」成对标记分隔；
-     成语定义用「成语名：」格式（非【】括号）；真题示例以「(年份 地名)」开头，
-     选项 A-D，解析标记【粉笔解析】，答案藏在「故正确答案为X」。
-   输出 assets/data/verbal-realwords.js，结构：
-     window.VERBAL_WORDS = { updatedAt, entries: [ {id,num,name,type,paras:[],exams:[{q,options,a,analysis}]} ] }
+   - 前半「言语热点实词」：每条实词 ① ② ③ 释义 + 辨析 + 搭配（PDF 该区无真题）。
+   - 后半「易混成语30 组」：以「(近五年考频N 次)」成对标记分隔；
+     真题以「故正确答案为X。」结尾——这是最可靠的分题边界；
+     「依次填入画横线部分最恰当的一项是：」只是题干的提问句，绝不是新题起点！
+   - 空格线在文本层是内联图片/缺口：按行坐标重建文本行，横向间隙 ≥12px 处补「______」。
+   - D 选项后的裸词行 = 双空/三空题的额外选项列，按列归位到 A-D 选项。
+   输出 assets/data/verbal-realwords.js：
+     window.VERBAL_WORDS = { updatedAt, entries: [ {id,num,name,type,paras,exams:[{q,options,a,analysis}]} ] }
 """
 import os, re, sys, datetime, json, collections
 
@@ -18,26 +19,24 @@ except ImportError:
 THREE_RE = re.compile(r"^（?[一二三四五六七八九十]+[)）]\s*①")
 FIRST_ONE_RE = re.compile(r"^①")
 DEF_LINE_RE = re.compile(r"^[\u4e00-\u9fff]{1,12}[：:]\s*\S")
-# 语法标注行（非新词定义，不应触发新条）：地形容/中性词/贬义词等
 GRAM_RE = re.compile(r"^(地|副|名|动|形|连|介|代)词?[:：]?$|^[\u4e00-\u9fff]{1,3}形容[:：]|中性词|贬义词|褒义词|褒义|贬义|近义|反义")
-# 实词名候选：紧跟连词的引号词（最可靠）
 WORD_HEAD_RE = re.compile(r"[“\“]([\u4e00-\u9fff]{2,4})[”\”](?:多与|有|为|侧重于|侧重|一般|通常|常|指|多|往往|主要)")
 QUOTE_RE = re.compile(r"[“\“]([\u4e00-\u9fff]{2,4})[”\”]")
-# 答案：正确答案为X / 答案为X / 本题选X / 正确答案X
 ANS_RE = re.compile(
     r"正确答案为?\s*([A-Ha-h])|答案为?\s*([A-Ha-h])|本题?选?\s*([A-Ha-h])|正确答案?[:：]?\s*([A-Ha-h])|答案选?\s*([A-Ha-h])"
 )
-# 成语组分隔标记（两种写法：数字5 或 中文五）
+# 答案行（锚定行首，防止解析中段的「所以答案选择B」误触发）：
+ANSWER_LINE_RE = re.compile(r"^(?:故)?正确答案为?[A-Ha-h]|^本题选[A-Ha-h]|^答案为?[A-Ha-h]|^故答案?为?[A-Ha-h]")
+# 成语组分隔标记
 GROUP_MARK_RE = re.compile(r"\(近\s*[五5]\s*年考频[^)]*\)")
-# 真题起始： (年份 地名) / 编号+年份 / 或直接「填入/依次填入…最恰当的一项是：」
-EXAM_START_RE = re.compile(
-    r"(?m)^\s*\(\d{4}\s|^\s*\d{1,3}[\.．、]\s*\(\d{4}|填入画横线部分最恰当的一项是：|"
-    r"依次填入画横线部分最恰当的一项是：|依次填入划线部分最恰当的一项是：|"
-    r"填入划横线部分最恰当的一项是："
-)
-# 成语名（括号格式）排除词
+# 真题头部「1. (2016 黑龙江)」/「(2016 xx)」/「(粉笔模考)」——有的题没有，仅作辅助
+EXAM_HEAD_RE = re.compile(r"(?m)^(?:\s*\d{1,3}[\.．、]\s*[\(（]\s*(?:\d{4}|\u7c89\u7b14)|\s*[\(（]\s*(?:\d{4}|\u7c89\u7b14))")
+# 题干起始特征：含空格线 / 题头 / 提问句
+STEM_HINT_RE = re.compile(r"_{2,}|\(近|\uff3f")
+QUESTION_HINT = "最恰当的一项"
+OPT_RE = re.compile(r"^([A-Ha-h])[\.．、]\s*(.*)$")
+BARE_WORD_RE = re.compile(r"^[\u4e00-\u9fff]{2,8}$")
 BRACKET_STOP = {"解析", "答案", "例题", "拓展", "辨析", "误用", "例", "注", "粉笔解析"}
-# 成语名（冒号格式）排除词
 IDIOM_STOP = {"区别", "差异", "表达", "意思", "例如", "注意", "辨析", "用法",
               "相同", "不同", "联系", "综上", "二者", "两者", "相似", "提醒",
               "常见", "易混", "词义", "语义", "侧重", "比较", "搭配", "色彩",
@@ -45,19 +44,57 @@ IDIOM_STOP = {"区别", "差异", "表达", "意思", "例如", "注意", "辨�
               "区别在于", "表达意思", "程度轻重", "近义", "反义"}
 
 
-def extract_text(path):
+def reconstruct_pages(path):
+    """按行坐标重建每页文本：同一 y（±3px）的碎片按 x 排序拼接，
+       横向间隙 ≥12px 处视为挖空，补「______」。"""
     doc = fitz.open(path)
-    out = [doc[i].get_text() for i in range(doc.page_count)]
+    out = []
+    for pno in range(doc.page_count):
+        d = doc[pno].get_text("dict")
+        frags = []  # (y, x0, x1, text)
+        for b in d["blocks"]:
+            if b.get("type") != 0:
+                continue
+            for l in b["lines"]:
+                txt = "".join(s["text"] for s in l["spans"])
+                if txt.strip():
+                    frags.append((l["bbox"][1], l["bbox"][0], l["bbox"][2], txt))
+        # y 分组
+        rows = []
+        for y, x0, x1, t in sorted(frags, key=lambda f: (f[0], f[1])):
+            placed = False
+            for row in rows:
+                if abs(row[0] - y) <= 3:
+                    row[1].append((x0, x1, t)); placed = True; break
+            if not placed:
+                rows.append([y, [(x0, x1, t)]])
+        rows.sort(key=lambda r: r[0])
+        for y, cells in rows:
+            cells.sort()
+            line = ""
+            prev_x1 = None
+            for x0, x1, t in cells:
+                if prev_x1 is not None:
+                    gap = x0 - prev_x1
+                    if gap >= 12:
+                        line += "______"
+                    elif gap > 0:
+                        line += " "
+                line += t.strip()
+                prev_x1 = x1
+            out.append(line)
     doc.close()
     return "\n".join(out)
 
 
 def clean(t):
-    return re.sub(r"\s+", " ", t).strip()
+    t = re.sub(r"\s+", " ", t).strip()
+    # 去掉 CJK 字符间残留的 PDF 换行空格
+    t = re.sub(r'(?<=[\u4e00-\u9fff，。；：、“”‘’（）《》—…～·])\s+(?=[\u4e00-\u9fff，。；：、“”‘’（）《》—…～·])', "", t)
+    return t.strip()
 
 
 def infer_word(block):
-    """实词名推断：优先取紧跟连词的引号词；否则取出现最多的引号词。"""
     head = WORD_HEAD_RE.search(block)
     if head:
         return head.group(1)
@@ -70,7 +107,6 @@ def infer_word(block):
 
 
 def split_realwords(text):
-    """切分为实词条块：新词条始于 ① / 三① / 独立定义行（新词），跳过标题行。"""
     lines = text.split("\n")
     blocks = []
     cur = []
@@ -100,19 +136,120 @@ def split_realwords(text):
 
 
 def parse_realword_block(block):
-    lines = [clean(l) for l in block.split("\n") if l.strip()]
+    lines = [clean(l) for l in block.split("\n") if clean(l)]
     word = infer_word(block)
     if not word and ("国画的一种画法" in block or "对所写对象作突出的描写" in block):
         word = "渲染"
     return {"name": word, "type": "word", "paras": lines, "exams": []}
 
 
+def is_stem_line(s):
+    """题干特征行：含空格线 / 真题头 / 提问句"""
+    return bool(re.search(r"_{2,}", s)) or bool(EXAM_HEAD_RE.search(s)) or (QUESTION_HINT in s)
+
+
+def parse_exams(lines):
+    """行数组 → 真题列表。
+       分题边界：答案行（行首『故正确答案为X』等）之后的下一条内容行 = 下一题题干起点。
+       题干 = 起点行到首个选项 A. 之间的全部行（含「依次填入…最恰当的一项是：」）。
+       D 选项后的裸词行 = 额外空的选项列（按每列=选项数分块，列序追加到各选项）。"""
+    exams = []
+    cur = None
+    pending = []
+    saw_answer = False
+    in_analysis = False
+    bare = []             # D 之后收到的裸词（额外空列）
+
+    def flush():
+        nonlocal cur, bare
+        if cur is None:
+            bare = []
+            return
+        q = clean("\n".join(cur["q"]))
+        options = list(cur["options"])
+        analysis = clean("\n".join(cur["analysis"]))
+        # 裸词列归位：列序块（每块=选项数）逐列追加
+        if bare and len(options) >= 2 and len(bare) % len(options) == 0:
+            k = len(bare) // len(options)
+            for i in range(len(options)):
+                extra = "／".join(bare[c * len(options) + i] for c in range(k))
+                options[i] = (options[i] + "／" + extra) if extra else options[i]
+        ans_m = ANS_RE.search(analysis) or ANS_RE.search(q)
+        a = -1
+        if ans_m:
+            letter = (ans_m.group(1) or ans_m.group(2) or ans_m.group(3)
+                      or ans_m.group(4) or ans_m.group(5) or "").upper()
+            if letter:
+                a = ord(letter) - ord("A")
+        # 质量门：题干完整（≥25 字，且含空格线或提问句）、选项齐全、答案合法
+        if (q and len(q) >= 25 and len(options) >= 2 and a >= 0
+                and (re.search(r"_{2,}", q) or QUESTION_HINT in q)
+                and all(o.strip() for o in options)):
+            exams.append({"q": q, "options": options, "a": a, "analysis": analysis})
+        cur = None
+        bare = []
+
+    for ln in lines:
+        s = ln.strip()
+        if not s:
+            continue
+        if ANSWER_LINE_RE.match(s):
+            saw_answer = True
+            in_analysis = False
+            if cur is not None:
+                cur["analysis"].append(s)
+            continue
+        is_opt = bool(OPT_RE.match(s))
+        has_jiexi = "【解析】" in s or "【粉笔解析】" in s
+        if is_opt:
+            if cur is None:
+                cur = {"q": list(pending), "options": [], "analysis": []}
+                pending = []
+                in_analysis = False
+            m = OPT_RE.match(s)
+            txt = clean(m.group(2))
+            if txt:  # 选项与解析同行的残留防护
+                cur["options"].append(txt)
+        elif has_jiexi:
+            saw_answer = False
+            in_analysis = True
+            if cur is not None:
+                cur["analysis"].append(s)
+        else:
+            if saw_answer:
+                # 上一题已以答案行收尾 → 本行是下一题题干起点
+                flush()
+                cur = None
+                pending = [s]
+                saw_answer = False
+                in_analysis = False
+            elif in_analysis and cur is not None:
+                cur["analysis"].append(s)
+            elif cur is not None and cur["options"] and BARE_WORD_RE.match(s):
+                bare.append(s)   # 额外空的选项列
+            elif cur is None or not cur["options"]:
+                pending.append(s)
+            # 其余（cur 活跃且已有选项的杂行）丢弃
+    flush()
+    return exams
+
+
 def parse_idiom_group(gtext):
-    # 理论部分（首个真题之前）= 成语定义 + 辨析
-    em = EXAM_START_RE.search(gtext)
-    theory = gtext[:em.start()] if em else gtext
-    exam_text = gtext[em.start():] if em else ""
-    # 提取成语名：①【成语名】括号格式 ② 名：冒号格式（遇到辨析关键词停）
+    lines = [l.strip() for l in gtext.split("\n") if l.strip()]
+    # 理论区（成语定义+辨析）= 第一条题干特征行之前的所有行。
+    # 但题干开头几行可能没有空格线/题头特征（文本层截断），
+    # 故从特征行向前回溯：上一行不是以句末标点结尾且像散文续行 → 并入题干。
+    li = next((i for i, l in enumerate(lines) if is_stem_line(l)), None)
+    if li is not None:
+        while li > 0:
+            prev = lines[li - 1]
+            if len(prev) >= 8 and not re.search(r"[。！？；：”)]\s*$", prev) and not prev.startswith("【"):
+                li -= 1
+            else:
+                break
+    theory_lines = lines if li is None else lines[:li]
+    exam_lines = [] if li is None else lines[li:]
+    # 成语名：①【成语名】 ② 名：冒号格式（遇辨析关键词停）
     names = []
     seen = set()
 
@@ -121,103 +258,44 @@ def parse_idiom_group(gtext):
             return True
         return any(w.startswith(sw) for sw in IDIOM_STOP)
 
-    for line in theory.split("\n"):
-        ls = line.strip()
-        for b in re.findall(r"【([\u4e00-\u9fff]{2,6})】", ls):
+    for line in theory_lines:
+        for b in re.findall(r"【([\u4e00-\u9fff]{2,6})】", line):
             if b not in BRACKET_STOP and b not in seen:
                 names.append(b); seen.add(b)
-    if not names:  # 无括号时退回冒号格式，遇到辨析标题即停
-        for line in theory.split("\n"):
-            ls = line.strip()
-            m = re.match(r"^([\u4e00-\u9fff]{2,6})[:：]", ls)
+    if not names:
+        for line in theory_lines:
+            m = re.match(r"^([\u4e00-\u9fff]{2,6})[:：]", line)
             if m:
                 if is_stop(m.group(1)):
                     break
                 if m.group(1) not in seen:
                     names.append(m.group(1)); seen.add(m.group(1))
-    paras = [clean(l) for l in theory.split("\n") if clean(l)]
-    exams = parse_exams(exam_text)
+    paras = [clean(l) for l in theory_lines if clean(l)]
+    exams = parse_exams(exam_lines)
     name = " vs ".join(dict.fromkeys(names)) if names else "成语组"
     return {"name": name, "type": "idiom", "paras": paras, "exams": exams}
 
 
-def parse_exams(exam_text):
-    """逐行解析：每道题以 A. 选项行开始（新题须在前一题已出现答案之后）；
-       题干=前一题答案后到本题 A. 之间的文本；选项取带字母行；解析从【解析】起。"""
-    if not exam_text.strip():
-        return []
-    lines = exam_text.split("\n")
-    exams = []
-    cur = None
-    pending = []          # 题干缓冲（上一题答案后到本题 A. 之间）
-    saw_answer = False
-    in_analysis = False
-
-    def flush():
-        nonlocal cur
-        if cur is None:
-            return
-        q = clean("\n".join(cur["q"]))
-        options = cur["options"]
-        analysis = clean("\n".join(cur["analysis"]))
-        ans_m = ANS_RE.search(analysis) or ANS_RE.search(q)
-        a = -1
-        if ans_m:
-            letter = (ans_m.group(1) or ans_m.group(2) or ans_m.group(3)
-                      or ans_m.group(4) or ans_m.group(5) or "").upper()
-            if letter:
-                a = ord(letter) - ord("A")
-        if q and len(options) >= 2 and a >= 0:
-            exams.append({"q": q, "options": options, "a": a, "analysis": analysis})
-        cur = None
-
-    for ln in lines:
-        s = ln.strip()
-        is_start = bool(EXAM_START_RE.search(s))
-        if is_start:
-            # 新题起点（含上一题答案后的下一题题干）：强制分隔
-            flush()
-            cur = None
-            pending = [s]
-            saw_answer = False
-            in_analysis = False
-            continue
-        is_opt = bool(re.match(r"^[A-Ha-h][\.．、]", s))
-        is_answer = "正确答案为" in s or "答案选" in s or "答案为" in s
-        has_jiexi = "【解析】" in s or "【粉笔解析】" in s
-        if is_opt:
-            if cur is None or saw_answer:
-                flush()
-                cur = {"q": list(pending), "options": [], "analysis": []}
-                pending = []
-                saw_answer = False
-                in_analysis = False
-            m = re.match(r"^([A-Ha-h])[\.．、]\s*(.*)$", s)
-            cur["options"].append(clean(m.group(2)))
-        elif is_answer or has_jiexi:
-            saw_answer = True
-            in_analysis = True
-            if cur is not None:
-                if has_jiexi or is_answer:
-                    cur["analysis"].append(s)
-        else:
-            if in_analysis and cur is not None:
-                cur["analysis"].append(s)
-            elif cur is None or saw_answer:
-                pending.append(s)
-            else:
-                # 本题 A. 之前（题干）或 D. 之后的裸词行（双空题第二组，丢弃）
-                if not cur["options"]:
-                    pending.append(s)
-    flush()
-    return exams
+def dedupe_exams(entries):
+    """PDF 同一道题可能重复印刷（合并版/带空格版），按题干归一化去重。"""
+    seen = set()
+    for e in entries:
+        kept = []
+        for ex in e["exams"]:
+            key = re.sub(r"[\s_]+", "", ex["q"])[:40]
+            if key in seen:
+                continue
+            seen.add(key)
+            kept.append(ex)
+        e["exams"] = kept
+    return entries
 
 
 def main():
     if len(sys.argv) < 2:
         print("用法: parse_realwords_pdf.py <pdf> [out_js]"); sys.exit(1)
     p = sys.argv[1]
-    text = extract_text(p)
+    text = reconstruct_pages(p)
     mi = text.find("易混成语")
     word_part = text[:mi] if mi >= 0 else text
     idiom_part = text[mi:] if mi >= 0 else ""
@@ -234,7 +312,6 @@ def main():
         e["num"] = num
         entries.append(e)
 
-    # 按单个标记切分，标记成对相邻；偶数片段（>=2）为各组正文，奇数片段为成对间隔
     frags = GROUP_MARK_RE.split(idiom_part)
     raw_groups = [frags[i].strip() for i in range(0, len(frags), 2)
                   if len(frags[i].strip()) > 20]
@@ -249,6 +326,8 @@ def main():
         e["num"] = num
         entries.append(e)
 
+    entries = dedupe_exams(entries)
+
     data = {"updatedAt": datetime.date.today().isoformat(), "entries": entries}
     js = "window.VERBAL_WORDS = " + json.dumps(data, ensure_ascii=False, indent=1) + ";\n"
     out = sys.argv[2] if len(sys.argv) > 2 else "assets/data/verbal-realwords.js"
@@ -257,11 +336,11 @@ def main():
     n_idiom = sum(1 for e in entries if e["type"] == "idiom")
     n_exam = sum(len(e["exams"]) for e in entries)
     print("实词条目 %d，成语组 %d，真题示例 %d，总条目 %d" % (n_word, n_idiom, n_exam, len(entries)))
-    print("实词名:", [e["name"] for e in entries if e["type"] == "word"])
     if any(e["type"] == "idiom" for e in entries):
         sample = next(e for e in entries if e["type"] == "idiom")
         print("成语样本:", sample["name"], "| 题数", len(sample["exams"]))
-        print("  首题:", sample["exams"][0])
+        print("  首题干:", sample["exams"][0]["q"][:80])
+        print("  首题选项:", sample["exams"][0]["options"], "答案:", sample["exams"][0]["a"])
 
 
 if __name__ == "__main__":
