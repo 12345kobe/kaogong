@@ -148,6 +148,195 @@
       const DB = window.DB, UI = window.UI;
       UI.StudyPanel("verbal", body);
 
+      /* ================= 必备实词积累（每日10条 · 实词 + 成语 · 真题附后 + 选量刷真题） =================
+         数据：window.VERBAL_WORDS = { updatedAt, entries:[{id,num,name,type,paras,exams}] }
+         - 每天按日期轮换展示 10 条（实词+成语混合），分级标题 + 分行 + 按语义断句；
+         - 含真题示例的条目把真题附在后面（可展开看答案/解析），与「必会对应关系」一致；
+         - 另设「刷真题」卡片：从全部真题中选题量练习，记录进度（已刷 X / 总 Y），可查看已刷过。 */
+      const RW = (window.VERBAL_WORDS && window.VERBAL_WORDS.entries) || [];
+      const RWDailyKey = "verbal_realwords_daily";
+      const RWPracticeKey = "verbal_realwords_practice";
+      const RW_PER_DAY = 10;
+      const LH = window.LearnedHistory;
+
+      // 所有真题（带稳定 id = rw_<条目下标>_<真题下标>），用于刷题
+      const RW_EXAMS = [];
+      RW.forEach((e, ei) => (e.exams || []).forEach((ex, xi) => {
+        RW_EXAMS.push({ id: "rw_" + ei + "_" + xi, q: ex.q, options: ex.options, a: ex.a, e: ex.analysis || "", entryName: e.name, type: e.type });
+      }));
+      const RW_TOTAL_EXAMS = RW_EXAMS.length;
+
+      function rwEsc(s) { return UI.esc(s); }
+
+      // 分级标题 + 分行 + 语义断句
+      const RW_SUBHEAD = /^(辨析|区别|差异|注意|用法|搭配|色彩|语境|感情|近义|反义|程度|例如|知识积累|真题示例|二者|两者|相似|常见|易混|词义|语义|侧重|比较|表达|意思|联系|综上|以下|适用|范围)/;
+      const RW_DEF = /^[（(]?[一二三四五六七八九十]+[)）]/;
+      function rwRenderParas(paras) {
+        let html = "";
+        (paras || []).forEach(p => {
+          const pt = (p || "").trim();
+          if (!pt) return;
+          if (/^[①②③④⑤⑥⑦⑧⑨⑩]/.test(pt) || RW_DEF.test(pt)) {
+            html += `<div class="rw-def"><b>${rwEsc(pt)}</b></div>`;
+          } else if (RW_SUBHEAD.test(pt)) {
+            html += `<div class="rw-sub">${rwEsc(pt)}</div>`;
+          } else {
+            html += `<p class="rw-p">${rwEsc(pt)}</p>`;
+          }
+        });
+        return html;
+      }
+      function rwRenderExam(ex, idx) {
+        const ans = ex.a >= 0 ? String.fromCharCode(65 + ex.a) : "—";
+        const opts = (ex.options || []).map((o, oi) => `<div class="rw-opt${ex.a === oi ? " rw-opt-ans" : ""}">${String.fromCharCode(65 + oi)}. ${rwEsc(o)}</div>`).join("");
+        return `<div class="rw-exam">
+          <div class="rw-exam-q"><b>真题 ${idx + 1}.</b> ${rwEsc(ex.q)}</div>
+          <div class="rw-opts">${opts}</div>
+          <details class="rw-ana"><summary>看答案 / 解析</summary>
+            <div class="rw-ans">正确答案：<b>${ans}</b></div>
+            <div class="rw-ana-body">${rwEsc(ex.analysis || "")}</div>
+          </details>
+        </div>`;
+      }
+
+      function rwViewEntries(dayOffset) {
+        const len = RW.length;
+        if (!len) return [];
+        const dayIndex = Math.floor(Date.now() / 86400000) + (dayOffset || 0);
+        const start = ((dayIndex * RW_PER_DAY) % len + len) % len;
+        const out = [];
+        for (let k = 0; k < RW_PER_DAY; k++) out.push({ gi: (start + k) % len, e: RW[(start + k) % len] });
+        return out;
+      }
+
+      const rwCard = UI.el(`<div class="card" style="margin-top:16px">
+        <h3>📒 必备实词积累（每日 10 条 · 实词 + 成语）</h3>
+        <div class="muted small">每天按日期轮换展示 <b>10 条</b>（实词与易混成语混合），分级标题 + 分行 + 按语义断句；含真题示例的条目把真题附在后面（可展开看答案/解析），与「必会对应关系」一致。可标记「今日已学」，也可选量刷全部真题并记录进度。</div>
+        <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap;align-items:center">
+          <button class="btn primary" id="rwPrev">‹ 前一天</button>
+          <button class="btn" id="rwToday">回到今天</button>
+          <button class="btn ghost" id="rwNext">后一天 ›</button>
+          <span class="muted small" id="rwNav"></span>
+        </div>
+        <div id="rwList" style="margin-top:12px"></div>
+      </div>`);
+      body.appendChild(rwCard);
+
+      let rwOffset = 0;
+      function rwRender() {
+        const view = rwViewEntries(rwOffset);
+        const isToday = rwOffset === 0;
+        const list = rwCard.querySelector("#rwList");
+        if (!view.length) { list.innerHTML = `<div class="card empty">暂无实词/成语数据。</div>`; return; }
+        const learnedThisView = view.filter(v => LH.isLearned(RWDailyKey, "rw_d_" + v.gi)).length;
+        list.innerHTML = view.map(v => {
+          const e = v.e;
+          const isIdiom = e.type === "idiom";
+          const learned = LH.isLearned(RWDailyKey, "rw_d_" + v.gi);
+          const examsHtml = (e.exams && e.exams.length)
+            ? `<div class="rw-sub">真题示例</div>` + e.exams.map((ex, xi) => rwRenderExam(ex, xi)).join("")
+            : "";
+          return `<div class="rw-card">
+            <div class="rw-top">
+              <span class="muted small">第 ${v.gi + 1} / ${RW.length} 条</span>
+              <span class="rw-type ${isIdiom ? "idiom" : ""}">${isIdiom ? "成语" : "实词"}</span>
+              <h4 class="rw-name">${rwEsc(e.name || "未命名")}</h4>
+              ${learned ? '<span class="rw-today-tag">已学</span>' : ""}
+            </div>
+            <div>${rwRenderParas(e.paras)}</div>
+            ${examsHtml}
+          </div>`;
+        }).join("");
+        rwCard.querySelector("#rwNav").innerHTML = (isToday ? "📅 今日" : "浏览") +
+          ` · 本页已学 ${learnedThisView}/${view.length}`;
+      }
+      rwCard.querySelector("#rwPrev").onclick = () => { rwOffset--; rwRender(); body.scrollIntoView({ behavior: "smooth", block: "start" }); };
+      rwCard.querySelector("#rwToday").onclick = () => { rwOffset = 0; rwRender(); };
+      rwCard.querySelector("#rwNext").onclick = () => { rwOffset++; rwRender(); };
+
+      // 标「今日已学」：把当前页 10 条记入 LearnedHistory
+      const rwMark = UI.el(`<div class="row" style="margin-top:10px;gap:8px;align-items:center">
+        <button class="btn" id="rwMark">✓ 标记本页已学</button>
+        <button class="btn ghost" id="rwLearnedDaily">📅 查看已学</button>
+      </div>`);
+      rwCard.appendChild(rwMark);
+      rwMark.querySelector("#rwMark").onclick = () => {
+        const view = rwViewEntries(rwOffset);
+        LH.record(RWDailyKey, view.map(v => "rw_d_" + v.gi));
+        UI.toast("已标记本页 " + view.length + " 条为已学");
+        rwRender();
+      };
+      rwMark.querySelector("#rwLearnedDaily").onclick = () => {
+        LH.open(RWDailyKey, "必备实词积累 · 已学条目", id => {
+          const gi = +String(id).replace("rw_d_", "");
+          const e = RW[gi];
+          if (!e) return null;
+          return { primary: (e.type === "idiom" ? "【成语】" : "【实词】") + e.name, secondary: ((e.paras || [])[0] || "") };
+        });
+      };
+      rwRender();
+
+      /* 刷真题卡片：选量练习 + 进度记录 */
+      const cntOpts = [5, 10, 15, 20, 30, RW_TOTAL_EXAMS].filter(n => n > 0 && n <= Math.max(RW_TOTAL_EXAMS, 1));
+      const rwPCard = UI.el(`<div class="card" style="margin-top:16px">
+        <h3>🎯 刷真题（选量 · 记录进度）</h3>
+        <div class="muted small">从全部 <b>${RW_TOTAL_EXAMS}</b> 道真题中随机抽取练习；可选题量，答完显示正确率，已刷题目记入进度（可查看已刷过 / 重置）。错题自动进「言语」错题本。</div>
+        <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap;align-items:center">
+          <label class="fld" style="margin:0">题量</label>
+          <select id="rwCnt" style="width:120px">
+            ${cntOpts.map(n => `<option value="${n}"${n === 10 ? " selected" : ""}>${n}${n === RW_TOTAL_EXAMS ? "（全部）" : " 题"}</option>`).join("")}
+          </select>
+          <button class="btn primary" id="rwStart">开始刷题</button>
+          <button class="btn" id="rwLearned">📅 已刷过</button>
+          <button class="btn ghost" id="rwReset">重置进度</button>
+          <span class="muted small" id="rwProg"></span>
+        </div>
+        <div id="rwQuiz" style="margin-top:12px"></div>
+      </div>`);
+      body.appendChild(rwPCard);
+
+      function rwRenderProg() {
+        const done = (LH && LH.count(RWPracticeKey)) || 0;
+        rwPCard.querySelector("#rwProg").innerHTML = `已刷 <b>${done}</b> / ${RW_TOTAL_EXAMS}`;
+      }
+      function rwStartPractice() {
+        const n = Math.min(+rwPCard.querySelector("#rwCnt").value || 10, RW_EXAMS.length);
+        if (!RW_EXAMS.length) { UI.toast("暂无真题"); return; }
+        // LearnedHistory 没有 learnedIds；直接从 learnedLog 聚合已刷 id
+        const doneSet = new Set();
+        const prog = (window.DB.state.learnedLog || {})[RWPracticeKey] || {};
+        Object.keys(prog).forEach(d => (prog[d] || []).forEach(id => { if (id != null) doneSet.add(id); }));
+        let unseen = RW_EXAMS.filter(x => !doneSet.has(x.id));
+        const used = [];
+        shuffle(unseen).slice(0, n).forEach(x => used.push(x));
+        if (used.length < n) {
+          const rest = shuffle(RW_EXAMS.filter(x => !used.includes(x)));
+          for (const x of rest) { if (used.length >= n) break; used.push(x); }
+        }
+        LH.record(RWPracticeKey, used.map(x => x.id));
+        rwRenderProg();
+        UI.toast("开始练习 " + used.length + " 道真题");
+        window.Quiz.start(rwPCard.querySelector("#rwQuiz"), used, SUBJECT, {
+          onDone: ({ correct, total }) => { UI.toast("本次正确率 " + correct + "/" + total); rwRenderProg(); },
+          onAgain: () => rwStartPractice()
+        });
+      }
+      rwPCard.querySelector("#rwStart").onclick = () => rwStartPractice();
+      rwPCard.querySelector("#rwLearned").onclick = () => {
+        LH.open(RWPracticeKey, "必备实词积累 · 已刷真题", id => {
+          const ex = RW_EXAMS.find(x => x.id === id);
+          if (!ex) return null;
+          return { primary: (ex.type === "idiom" ? "【成语】" : "【实词】") + ex.entryName, secondary: ex.q };
+        });
+      };
+      rwPCard.querySelector("#rwReset").onclick = () => {
+        const log = (window.DB.state.learnedLog = window.DB.state.learnedLog || {});
+        log[RWPracticeKey] = {};
+        window.DB.save();
+        rwRenderProg(); UI.toast("已重置刷真题进度");
+      };
+      rwRenderProg();
+
       const panel = UI.el(`<div class="card"><h3>📚 成语辨析 · 选择题练习</h3>
         <div class="muted small">基于《成语与实词辨析1500词》，将官媒例句关键词挖空成题干。每次练习可选 5–20 题（默认 10），记录正确率，错题自动入「言语」错题本。</div>
         <div class="row" style="margin-top:10px">

@@ -560,6 +560,27 @@ body.light .hw-palette{background:rgba(255,255,255,.98);border-color:#d6dce6}
 .exam-line{font-size:14px;line-height:1.75;margin:3px 0;font-weight:400}
 .exam-line b{color:#ffd166}
 
+/* ===== 必备实词积累（言语 · 实词+成语每日10条） ===== */
+.rw-card{border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:10px 0;background:var(--panel)}
+.rw-top{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.rw-type{font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;background:rgba(52,231,228,.16);color:#34e7e4}
+.rw-type.idiom{background:rgba(155,108,255,.16);color:#9b6cff}
+.rw-name{font-size:18px;font-weight:800;margin:0}
+.rw-sub{font-size:15px;font-weight:800;color:#9b6cff;margin:10px 0 4px}
+.rw-def{margin:6px 0;line-height:1.8;font-size:15px;text-indent:1.6em}
+.rw-def b{color:#ffd166}
+.rw-p{margin:0 0 6px;text-indent:2em;line-height:1.85;font-size:15px}
+.rw-p:last-child{margin-bottom:0}
+.rw-exam{border-left:3px solid #9b6cff;background:var(--bg2);border-radius:8px;padding:8px 10px;margin:8px 0}
+.rw-exam-q{font-size:15px;line-height:1.7;margin-bottom:4px}
+.rw-opts{font-size:15px;line-height:1.7;margin:4px 0}
+.rw-opt{padding:1px 0}
+.rw-opt-ans{color:var(--green);font-weight:700}
+.rw-ana{margin-top:6px;font-size:14px}
+.rw-ans{font-weight:700;color:var(--green)}
+.rw-ana-body{white-space:pre-wrap;line-height:1.75;margin-top:4px;color:var(--txt2,#9fb0d8)}
+.rw-today-tag{font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;background:rgba(31,138,76,.18);color:var(--green)}
+
 /* 判断推理·学考点：二级标题（考点块） */
 .al-sub{font-size:17px;font-weight:800;line-height:1.6;margin:12px 0 6px;color:#34e7e4}
 
