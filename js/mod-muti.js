@@ -13,6 +13,37 @@
     for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[a[i], a[j]] = [a[j], a[i]]; }
     return a;
   }
+  /* 推断题型：判断（2 选项）/ 单选（单答案）/ 多选（多字母或多数字答案串） */
+  function qType(q) {
+    const opts = q.options || [];
+    const a = q.a;
+    if (typeof a === "string" && a.replace(/[^0-9A-Za-z]/g, "").length > 1) return "多选";
+    if (opts.length <= 2) return "判断";
+    return "单选";
+  }
+  /* 均衡抽题：各题型尽量 1:1:1，覆盖全部题型，最终整体打乱顺序 */
+  function pickBalanced(allQs, count) {
+    count = Math.max(5, Math.min(20, count || 10));
+    const groups = { "判断": [], "单选": [], "多选": [] };
+    allQs.forEach(q => { groups[qType(q)].push(q); });
+    const types = Object.keys(groups).filter(t => groups[t].length > 0);
+    if (!types.length) return shuffle(allQs).slice(0, count);
+    types.forEach(t => { groups[t] = shuffle(groups[t]); });
+    // 先尽量平分（1:1:1），再按题型余量补足
+    const alloc = {}; types.forEach(t => alloc[t] = 0);
+    let remain = count;
+    const base = Math.floor(count / types.length);
+    types.forEach(t => { const give = Math.min(base, groups[t].length); alloc[t] = give; remain -= give; });
+    let ti = 0, guard = 0;
+    while (remain > 0 && guard++ < count * 4 + 10) {
+      const t = types[ti % types.length];
+      if (alloc[t] < groups[t].length) { alloc[t]++; remain--; }
+      ti++;
+    }
+    let out = [];
+    types.forEach(t => { out = out.concat(groups[t].slice(0, alloc[t])); });
+    return shuffle(out);
+  }
   function totalQuestionsHint() {
     const d = window.MUTI;
     return d && d.chapters ? totalQuestions(d) : 0;
@@ -24,11 +55,6 @@
       <div class="arc-head">
         <h3>📘 母题特训（本地：政治理论）</h3>
         <div class="row" style="margin-top:6px">
-          <label class="fld" style="margin:0 4px 0 0">展示方式</label>
-          <select id="mode" style="width:150px">
-            <option value="chapter">按章节顺序</option>
-            <option value="shuffle">随机打乱</option>
-          </select>
           <label class="fld" style="margin:0 4px 0 0">题数(5-20)</label>
           <input id="qcount" type="number" min="5" max="20" value="10" style="width:64px">
           <button class="btn primary" id="start">开始练习</button>
@@ -38,7 +64,7 @@
         </div>
         <div class="muted small" style="margin-top:8px">
           资料来自本地目录 <code>C:\\Users\\28621\\Desktop\\政治理论</code> 的 PDF，已自动解析为 <b>${totalQuestionsHint()}</b> 道母题。
-          可选择按章节顺序或随机打乱练习，每题均支持手写标注与计时。新增 PDF 后重新运行 <code>tools/build_muti.py</code> 并刷新即可更新。
+          <b>出题自动均衡各题型（判断 / 单选 / 多选 ≈ 1:1:1）、覆盖全部题型并整体打乱顺序</b>，每题均支持手写标注与计时。新增 PDF 后重新运行 <code>tools/build_muti.py</code> 并刷新即可更新。
         </div>
       </div>
       <div id="mutiList" class="arc-list"></div>
@@ -81,10 +107,6 @@
             <div class="row ch-quiz-bar" style="gap:6px;flex-wrap:wrap;margin:8px 0">
               <label class="fld" style="margin:0">题数(5-20)</label>
               <input type="number" class="ch-count" min="5" max="20" value="10" style="width:64px">
-              <select class="ch-mode" style="width:110px">
-                <option value="chapter">按顺序</option>
-                <option value="shuffle">随机</option>
-              </select>
               <button class="btn primary sm ch-start" data-ch="${i}">开始练习</button>
             </div>
             <div class="ch-quiz-host"></div>
@@ -129,9 +151,8 @@
           e.stopPropagation();
           const ci = parseInt(btn.dataset.ch, 10);
           const b = btn.closest(".arc-body");
-          const mode = (b.querySelector(".ch-mode") || {}).value || "chapter";
           const count = parseInt((b.querySelector(".ch-count") || {}).value, 10);
-          const qs = collectChapter(ci, mode, count);
+          const qs = collectChapter(ci, null, count);
           if (!qs) return;
           const host = b.querySelector(".ch-quiz-host");
           host.innerHTML = "";
@@ -150,37 +171,16 @@
       let qs = [];
       data.chapters.forEach(c => (c.questions || []).forEach(q => qs.push(q)));
       if (!qs.length) { UI.toast("该资料暂无题目"); return null; }
-      if (mode === "shuffle") qs = shuffle(qs);
-      // 取值范围 5-20；随机抽取 count 道（避免每次都是前 N 道）
-      count = Math.max(5, Math.min(20, count || 10));
-      if (qs.length > count) {
-        const picked = [], used = new Set();
-        while (picked.length < count && used.size < qs.length) {
-          const i = Math.floor(Math.random() * qs.length);
-          if (used.has(i)) continue; used.add(i); picked.push(qs[i]);
-        }
-        qs = picked;
-      }
-      return qs;
+      // 均衡抽题：各题型尽量 1:1:1、覆盖全部题型、整体打乱顺序
+      return pickBalanced(qs, count);
     }
 
-    /* 只取某一章的题目（供「✍ 刷本章」使用），题量 5-20 */
+    /* 只取某一章的题目（供「✍ 刷本章」使用），同样按 1:1:1 均衡抽题 */
     function collectChapter(ci, mode, count) {
       const data = window.MUTI;
       const ch = (data && data.chapters) ? data.chapters[ci] : null;
       if (!ch || !(ch.questions || []).length) { UI.toast("本章暂无题目"); return null; }
-      let qs = (ch.questions || []).slice();
-      if (mode === "shuffle") qs = shuffle(qs);
-      count = Math.max(5, Math.min(20, count || 10));
-      if (qs.length > count) {
-        const picked = [], used = new Set();
-        while (picked.length < count && used.size < qs.length) {
-          const i = Math.floor(Math.random() * qs.length);
-          if (used.has(i)) continue; used.add(i); picked.push(qs[i]);
-        }
-        qs = picked;
-      }
-      return qs;
+      return pickBalanced((ch.questions || []).slice(), count);
     }
 
     function recordHistory(qs, r) {
@@ -222,9 +222,8 @@
     }
 
     body.querySelector("#start").onclick = () => {
-      const mode = body.querySelector("#mode").value;
       const count = parseInt(body.querySelector("#qcount").value, 10);
-      const qs = collect(mode, count);
+      const qs = collect(null, count);
       if (!qs) return;
       window.Quiz.start(list, qs, SUBJECT, { onAgain: () => body.querySelector("#start").click(), onDone: (r) => recordHistory(qs, r) });
     };
