@@ -3,6 +3,14 @@
 window.CHANGELOG = {
   logs: [
     {
+      version: "20260920f",
+      date: "2026-09-20",
+      title: "常识口诀88条 · 记住上次浏览位置 + 弹窗续看",
+      items: [
+        { mod: "common", text: "常识口诀88条新增「上次浏览记忆」：学习模式每次翻页、通览每次选章都会把位置写入 DB.state.common.kjView（localStorage 持久化，跨模块切换/刷新/杀后台都在）。再次点「学习」会弹窗提供「⏯ 继续上次浏览（第 N 条）」，点「通览」若上次章节不同会弹窗询问「继续上次浏览？」从该章继续；7 天内有效" }
+      ]
+    },
+    {
       version: "20260920e",
       date: "2026-09-20",
       title: "修复出题报错 Can't find variable: parseQuestions",
