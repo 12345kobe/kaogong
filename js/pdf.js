@@ -7,8 +7,20 @@
   function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
   function nl2br(s) { return esc(s).replace(/\n/g, "<br>"); }
 
+  function homeOnclick(homeUrl) {
+    return `(function(){try{if(window.opener&&!window.opener.closed){window.opener.focus();window.close();return;}}catch(e){}try{window.close();}catch(e){}window.location.href='${homeUrl}';})()`;
+  }
+
   function backHomeBtn(homeUrl) {
-    return `<button class="noprint backhome" onclick="(function(){try{if(window.opener&&!window.opener.closed){window.opener.focus();window.close();return;}}catch(e){}try{window.close();}catch(e){}window.location.href='${homeUrl}';})()">← 返回主页面</button>`;
+    return `<button class="noprint backhome" onclick="${homeOnclick(homeUrl)}">← 返回主页面</button>`;
+  }
+
+  /* 顶部工具条：常驻「导出 PDF / 打印」按钮（自动打印被关闭/拦截后可手动再触发） */
+  function printToolbar(homeUrl) {
+    return `<div class="ptoolbar noprint">
+  <button class="pbtn print" onclick="if(window.print){window.print();}else{alert('当前浏览器不支持打印，请在浏览器菜单里选择「打印 / 另存为 PDF」');}">⬇ 导出 PDF / 打印</button>
+  <button class="pbtn home" onclick="${homeOnclick(homeUrl)}">← 返回主页面</button>
+</div>`;
   }
 
   function printHtml(title, bodyHtml, opts) {
@@ -56,12 +68,16 @@
   .note.your{color:#c0392b}
   .date{float:right;color:#999;font-size:12px}
   img{max-width:240px;max-height:240px;border:1px solid #ccc;border-radius:6px;margin-top:6px;page-break-inside:avoid}
+  .ptoolbar{position:sticky;top:0;display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px;z-index:9}
+  .pbtn{padding:8px 16px;font-size:14px;font-weight:700;color:#fff;border:none;border-radius:20px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.15)}
+  .pbtn.print{background:#1f8a4c}
+  .pbtn.home{background:#9b6cff}
   .backhome{position:sticky;top:0;display:inline-block;margin:0 0 12px;padding:8px 16px;font-size:14px;font-weight:700;
     color:#fff;background:#9b6cff;border:none;border-radius:20px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.15);z-index:9}
   .foot{margin-top:24px;color:#999;font-size:12px;text-align:center}
   @media print{.noprint{display:none!important}}
 </style></head><body>
-${backHomeBtn(homeUrl)}
+${printToolbar(homeUrl)}
 <h1>${title}</h1>
 <div class="meta">导出来源：考公工作台 · 生成时间：${stamp}${opts && opts.fontLabel ? " · 字体：" + opts.fontLabel : ""}</div>
 ${bodyHtml}
