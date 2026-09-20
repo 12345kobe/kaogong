@@ -106,7 +106,7 @@
           + (ref.options || []).map((x, i) => "ABCD"[i] + ". " + x).join("\n")
           + (ref.e ? "\n【解析】" + ref.e : "");
       } else if (set.subject) ctx = "【科目】" + set.subject;
-      KGAI.jyfsAuto(set.n || 5, { modKey: key, subject: set.subject || "", ctxText: ctx, useImg: false });
+      KGAI.jyfsAuto(set.n || 5, { modKey: key, subject: set.subject || "", ctxText: ctx });
     }
 
     function start(setId) {

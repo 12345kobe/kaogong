@@ -3,6 +3,14 @@
 window.CHANGELOG = {
   logs: [
     {
+      version: "20260920h",
+      date: "2026-09-20",
+      title: "AI出题 · 彻底移除 CogView 生图，出题更稳",
+      items: [
+        { mod: "ai", text: "按用户要求彻底删除 CogView-3-Flash 生图功能：移除模型按钮、genImage 接口、举一反三弹窗的生图勾选框、imgPrompt 配图指令与生图循环。举一反三恢复纯文字出题（原题带图仍可用识图模型理解，新题不再配 AI 生成图片）。同时全面审计出题核心的函数作用域依赖，杜绝 \"Can't find variable\" 类报错" }
+      ]
+    },
+    {
       version: "20260920g",
       date: "2026-09-20",
       title: "常识口诀88条 · 进入板块主动弹窗续看（修复看不到定位）",
