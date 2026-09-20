@@ -151,7 +151,7 @@
       /* ================= 必备实词积累（每日10条 · 实词 + 成语 · 真题附后 + 选量刷真题） =================
          数据：window.VERBAL_WORDS = { updatedAt, entries:[{id,num,name,type,paras,exams}] }
          - 每天按日期轮换展示 10 条（实词+成语混合），分级标题 + 分行 + 按语义断句；
-         - 含真题示例的条目把真题附在后面（可展开看答案/解析），与「必会对应关系」一致；
+         - 含真题示例的条目把真题附在后面，做成可点选的交互选择题（点击选项 → 判对错 → 看解析），答错自动进「言语」错题本；
          - 另设「刷真题」卡片：从全部真题中选题量练习，记录进度（已刷 X / 总 Y），可查看已刷过。 */
       const RW = (window.VERBAL_WORDS && window.VERBAL_WORDS.entries) || [];
       const RWDailyKey = "verbal_realwords_daily";
@@ -186,16 +186,13 @@
         });
         return html;
       }
-      function rwRenderExam(ex, idx) {
-        const ans = ex.a >= 0 ? String.fromCharCode(65 + ex.a) : "—";
-        const opts = (ex.options || []).map((o, oi) => `<div class="rw-opt${ex.a === oi ? " rw-opt-ans" : ""}">${String.fromCharCode(65 + oi)}. ${rwEsc(o)}</div>`).join("");
-        return `<div class="rw-exam">
+      function rwRenderExam(ex, idx, gi, xi) {
+        const opts = (ex.options || []).map((o, oi) =>
+          `<button type="button" class="rw-opt" data-gi="${gi}" data-xi="${xi}" data-opt="${oi}">${String.fromCharCode(65 + oi)}. ${rwEsc(o)}</button>`).join("");
+        return `<div class="rw-exam" data-gi="${gi}" data-xi="${xi}">
           <div class="rw-exam-q"><b>真题 ${idx + 1}.</b> ${rwEsc(ex.q)}</div>
           <div class="rw-opts">${opts}</div>
-          <details class="rw-ana"><summary>看答案 / 解析</summary>
-            <div class="rw-ans">正确答案：<b>${ans}</b></div>
-            <div class="rw-ana-body">${rwEsc(ex.analysis || "")}</div>
-          </details>
+          <div class="rw-fb" data-fb hidden></div>
         </div>`;
       }
 
@@ -211,7 +208,7 @@
 
       const rwCard = UI.el(`<div class="card" style="margin-top:16px">
         <h3>📒 必备实词积累（每日 10 条 · 实词 + 成语）</h3>
-        <div class="muted small">每天按日期轮换展示 <b>10 条</b>（实词与易混成语混合），分级标题 + 分行 + 按语义断句；含真题示例的条目把真题附在后面（可展开看答案/解析），与「必会对应关系」一致。可标记「今日已学」，也可选量刷全部真题并记录进度。</div>
+        <div class="muted small">每天按日期轮换展示 <b>10 条</b>（实词与易混成语混合），分级标题 + 分行 + 按语义断句；含真题示例的条目把真题附在后面（点击选项作答，答错自动进错题本）。可标记「今日已学」，也可选量刷全部真题并记录进度。</div>
         <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap;align-items:center">
           <button class="btn primary" id="rwPrev">‹ 前一天</button>
           <button class="btn" id="rwToday">回到今天</button>
@@ -221,6 +218,37 @@
         <div id="rwList" style="margin-top:12px"></div>
       </div>`);
       body.appendChild(rwCard);
+
+      // 真题示例：点击选项作答（交互式选择题），答错自动进「言语」错题本
+      rwCard.addEventListener("click", function (ev) {
+        const btn = ev.target.closest && ev.target.closest(".rw-opt");
+        if (!btn || btn.disabled) return;
+        const wrap = btn.closest(".rw-exam");
+        if (!wrap || wrap.dataset.done) return;
+        const gi = +btn.dataset.gi, xi = +btn.dataset.xi, oi = +btn.dataset.opt;
+        const e = RW[gi] && RW[gi].exams && RW[gi].exams[xi];
+        if (!e) return;
+        wrap.dataset.done = "1";
+        const correct = e.a;
+        wrap.querySelectorAll(".rw-opt").forEach(b => {
+          const bi = +b.dataset.opt;
+          b.disabled = true;
+          if (bi === correct) b.classList.add("rw-opt-correct");
+          if (bi === oi && oi !== correct) b.classList.add("rw-opt-wrong");
+        });
+        const fb = wrap.querySelector("[data-fb]");
+        fb.hidden = false;
+        if (oi === correct) {
+          fb.innerHTML = `<div class="rw-fb-ok">✓ 回答正确</div><div class="rw-ana-body">${rwEsc(e.analysis || "")}</div>`;
+        } else {
+          fb.innerHTML = `<div class="rw-fb-bad">✗ 回答错误，正确答案：<b>${String.fromCharCode(65 + correct)}</b></div><div class="rw-ana-body">${rwEsc(e.analysis || "")}</div>`;
+          const wbk = (window.DB.state.wrongbook = window.DB.state.wrongbook || {});
+          const arr = (wbk[SUBJECT] = wbk[SUBJECT] || []);
+          arr.push({ id: window.DB.uid(), q: e.q, options: e.options.slice(), a: e.a, ua: oi, date: window.DB.today(), e: e.analysis || "", optInfo: null, note: "", img: "" });
+          window.DB.save();
+          UI.toast("已收入「言语」错题本");
+        }
+      });
 
       let rwOffset = 0;
       function rwRender() {
@@ -234,7 +262,7 @@
           const isIdiom = e.type === "idiom";
           const learned = LH.isLearned(RWDailyKey, "rw_d_" + v.gi);
           const examsHtml = (e.exams && e.exams.length)
-            ? `<div class="rw-sub">真题示例</div>` + e.exams.map((ex, xi) => rwRenderExam(ex, xi)).join("")
+            ? `<div class="rw-sub">真题示例</div>` + e.exams.map((ex, xi) => rwRenderExam(ex, xi, v.gi, xi)).join("")
             : "";
           return `<div class="rw-card">
             <div class="rw-top">
