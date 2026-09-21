@@ -157,6 +157,41 @@
             <button class="btn ghost" id="aiTokClr">清除</button>
           </div>
           <div class="muted small" id="aiTokNote" style="margin-top:8px"></div>
+        </div>
+
+        <div class="card" style="margin-top:12px">
+          <h3>🎨 主题外观</h3>
+          <div class="muted small">选择工作台整体主题，设置后自动记忆并上传云端，下次登录保持。每个主题都能单独切换浅色 / 深色。</div>
+          <div class="theme-grid" id="themeGrid">
+            <button class="theme-opt" data-name="cyber"><span class="theme-sw" style="background:linear-gradient(135deg,#34e7e4,#ff5cf0)"></span><span>赛博朋克</span></button>
+            <button class="theme-opt" data-name="minimal"><span class="theme-sw" style="background:linear-gradient(135deg,#4a90d9,#8a7fd0)"></span><span>简约</span></button>
+            <button class="theme-opt" data-name="cute"><span class="theme-sw" style="background:linear-gradient(135deg,#ffb3d9,#ff6fae)"></span><span>可爱</span></button>
+            <button class="theme-opt" data-name="wuxia"><span class="theme-sw" style="background:linear-gradient(135deg,#4caf7d,#2f8f5f)"></span><span>武侠</span></button>
+            <button class="theme-opt" data-name="custom"><span class="theme-sw" style="background:linear-gradient(135deg,#34e7e4,#9b6cff)"></span><span>自定义背景</span></button>
+          </div>
+          <div class="row" style="margin-top:12px;gap:10px;align-items:center;flex-wrap:wrap">
+            <label class="muted small">模式</label>
+            <select id="themeMode">
+              <option value="auto">自动（跟随时间）</option>
+              <option value="light">浅色</option>
+              <option value="dark">深色</option>
+            </select>
+          </div>
+          <div id="customThemeBox" style="display:none;margin-top:12px">
+            <div class="muted small">从相册选择一张照片作为背景（自动模糊处理，板块保持不透明）：</div>
+            <div class="row" style="margin-top:8px;gap:10px;align-items:center;flex-wrap:wrap">
+              <input type="file" id="customBg" accept="image/*"/>
+              <label class="muted small">系统主色</label>
+              <input type="color" id="customColor" value="#34e7e4"/>
+              <button class="btn sm ghost" id="customBgClear">清除背景</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:12px">
+          <h3>❓ 使用说明书</h3>
+          <div class="muted small">各模块的使用说明都集中在这里与顶栏「❓ 帮助」里，界面保持简洁。每次功能更新都会同步更新。</div>
+          <button class="btn primary" id="openHelp" style="margin-top:10px">📖 打开使用说明书</button>
         </div>`;
 
       /* ===== PDF 题库导入（合并进设置的子板块） ===== */
@@ -322,6 +357,41 @@
         if (aiTok) aiTok.value = "";
         syncTokNote(); UI.toast("已清除令牌");
       };
+
+      /* ===== 主题外观 ===== */
+      const themeGrid = body.querySelector("#themeGrid");
+      const themeMode = body.querySelector("#themeMode");
+      const customThemeBox = body.querySelector("#customThemeBox");
+      function reflectTheme() {
+        const s = (window.Theme && Theme.getState()) || { name: "cyber", mode: "auto" };
+        if (themeGrid) themeGrid.querySelectorAll(".theme-opt").forEach(b => b.classList.toggle("on", b.dataset.name === s.name));
+        if (themeMode) themeMode.value = s.mode;
+        if (customThemeBox) customThemeBox.style.display = (s.name === "custom") ? "block" : "none";
+      }
+      if (themeGrid) themeGrid.querySelectorAll(".theme-opt").forEach(b => {
+        b.onclick = () => {
+          window.Theme.set({ name: b.dataset.name });
+          UI.toast("已切换主题：" + b.querySelector("span:last-child").textContent);
+          reflectTheme();
+        };
+      });
+      if (themeMode) themeMode.onchange = () => { window.Theme.set({ mode: themeMode.value }); UI.toast("已切换为" + (themeMode.value === "auto" ? "自动模式" : (themeMode.value === "light" ? "浅色" : "深色"))); };
+      const customBg = body.querySelector("#customBg");
+      if (customBg) customBg.onchange = () => {
+        const f = customBg.files && customBg.files[0]; if (!f) return;
+        const r = new FileReader();
+        r.onload = () => { window.Theme.set({ customBg: r.result }); UI.toast("背景已设置"); };
+        r.readAsDataURL(f);
+      };
+      const customColor = body.querySelector("#customColor");
+      if (customColor) customColor.onchange = () => { window.Theme.set({ customColor: customColor.value }); };
+      const customBgClear = body.querySelector("#customBgClear");
+      if (customBgClear) customBgClear.onclick = () => { window.Theme.set({ customBg: "" }); UI.toast("已清除背景"); };
+      reflectTheme();
+
+      /* ===== 使用说明书 ===== */
+      const openHelpBtn = body.querySelector("#openHelp");
+      if (openHelpBtn) openHelpBtn.onclick = () => { window.KGHelp && window.KGHelp.open(); };
     }
   };
 })();

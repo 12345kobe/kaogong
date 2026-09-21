@@ -6,34 +6,60 @@
   const NAV = ["countdown", "timer", "current", "verbal", "data", "logic", "politics", "quantity", "common", "essay", "calendar", "wrongbook", "favorites", "stats", "ai", "settings"];
   const GH_LABEL = "12345kobe/kaogong";
 
-  /* ===== 深浅色主题：按时间自动切换 + 手动覆盖（到点仍按时间表切回） ===== */
+  /* ===== 主题系统：赛博朋克(默认) / 简约 / 可爱 / 武侠 / 自定义背景 =====
+     状态存 DB.state.theme（随云端同步），切换后自动保存并触发上传云端。 */
   const Theme = (function () {
-    const KEY = "kg_theme_manual";
-    function auto() {
+    function getState() {
+      const s = (window.DB && DB.state && DB.state.theme) || {};
+      return { name: s.name || "cyber", mode: s.mode || "auto", customBg: s.customBg || "", customColor: s.customColor || "" };
+    }
+    function autoMode() {
       const now = new Date(); const t = now.getHours() * 60 + now.getMinutes();
       const light = (t >= 7 * 60 + 30 && t < 12 * 60 + 30) || (t >= 13 * 60 + 30 && t < 18 * 60);
       return light ? "light" : "dark";
     }
-    let manual = null;
-    try { manual = localStorage.getItem(KEY) || null; } catch (e) {}
-    let lastAuto = auto();
-    function apply(theme) { document.body.classList.toggle("light", theme === "light"); }
-    function tick() {
-      const a = auto();
-      if (a !== lastAuto) { lastAuto = a; manual = null; try { localStorage.removeItem(KEY); } catch (e) {} apply(a); }
-      else if (manual) apply(manual);
+    function resolveMode(mode) { if (mode === "auto") return autoMode(); return mode === "light" ? "light" : "dark"; }
+    function apply() {
+      const s = getState();
+      const mode = resolveMode(s.mode);
+      const cls = (document.body.className || "").split(/\s+/).filter(c => c && !c.startsWith("theme-") && c !== "light");
+      cls.push("theme-" + s.name);
+      if (mode === "light") cls.push("light");
+      document.body.className = cls.join(" ");
+      // 自定义背景 / 主色（通过 CSS 变量注入；无则清除）
+      if (s.name === "custom") {
+        if (s.customBg) document.body.style.setProperty("--custom-bg", "url(" + JSON.stringify(s.customBg) + ")");
+        else document.body.style.removeProperty("--custom-bg");
+        if (s.customColor) document.body.style.setProperty("--custom-color", s.customColor);
+        else document.body.style.removeProperty("--custom-color");
+      } else {
+        document.body.style.removeProperty("--custom-bg");
+        document.body.style.removeProperty("--custom-color");
+      }
     }
-    return {
-      init() { apply(manual && (manual === "light" || manual === "dark") ? manual : auto()); setInterval(tick, 30000); },
-      toggle() {
-        const cur = (document.body.classList.contains("light")) ? "light" : "dark";
-        manual = cur === "light" ? "dark" : "light";
-        try { localStorage.setItem(KEY, manual); } catch (e) {}
-        apply(manual);
-        return manual;
-      },
-      current() { return document.body.classList.contains("light") ? "light" : "dark"; }
-    };
+    function set(opts) {
+      const st = (window.DB && DB.state && DB.state.theme) || (DB.state.theme = {});
+      if (opts.name !== undefined) st.name = opts.name;
+      if (opts.mode !== undefined) st.mode = opts.mode;
+      if (opts.customBg !== undefined) st.customBg = opts.customBg;
+      if (opts.customColor !== undefined) st.customColor = opts.customColor;
+      try {
+        DB.save();                                  // 本地保存（含 theme）
+        if (DB.isLoggedIn && DB.isLoggedIn()) { DB.push && DB.push(); }  // 已登录则立即上传云端
+      } catch (e) {}
+      apply();
+    }
+    function init() {
+      apply();
+      setInterval(() => { const s = getState(); if (s.mode === "auto") apply(); }, 60000);
+    }
+    function toggle() {
+      const cur = document.body.classList.contains("light") ? "light" : "dark";
+      set({ mode: cur === "light" ? "dark" : "light" });
+      return document.body.classList.contains("light") ? "light" : "dark";
+    }
+    function current() { return document.body.classList.contains("light") ? "light" : "dark"; }
+    return { init: init, apply: apply, set: set, toggle: toggle, current: current, getState: getState };
   })();
 
   function el(html) { const d = document.createElement("div"); d.innerHTML = html.trim(); return d.firstElementChild; }
@@ -758,6 +784,8 @@
     document.getElementById("syncBtn").onclick = openAccount;
     document.getElementById("menuToggle").onclick = () => document.getElementById("sidebar").classList.toggle("open");
     document.getElementById("themeBtn").onclick = () => { const t = Theme.toggle(); UI.toast(t === "light" ? "已切换到浅色（护眼）模式" : "已切换到深色模式"); };
+    const helpBtn = document.getElementById("helpBtn");
+    if (helpBtn) helpBtn.onclick = () => { if (window.KGHelp) window.KGHelp.open(); };
     const topTimer = document.getElementById("topTimer");
     if (topTimer) topTimer.onclick = () => { location.hash = "#/timer"; };
     updateTopTimer();

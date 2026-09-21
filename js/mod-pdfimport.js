@@ -1395,77 +1395,43 @@
       let ftsSubject = (window.KG_SUBJECTS && window.KG_SUBJECTS[0]) || "言语理解";
       const pageState = Object.create(null);
 
-      /* ---------- 导入卡片 ---------- */
-      const card = UI.el(`<div class="card">
-        <h3>📄 题库导入（PDF / Word / 文本）</h3>
-        <div class="muted small">
-          ① 选「题目文件」→ 点「提取并识别」。支持 <b>.pdf</b>（文字型）、<b>.docx</b>、<b>.txt/.md</b>；老版 <b>.doc</b> 请先另存为 docx/txt。<br>
-          ② 题目与答案在同一份文档也能识别（<code>1.A</code>、<code>【答案】A</code>、<code>参考答案：A</code>、<code>（A）</code>、<code>【解析】…</code>、文末答案速查）；答案单独成册时再选「答案文件（可选）」。<br>
-          ③ 自动按 <b>目录 / 章节标题</b> 分章，章内再按 <b>考点</b> 切块：每个考点 = 讲解 + 它对应的题，保证一一对应。<br>
-          ④ 给题册起个名字（留空自动命名）→ 保存后即可在对应模块的「我导入的题册」中使用。<br>
-          <b>仅支持文字型 PDF</b>（能用鼠标选中文字的那种）；扫描件请先用 OCR 转文字版。
+      /* ---------- 统一录入卡片：一个输入框搞定（AI 优先 + 规则兜底） ---------- */
+      const recCard = UI.el(`<div class="card">
+        <h3>📥 录入题目 / 资料（一个框，AI 优先整理）</h3>
+        <div class="muted small">支持 <b>PDF / Word / 文本 / 扫描件（图片）</b>：选文件或把文字粘到下面，点「识别整理」。系统<b>优先调用 AI</b>整理（题目+答案、时政资料都更准）；AI 不可用或失败时<b>自动改用规则识别</b>，保证能练题。详细说明见「❓ 帮助」。</div>
+        <input type="file" id="recFile" accept=".pdf,.doc,.docx,.txt,.md,.markdown,.csv,image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple style="margin-top:10px"/>
+        <textarea id="recText" rows="6" style="width:100%;margin-top:10px" placeholder="也可以直接把题目或时政资料文字粘贴到这里（支持 Ctrl+V 粘贴截图）"></textarea>
+        <div class="row" style="margin-top:10px;gap:10px;flex-wrap:wrap;align-items:center">
+          <label class="muted small">识别为</label>
+          <select id="recType">
+            <option value="auto">自动识别（推荐）</option>
+            <option value="quiz">题库（题目 + 答案解析）</option>
+            <option value="current">时政 / 申论资料</option>
+          </select>
+          <span id="recSubjWrap"><label class="muted small">学科</label>
+          <select id="recSubj">${SUBJECTS.map(s => `<option value="${esc(SUBJECT_SHORT[s] || s)}">${esc(s)}</option>`).join("")}</select></span>
+          <label class="muted small">文件夹</label>
+          <select id="recFolder"></select>
+          <button class="btn primary" id="recGo">🤖 识别整理（优先 AI）</button>
+          <button class="btn ghost" id="recSample">填入示例</button>
         </div>
-        <div class="row" style="margin-top:12px;gap:10px;flex-wrap:wrap;align-items:center">
-          <label class="muted small">题目文件</label>
-          <input type="file" id="pdfQ" accept=".pdf,.docx,.txt,.md,.markdown,.csv,application/pdf,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
-        </div>
-        <div class="row" style="margin-top:8px;gap:10px;flex-wrap:wrap;align-items:center">
-          <label class="muted small">答案文件（可选）</label>
-          <input type="file" id="pdfA" accept=".pdf,.docx,.txt,.md,.markdown,.csv,application/pdf,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
-          <select id="pdfSubj">${SUBJECTS.map(s => `<option value="${esc(SUBJECT_SHORT[s] || s)}">${esc(s)}</option>`).join("")}</select>
-          <button class="btn primary" id="pdfGo">🔍 提取并识别</button>
-          <button class="btn ghost" id="pdfManual">✍️ 手动粘贴文本</button>
-        </div>
-        <div class="muted small" id="pdfStatus" style="margin-top:10px"></div>
-        <textarea id="pdfRaw" style="width:100%;height:130px;margin-top:10px;display:none" placeholder="这里显示从文件提取的文字，可手动修正后再点「重新识别」"></textarea>
-        <div class="row" id="reparseRow" style="margin-top:8px;display:none">
-          <button class="btn" id="pdfReparse">🔁 用上方文字重新识别</button>
-        </div>
+        <div class="muted small" id="recStatus" style="margin-top:10px"></div>
         <div id="draftHost"></div>
       </div>`);
-      inputBox.appendChild(card);
+      inputBox.appendChild(recCard);
 
-      /* ---------- AI 识图/PDF 录入（图片视觉识别直出；PDF 先浏览器抽字再 AI 结构化） ---------- */
-      const aiCard = UI.el(`<div class="card" style="margin-top:12px">
-        <h3>📷 AI 录入题目（支持照片/截图 与 PDF，准确率高）</h3>
-        <div class="muted small">
-          ① 选<b>题目照片/截图</b>或 <b>PDF</b>（支持多选，一次多个）→ 点「AI 识别」。<br>
-          · 图片：调用「AI 咨询」里已配置的<b>可识图模型</b>（如 Gemini 2.0 Flash / GLM-4V-Flash）直接读出题干/选项/答案；<br>
-          · PDF：先在本机浏览器抽文字（不传服务器），再交给 AI 按结构拆题、补答案，比纯正则更稳。<br>
-          ② 识别结果进入下方「识别结果」预览；答案没把握的标「待校对」，点每题的 <b>✏️ 校对</b> 手动补全（可从识别原文复制），核对后保存。<br>
-          若未配置 AI：去「设置 → AI 令牌」填一个支持识图/对话的令牌，或选「共享 AI」。
-        </div>
-        <div class="row" style="margin-top:10px;gap:10px;flex-wrap:wrap;align-items:center">
-          <input type="file" id="aiImg" accept="image/*,application/pdf" multiple />
-          <select id="aiSubj">${SUBJECTS.map(s => `<option value="${esc(SUBJECT_SHORT[s] || s)}">${esc(s)}</option>`).join("")}</select>
-          <button class="btn primary" id="aiGo">🤖 AI 识别</button>
-        </div>
-        <div class="muted small" id="aiStatus" style="margin-top:10px"></div>
-      </div>`);
-      inputBox.appendChild(aiCard);
+      const recFile = recCard.querySelector("#recFile");
+      const recText = recCard.querySelector("#recText");
+      const recType = recCard.querySelector("#recType");
+      const recSubj = recCard.querySelector("#recSubj");
+      const recSubjWrap = recCard.querySelector("#recSubjWrap");
+      const recFolder = recCard.querySelector("#recFolder");
+      const recGo = recCard.querySelector("#recGo");
+      const recStatus = recCard.querySelector("#recStatus");
+      const setRecStatus = html => { recStatus.innerHTML = html; };
+      const recImages = [];
 
-      /* ---------- 时政 / 申论材料：纯文字直接识别 → 存到「时政」模块 ---------- */
-      const curCard = UI.el(`<div class="card" style="margin-top:12px">
-        <h3>📝 时政 / 申论材料（直接粘贴文字）</h3>
-        <div class="muted small">
-          把每天整理的「时政汇总（⭐条目）· 申论时评+金句 · 时政词语 · 原创言语真题 · 原创时政单选」整段粘进来，自动分栏识别，
-          保存后<b>自动跳到左侧「时政」模块</b>，可查看资料、直接练题、导出 PDF（全部 / 错题）。
-        </div>
-        <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap;align-items:center">
-          <label class="muted small">日期</label>
-          <input type="date" id="curDate" value="${DB.today()}" style="width:160px"/>
-          <button class="btn ghost" id="curSample">填入示例格式</button>
-        </div>
-        <textarea id="curText" rows="8" style="width:100%;margin-top:8px" placeholder="第一部分：XXXX年X月X日公考标准时政汇总（星级重难点）&#10;国内时政&#10;⭐1. …"></textarea>
-        <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap;align-items:center">
-          <label class="muted small">归类文件夹</label>
-          <select id="curFolder"></select>
-          <button class="btn primary" id="curGo">🔍 识别为时政资料</button>
-          <span class="muted small">识别后归入所选文件夹（可在下方拖动整理）</span>
-        </div>
-      </div>`);
-      inputBox.appendChild(curCard);
-
+      // 旧示例（时政）保留供示例按钮使用
       const CUR_SAMPLE = [
         "第一部分：2026年9月12日公考标准时政汇总（星级重难点）",
         "国内时政",
@@ -1493,24 +1459,37 @@
         "D.创新、协调、绿色",
         "【答案】B"
       ].join("\n");
-      curCard.querySelector("#curSample").onclick = () => { curCard.querySelector("#curText").value = CUR_SAMPLE; };
-      try { populateFolderSelect(curCard.querySelector("#curFolder"), "时政", null); } catch (e) {}
-      curCard.querySelector("#curGo").onclick = () => {
-        const txt = curCard.querySelector("#curText").value.trim();
-        if (!txt) { UI.toast("请先粘贴文字"); return; }
-        if (!window.KGCurrent) { UI.toast("时政模块未加载，请刷新后重试"); return; }
-        try {
-          const rec = window.KGCurrent.importText(txt, curCard.querySelector("#curDate").value || DB.today());
-          if (rec && rec.id) {
-            const fsel = curCard.querySelector("#curFolder");
-            const fid = (fsel && fsel.value && fsel.value !== "__new__") ? fsel.value : window.KGFolders.rootId("时政");
-            const live = (db().state.currentAffairs || []).find(x => x.id === rec.id);
-            if (live) { live.folderId = fid; db().save(); }
+
+      // 刷新文件夹下拉（时政用「时政」根，其余用所选学科短名）
+      function refreshRecFolder() {
+        const subj = (recType.value === "current") ? "时政" : (KG_SUBJECT_LABEL[recSubj.value] || recSubj.value);
+        if (recSubjWrap) recSubjWrap.style.display = (recType.value === "current") ? "none" : "";
+        populateFolderSelect(recFolder, subj, null);
+      }
+      recType.onchange = refreshRecFolder;
+      try { refreshRecFolder(); } catch (e) {}
+
+      // 粘贴截图：把剪贴板图片转成可识别文件
+      recText.addEventListener("paste", (ev) => {
+        const items = (ev.clipboardData && ev.clipboardData.items) || [];
+        for (const it of items) {
+          if (it.type && it.type.indexOf("image/") === 0) {
+            const f = it.getAsFile(); if (f) { recImages.push(f); setRecStatus("已粘贴 " + recImages.length + " 张截图，将一并识别。"); ev.preventDefault(); }
           }
-          UI.toast("已识别并保存到「时政」：" + (rec && rec.title || ""));
-          renderBooks();
-        } catch (e) { UI.toast("识别失败：" + e.message); }
+        }
+      });
+
+      // 示例
+      recCard.querySelector("#recSample").onclick = () => {
+        if (recType.value === "current") recText.value = CUR_SAMPLE;
+        else recText.value = "1. 下列关于法的效力的表述，正确的是（  ）。\nA. 属人主义原则是指法律只适用于本国公民\nB. 属地主义原则是指法律适用于本国领域内的所有人\nC. 保护主义原则是指法律只保护本国公民的利益\nD. 折中主义是以属人主义为主\n【答案】B\n【解析】属地主义强调领域内的所有人，不论国籍。";
+        setRecStatus("已填入示例，可点「识别整理」试一下。");
       };
+
+      // 时政/题库判断（自动识别用）
+      function looksLikeCurrent(text) { return /时政|申论|⭐|金句|时评|热点|公文|贯彻|会议|主席|讲话|汇总/.test(text || ""); }
+
+      recGo.onclick = runRecognize;
 
       const bookCard = UI.el(`<div class="card" style="margin-top:12px">
         <h3>📚 我的题册与文件夹（长按拖动整理，跟电脑整理文件一样）</h3>
@@ -1525,117 +1504,112 @@
       </div>`);
       root.appendChild(customCard);
 
-      const qIn = card.querySelector("#pdfQ");
-      const aIn = card.querySelector("#pdfA");
-      const goBtn = card.querySelector("#pdfGo");
-      const status = card.querySelector("#pdfStatus");
-      const rawTa = card.querySelector("#pdfRaw");
-      const reparseRow = card.querySelector("#reparseRow");
-      const setStatus = html => { status.innerHTML = html; };
-
-      /* ===== 提取并识别 ===== */
-      goBtn.onclick = async () => {
-        const qf = qIn.files && qIn.files[0];
-        if (!qf) { UI.toast("请先选择题目文件"); return; }
-        setStatus("正在解析文件并提取文字，请稍候…");
-        goBtn.disabled = true;
+      /* ===== 统一识别整理：AI 优先，失败自动规则兜底 ===== */
+      async function runRecognize() {
+        const files = (Array.from(recFile.files || [])).concat(recImages.slice());
+        const text = (recText && recText.value || "").trim();
+        if (!files.length && !text) { UI.toast("请先选择文件或粘贴文字"); return; }
+        recGo.disabled = true; setRecStatus("正在准备…");
         try {
-          const r = await fileToPages(qf);
-          const pages = (r.pages || []).map(sanitizeText);
-          const qText = pages.join("\n");
-          rawTa.value = qText;
-          rawTa.style.display = "block";
-          reparseRow.style.display = "flex";
-
-          let aNote = "";
-          let ansBook = null;
-          const af = aIn.files && aIn.files[0];
-          if (af) {
+          const type = recType.value;
+          const subject = (type === "current") ? "时政" : (KG_SUBJECT_LABEL[recSubj.value] || recSubj.value);
+          const folderId = (recFolder.value && recFolder.value !== "__new__") ? recFolder.value : null;
+          const A = window.KGAI;
+          const prov = A && A.getProvider && A.providerById(A.getProvider());
+          const aiReady = !!(A && ((A.hasCustom && A.hasCustom()) || (prov && prov.noKey) || (A.getToken && A.getToken())));
+          let usedAI = false, aiErr = null;
+          if (aiReady) {
             try {
-              const ar = await fileToPages(af);
-              const ap = (ar.pages || []).map(sanitizeText);
-              ansBook = buildAnswerBook(ap, ar.outline);
-              if (ansBook) {
-                const cnt = ansBook.chapters.reduce((s, c) => s + Object.keys(c.map).length, 0);
-                aNote = `，从答案文件解析出 ${cnt} 条答案（${ansBook.isStructured ? "章节+题序兜底" : "按题序匹配"}）`;
-              } else {
-                aNote = `，答案文件未解析到可用答案`;
+              let quizQs = [];
+              const texts = [];
+              for (const f of files) {
+                const isImg = (f.type && f.type.indexOf("image/") === 0) || /\.(png|jpe?g|gif|bmp|webp)$/i.test(f.name || "");
+                if (isImg) {
+                  const qs = await aiVisionQuestions(f, subject);   // 图片：视觉识别直出题目
+                  if (qs && qs.length) quizQs = quizQs.concat(qs);
+                } else {
+                  const r = await fileToPages(f);                   // 文档：本机抽字
+                  texts.push((r.pages || []).map(sanitizeText).join("\n"));
+                }
               }
-            } catch (e) { aNote = `，答案文件解析失败：${esc(e.message)}`; }
+              if (text) texts.push(text);
+              let curText = null;
+              if (texts.length) {
+                if (type === "current") curText = await aiCurrent(texts.join("\n\n"), subject);
+                else { const qs = await aiTextQuestions(texts.join("\n\n"), subject); if (qs && qs.length) quizQs = quizQs.concat(qs); }
+              }
+              if (type === "current") {
+                if (!curText) throw new Error("AI 未整理出资料");
+                const rec = window.KGCurrent.importText(curText, DB.today());
+                const live = (db().state.currentAffairs || []).find(x => x.id === rec.id);
+                if (live) { live.folderId = folderId || window.KGFolders.rootId("时政"); db().save(); }
+                UI.toast("已用 AI 整理并保存到「时政」：" + (rec && rec.title || ""));
+                renderBooks();
+              } else {
+                if (!quizQs.length) throw new Error("AI 未识别到题目");
+                buildAiDraft(quizQs, subject);
+                if (draft) draft.raw = texts.join("\n\n");
+                inputWrap.open = true;
+                const st = countStat(draft);
+                setRecStatus(`✓ AI 整理到 <b>${quizQs.length}</b> 道题${st.bad ? `（<b style="color:var(--red)">${st.bad}</b> 题答案待校对）` : ""}，已加入下方「识别结果」，核对后保存。`);
+              }
+              usedAI = true;
+            } catch (e) { aiErr = e; }
           }
-          if (String(qText).replace(/\s/g, "").length < 40) {
-            setStatus(`<span style="color:var(--red)">⚠️ 提取到的文字极少，这份文件很可能是<b>扫描件/图片型</b>。请改用文字版。</span>`);
-            goBtn.disabled = false;
-            return;
-          }
-          buildDraft(pages, r.outline, ansBook);
-          inputWrap.open = true;
-          const stat = countStat(draft);
-          setStatus(`✓ 提取 ${qText.length} 字符${r.outline ? "（按 PDF 目录分组）" : "（按内容标题分组）"}，共 <b>${draft.sections.length}</b> 个考点块 / <b>${stat.q}</b> 道题${stat.bad ? `（其中 <b style="color:var(--red)">${stat.bad}</b> 题答案待校对）` : ""}${aNote}。请核对后保存。`);
-        } catch (e) {
-          setStatus(`<span style="color:var(--red)">提取失败：${esc(e.message || e)}</span>`);
-        } finally {
-          goBtn.disabled = false;
-        }
-      };
-
-      card.querySelector("#pdfManual").onclick = () => {
-        rawTa.style.display = "block";
-        reparseRow.style.display = "flex";
-        setStatus("已切换到手动模式：把题目文字粘贴到下方，再点「用上方文字重新识别」。");
-      };
-      card.querySelector("#pdfReparse").onclick = () => {
-        try {
-          buildDraft([sanitizeText(rawTa.value || "")], null, null);
-          inputWrap.open = true;
-          const stat = countStat(draft);
-          setStatus(`识别到 <b>${draft.sections.length}</b> 个考点块 / <b>${stat.q}</b> 道题${stat.bad ? `（<b style="color:var(--red)">${stat.bad}</b> 题答案待校对）` : ""}，请核对后保存。`);
-        } catch (e) { setStatus(`<span style="color:var(--red)">识别失败：${esc(e.message)}</span>`); }
-      };
-
-      /* ===== AI 识图：图片 → 结构化题目（复用 KGAI 视觉模型） ===== */
-      const aiImg = aiCard.querySelector("#aiImg");
-      const aiGo = aiCard.querySelector("#aiGo");
-      const aiStatus = aiCard.querySelector("#aiStatus");
-      aiGo.onclick = async () => {
-        const files = Array.from(aiImg.files || []);
-        if (!files.length) { UI.toast("请先选题目图片或 PDF"); return; }
-        if (!window.KGAI) { UI.toast("AI 模块未加载，请刷新重试"); return; }
-        const _prov0 = window.KGAI.providerById(window.KGAI.getProvider());
-        if (!_prov0.noKey && !window.KGAI.getToken && !window.KGAI.hasCustom()) { UI.toast("未配置 AI 令牌，请到「设置 → AI 令牌」填写，或选「共享 AI」"); return; }
-        aiGo.disabled = true;
-        try {
-          let all = [], done = 0;
-          for (const f of files) {
-            const isPdf = /\.pdf$/i.test(f.name) || f.type === "application/pdf";
-            if (isPdf) {
-              aiStatus.innerHTML = `正在读取 PDF 第 <b>${done + 1}</b>/<b>${files.length}</b> 个（本机抽字，不上传服务器）…`;
-              const qs = await aiPdfQuestions(f, aiCard.querySelector("#aiSubj").value || "常识", (p, t) => {
-                aiStatus.innerHTML = `正在用 AI 解析 PDF「${esc(truncate(f.name, 14))}」第 <b>${p}</b>/<b>${t}</b> 页…`;
-              });
-              if (qs && qs.length) all = all.concat(qs);
-            } else {
-              aiStatus.innerHTML = `正在用 AI 识别第 <b>${done + 1}</b>/<b>${files.length}</b> 张…`;
-              const qs = await aiVisionQuestions(f, aiCard.querySelector("#aiSubj").value || "常识");
-              if (qs && qs.length) all = all.concat(qs);
+          if (!usedAI) {
+            if (aiErr) setRecStatus(`<span style="color:var(--red)">❌ AI 识别失败，已自动改用规则识别：</span>${esc(aiErr.message || aiErr)}`);
+            else setRecStatus("未配置 AI，使用规则识别…");
+            const texts = [];
+            for (const f of files) {
+              if (!((f.type && f.type.indexOf("image/") === 0))) {
+                try { const r = await fileToPages(f); texts.push((r.pages || []).map(sanitizeText).join("\n")); } catch (e) { texts.push(""); }
+              }
             }
-            done++;
+            if (text) texts.push(text);
+            const allText = texts.join("\n\n");
+            if (type === "current" || (type === "auto" && looksLikeCurrent(allText))) {
+              const rec = window.KGCurrent.importText(allText, DB.today());
+              const live = (db().state.currentAffairs || []).find(x => x.id === rec.id);
+              if (live) { live.folderId = folderId || window.KGFolders.rootId("时政"); db().save(); }
+              UI.toast("已识别并保存到「时政」：" + (rec && rec.title || ""));
+              renderBooks();
+              if (!aiErr) setRecStatus("✓ 规则识别完成，已保存到「时政」模块。");
+            } else {
+              if (allText.replace(/\s/g, "").length < 40) { setRecStatus(`<span style="color:var(--red)">⚠️ 提取到的文字极少，可能是扫描件/图片型。请配置 AI 识图，或改用文字版。</span>`); return; }
+              buildDraft([allText], null, null, subject);
+              inputWrap.open = true;
+              const st = countStat(draft);
+              setRecStatus(`规则识别到 <b>${draft.sections.length}</b> 个考点块 / <b>${st.q}</b> 道题${st.bad ? `（<b style="color:var(--red)">${st.bad}</b> 题答案待校对）` : ""}，请核对后保存。`);
+            }
           }
-          if (!all.length) {
-            aiStatus.innerHTML = '<span style="color:var(--red)">AI 未识别出题目：请确认图片清晰 / PDF 含文字，且「AI 咨询」已配置可用模型（图片用可识图模型，PDF 用对话模型，如 Gemini 2.0 Flash / GLM-4V-Flash）。</span>';
-            return;
-          }
-          buildAiDraft(all, aiCard.querySelector("#aiSubj").value || "常识");
-          inputWrap.open = true;
-          const stat = countStat(draft);
-          aiStatus.innerHTML = `✓ AI 识别到 <b>${all.length}</b> 道题${stat.bad ? `（<b style="color:var(--red)">${stat.bad}</b> 题答案待校对）` : ""}，已加入下方「识别结果」，请核对后保存。`;
         } catch (e) {
-          aiStatus.innerHTML = `<span style="color:var(--red)">❌ AI 识别失败：${esc(e.message || e)}</span><br><span class="muted small">不影响录入：你也可以改用上方「文件 / 文字」方式（不依赖 AI 的正则识别）来完成识别，重点是识别完能练题。</span>`;
-          UI.toast("❌ AI 识别失败，可改用「文件 / 文字」方式识别");
+          setRecStatus(`<span style="color:var(--red)">识别失败：${esc(e.message || e)}</span>`);
         } finally {
-          aiGo.disabled = false;
+          recGo.disabled = false;
         }
-      };
+      }
+
+      // AI 文本 → 题目结构化（粘贴 / PDF / Word 文字，比纯正则更准）
+      async function aiTextQuestions(text, subject) {
+        const A = window.KGAI; const provId = A.getProvider(); const prov = A.providerById(provId); let model = A.getModel();
+        const key = A.getKey(provId);
+        if (!key && !prov.noKey && !A.hasCustom()) throw new Error("未配置 AI 令牌");
+        const sys = "你是公考题库录入助手。下面是一段公考题或资料的纯文字。请严格只输出一个 JSON 数组（不要任何解释、不要 markdown 代码块、不要 ```），数组每个元素是 {\"q\":\"题干\",\"options\":[\"A选项\",\"B选项\",\"C选项\",\"D选项\"],\"a\":\"A\"或\"B\"或\"C\"或\"D\"（不确定填 null），\"e\":\"解析，可空\"}。选项必须 2-4 个，顺序与文字一致；忽略页眉页脚、页码、非题目文字。";
+        const user = "请识别这段公考题目，按要求只输出 JSON 数组：\n" + text.slice(0, 6000);
+        const t = await A.chat([{ role: "system", content: sys }, { role: "user", content: user }], { providerId: provId, model: model, key: key });
+        return parseAiQuestions(t, subject);
+      }
+
+      // AI 整理时政/申论资料为规范文本（再交给 importText 解析，比原规则更准）
+      async function aiCurrent(text, subject) {
+        const A = window.KGAI; const provId = A.getProvider(); const prov = A.providerById(provId); let model = A.getModel();
+        const key = A.getKey(provId);
+        if (!key && !prov.noKey && !A.hasCustom()) throw new Error("未配置 AI 令牌");
+        const sys = "你是公考时政/申论资料整理助手。用户会发一段杂乱的时政汇总或申论资料文字。请整理成规范文本，结构保持：第一部分：YYYY年M月D日公考标准时政汇总（星级重难点）\\n国内时政\\n⭐1. …\\n国际时政\\n…\\n第二部分：申论标准时评+必背金句\\n…\\n第三部分：时政专属词语释义 + 言语真题\\n…\\n第四部分：原创时政单选\\n…\\n只输出整理后的纯文本本身，不要任何解释、不要 markdown 代码块。";
+        const user = "请整理这段资料：\n" + text.slice(0, 6000);
+        const t = await A.chat([{ role: "system", content: sys }, { role: "user", content: user }], { providerId: provId, model: model, key: key });
+        return (t || "").trim();
+      }
 
       function fileToDataUrl(file) {
         return new Promise((res, rej) => {
@@ -1768,7 +1742,7 @@
         for (let i = 0; i < 4; i++) optSlots.push((q.options && q.options[i]) || "");
         const ansOpts = letters.map((L, i) => `<option value="${i}" ${q.a === i ? "selected" : ""}>${L}</option>`).join("")
           + `<option value="-1" ${!(q.a >= 0) ? "selected" : ""}>未定（待校对）</option>`;
-        const rawText = (card.querySelector("#pdfRaw") && card.querySelector("#pdfRaw").value) || "";
+        const rawText = (isDraft && draft && draft.raw) ? draft.raw : "";
         const body = UI.el(`<div>
           <label class="fld">题干</label>
           <textarea id="pfQ" class="full" rows="3" style="width:100%">${esc(q.q || "")}</textarea>
@@ -1821,13 +1795,15 @@
         return { q: q, bad: bad };
       }
 
-      function buildDraft(pages, outline, ansBook) {
+      function buildDraft(pages, outline, ansBook, subject) {
         let secs = buildSections(pages && pages.length ? pages : [""], outline, ansBook);
         secs = absorbAnswerSections(secs);
         if (!secs.length) secs = [{ name: "全部题目", theory: "", questions: [] }];
+        const subj = subject || (typeof recSubj !== "undefined" && recSubj && recSubj.value) || "常识";
         draft = {
-          subject: card.querySelector("#pdfSubj").value || "常识",
+          subject: subj,
           name: "",
+          raw: (pages || []).join("\n\n"),
           sections: secs
         };
         renderDraft();
@@ -1835,7 +1811,7 @@
 
       /* ===== 识别结果（命名 + 预览） ===== */
       function renderDraft() {
-        const host = card.querySelector("#draftHost");
+        const host = recCard.querySelector("#draftHost");
         if (!host) return;
         host.innerHTML = "";
         if (!draft) return;
@@ -1887,7 +1863,7 @@
               ftsSubject = subjectLabel(subject); renderBooks(); renderCustom();
             } catch (e) { UI.toast("保存失败：" + e.message); }
           };
-          head.querySelector("#dCancel").onclick = () => { draft = null; host.innerHTML = ""; setStatus("已取消。"); };
+          head.querySelector("#dCancel").onclick = () => { draft = null; host.innerHTML = ""; setRecStatus("已取消。"); };
 
           (draft.sections || []).forEach((s, si) => {
             try {
@@ -2029,6 +2005,7 @@
 
       /* ===== 我的题册 + 文件夹（按学科整理，长按拖动，跟电脑整理文件一样） ===== */
       let _ftDrag = null; // 移动端长按拖动的临时状态
+      let multiOn = false; const multiSel = new Set(); // 多选模式：选中的条目 "type:id"
       function itemsInFolder(subj, folderId) {
         const DB = db();
         const books = (DB.state.pdfBooks || []).filter(b => subjShortName(b.subject) === subj && (b.folderId || null) === (folderId || null)).map(b => {
@@ -2049,7 +2026,9 @@
         renderBooks();
       }
       function itemRow(it) {
+        const chk = multiOn ? `<label class="ft-chk-wrap"><input type="checkbox" class="ft-chk" data-type="${esc(it.type)}" data-id="${esc(it.id)}" ${multiSel.has(it.type + ":" + it.id) ? "checked" : ""}/></label>` : "";
         const row = UI.el(`<div class="ft-item" draggable="true" data-type="${esc(it.type)}" data-id="${esc(it.id)}">
+          ${chk}
           <span class="ft-ico">${it.type === "affair" ? "📰" : "📚"}</span>
           <span class="ft-name ft-open">${esc(it.title)}</span>
           <span class="ft-sub">${esc(it.sub || "")}</span>
@@ -2058,11 +2037,15 @@
             : `<button class="btn xs ft-act" data-act="open">查看</button>`}
           <div class="ft-sec" style="display:none"></div>
         </div>`);
+        if (multiOn) {
+          const cb = row.querySelector(".ft-chk");
+          if (cb) cb.onchange = () => { const k = it.type + ":" + it.id; if (cb.checked) multiSel.add(k); else multiSel.delete(k); syncMultiBar(); };
+        }
         if (it.type === "book") {
           row.querySelector('[data-act="ren"]').onclick = (e) => { e.stopPropagation(); openRename(it.ref); };
           row.querySelector('[data-act="del"]').onclick = async (e) => {
             e.stopPropagation();
-            if (await UI.confirm(`确定删除题册「${it.title}」？`)) { window.KGPdfBooks.remove(it.id); UI.toast("已删除题册"); renderBooks(); }
+            if (await UI.confirm(`确定删除题册「${it.title}」？`)) { window.KGPdfBooks.remove(it.id); multiSel.delete(it.type + ":" + it.id); UI.toast("已删除题册"); renderBooks(); }
           };
           row.querySelector(".ft-open").onclick = () => toggleExpand(row, it);
         } else {
@@ -2145,8 +2128,10 @@
         const folders = allFolders.filter(f => (f.parentId || null) === (folderId || null));
         const items = itemsInFolder(subj, folderId);
         const f = (folderId != null) ? allFolders.find(x => x.id === folderId) : null;
+        const fchk = multiOn ? `<label class="ft-chk-wrap"><input type="checkbox" class="ft-fchk" data-folder="${esc(folderId || "")}"/></label>` : "";
         const node = UI.el(`<div class="ft-node" data-fid="${esc(folderId || "")}" style="margin-left:${depth * 14}px">
           <div class="ft-folder" data-fid="${esc(folderId || "")}">
+            ${fchk}
             <span class="ft-ico">📁</span>
             <span class="ft-name">${esc(f ? f.name : "默认文件夹")}</span>
             <span class="ft-count">${items.length} 项</span>
@@ -2158,6 +2143,12 @@
         items.forEach(it => listWrap.appendChild(itemRow(it)));
         folders.forEach(ch => node.appendChild(renderFolderNode(subj, ch.id, depth + 1)));
         const fEl = node.querySelector(".ft-folder");
+        const fChk = fEl.querySelector(".ft-fchk");
+        if (fChk) fChk.onchange = () => {
+          const ids = collectItemsUnder(subj, folderId || "");
+          if (fChk.checked) ids.forEach(k => multiSel.add(k)); else ids.forEach(k => multiSel.delete(k));
+          renderBooks();
+        };
         fEl.querySelector('[data-act="add"]').onclick = () => {
           const nm = window.prompt ? prompt("新建子文件夹名称：", "新建文件夹") : "";
           if (nm) { window.KGFolders.add({ subject: subj, name: nm, parentId: folderId || null }); renderBooks(); }
@@ -2176,12 +2167,144 @@
         }
         return node;
       }
+
+      // 收集某文件夹（含子文件夹）下的全部条目 id（"type:id"）
+      function collectFolderIds(subj, folderId) {
+        const out = [folderId || ""];
+        (window.KGFolders.list(subj) || []).forEach(f => {
+          if ((f.parentId || null) === (folderId || null)) out.push.apply(out, collectFolderIds(subj, f.id));
+        });
+        return out;
+      }
+      function collectItemsUnder(subj, folderId) {
+        const fids = collectFolderIds(subj, folderId);
+        const DB = db();
+        const out = [];
+        (DB.state.pdfBooks || []).forEach(b => { if (fids.indexOf(b.folderId || null) >= 0) out.push("book:" + b.id); });
+        (DB.state.currentAffairs || []).forEach(a => { if (fids.indexOf(a.folderId || null) >= 0) out.push("affair:" + a.id); });
+        return out;
+      }
+      // 把 multiSel 中的 id 还原为 {type,id,ref} 列表
+      function gatherSelected() {
+        const DB = db();
+        const out = [];
+        multiSel.forEach(k => {
+          const i = k.indexOf(":"); const type = k.slice(0, i), id = k.slice(i + 1);
+          let ref = null;
+          if (type === "book") ref = (DB.state.pdfBooks || []).find(x => x.id === id);
+          else ref = (DB.state.currentAffairs || []).find(x => x.id === id);
+          if (ref) out.push({ type: type, id: id, ref: ref });
+        });
+        return out;
+      }
+
+      // 批量导出 PDF：把选中题册 / 时政材料渲染成可打印 HTML（浏览器「另存为 PDF」）
+      function exportItemsPdf(items) {
+        if (!items.length) { UI.toast("请先勾选要导出的项"); return; }
+        let html = `<!doctype html><html><head><meta charset="utf-8"><title>考公工作台 · 导出台账</title>
+<style>
+ body{font-family:"Kaiti SC","STKaiti","KaiTi",serif;color:#111;background:#fff;padding:24px;line-height:1.7}
+ h1{font-size:22px;text-align:center;border-bottom:2px solid #333;padding-bottom:8px}
+ h2{font-size:17px;margin:18px 0 8px;border-left:4px solid #333;padding-left:8px}
+ h3{font-size:15px;margin:12px 0 4px}
+ .meta{color:#666;font-size:12px;text-align:center;margin-bottom:14px}
+ .q{margin:10px 0;padding:8px 10px;border:1px solid #ddd;border-radius:8px}
+ .q .ans{color:#1a7a3a;font-weight:700}
+ .q .e{color:#555;font-size:13px}
+ .sec{background:#f6f6f6;border-radius:8px;padding:8px 10px;margin:8px 0}
+ .aff{margin:14px 0}
+ .pgbreak{page-break-after:always}
+</style></head><body>
+<h1>考公工作台 · 导出台账</h1>
+<div class="meta">导出时间：${new Date().toLocaleString("zh-CN")} ｜ 共 ${items.length} 项</div>`;
+        items.forEach((it, idx) => {
+          if (it.type === "book") {
+            const b = it.ref;
+            html += `<h2>📚 ${esc(b.name || "题册")}（${subjectLabel(b.subject) || b.subject}）</h2>`;
+            (b.sections || []).forEach(s => {
+              if (s.theory && String(s.theory).trim()) html += `<div class="sec"><b>【考点】</b>${esc(String(s.theory))}</div>`;
+              (s.questions || []).forEach((q, qi) => {
+                const opts = (q.options || []).map((o, oi) => `${String.fromCharCode(65 + oi)}. ${esc(o)}`).join("　");
+                const ans = (q.a != null && q.a >= 0) ? String.fromCharCode(65 + q.a) : "（待校对）";
+                html += `<div class="q"><b>${qi + 1}. ${esc(q.q || "")}</b><br>${opts}`;
+                if (q.e) html += `<br><span class="e">解析：${esc(q.e)}</span>`;
+                html += `<br><span class="ans">答案：${ans}</span></div>`;
+              });
+            });
+          } else {
+            const a = it.ref; const d = a.data || {};
+            html += `<h2>📰 ${esc(a.title || a.date || "时政材料")}</h2>`;
+            if (d.news) html += `<div class="aff"><h3>时政新闻</h3>${esc(d.news)}</div>`;
+            if (d.essay) html += `<div class="aff"><h3>申论时评 / 金句</h3>${esc(d.essay)}</div>`;
+            if (d.words) html += `<div class="aff"><h3>词语释义</h3>${esc(d.words)}</div>`;
+            if (d.verbal && d.verbal.length) {
+              html += `<div class="aff"><h3>言语真题</h3>`;
+              (d.verbal || []).forEach(v => { html += `<div class="q"><b>${esc(v.q || "")}</b><br>${(v.options || []).map((o, oi) => String.fromCharCode(65 + oi) + ". " + esc(o)).join("　")}${v.a != null ? `<br><span class="ans">答案：${String.fromCharCode(65 + v.a)}</span>` : ""}</div>`; });
+              html += `</div>`;
+            }
+            if (d.quiz && d.quiz.length) {
+              html += `<div class="aff"><h3>时政单选</h3>`;
+              (d.quiz || []).forEach(v => { html += `<div class="q"><b>${esc(v.q || "")}</b><br>${(v.options || []).map((o, oi) => String.fromCharCode(65 + oi) + ". " + esc(o)).join("　")}${v.a != null ? `<br><span class="ans">答案：${String.fromCharCode(65 + v.a)}</span>` : ""}</div>`; });
+              html += `</div>`;
+            }
+          }
+          if (idx < items.length - 1) html += `<div class="pgbreak"></div>`;
+        });
+        html += `</body></html>`;
+        const f = document.createElement("iframe");
+        f.style.position = "fixed"; f.style.right = "0"; f.style.bottom = "0"; f.style.width = "0"; f.style.height = "0"; f.style.border = "0"; f.style.opacity = "0";
+        f.onload = () => { setTimeout(() => { try { f.contentWindow.focus(); f.contentWindow.print(); } catch (e) { UI.toast("导出失败：" + e.message); } }, 300); };
+        f.srcdoc = html; document.body.appendChild(f);
+        UI.toast("已打开打印窗口，选择「另存为 PDF」即可导出");
+      }
+
+      // 多选工具条：切换 / 批量移动 / 批量删除 / 导出 PDF
+      let multiBar = null;
+      function syncMultiBar() {
+        if (!multiBar) return;
+        multiBar.querySelector("#multiCount").textContent = "已选 " + multiSel.size + " 项";
+      }
+
       function renderBooks() {
         const host = bookCard.querySelector("#bookHost");
         if (!host) return;
         try {
           host.innerHTML = "";
           window.KGFolders.migrate(); // 兼容老数据：归入学科根
+          // 多选工具条
+          const bar = UI.el(`<div class="ft-mbar">
+            <button class="btn sm ${multiOn ? "primary" : "ghost"}" id="multiToggle">${multiOn ? "✓ 多选模式" : "▢ 多选"}</button>
+            <span id="multiCount" class="muted small">${multiOn ? ("已选 " + multiSel.size + " 项") : "勾选后可批量移动 / 删除 / 导出"}</span>
+            ${multiOn ? `<span class="ft-macts">
+              <select id="multiMove"><option value="">移动到文件夹…</option>${window.KGFolders.list(subjShortName(ftsSubject)).map(f => `<option value="${esc(f.id)}">${esc((f.parentId ? "　" : "") + f.name)}</option>`).join("")}</select>
+              <button class="btn sm" id="multiDel">批量删除</button>
+              <button class="btn sm primary" id="multiExp">导出PDF</button>
+              <button class="btn sm ghost" id="multiClear">取消选择</button>
+            </span>` : ""}
+          </div>`);
+          host.appendChild(bar);
+          multiBar = bar;
+          bar.querySelector("#multiToggle").onclick = () => { multiOn = !multiOn; if (!multiOn) multiSel.clear(); renderBooks(); };
+          if (multiOn) {
+            const mv = bar.querySelector("#multiMove");
+            if (mv) mv.onchange = () => {
+              if (!mv.value) return;
+              const sel = gatherSelected();
+              if (!sel.length) { UI.toast("请先勾选条目"); mv.value = ""; return; }
+              sel.forEach(it => moveItem(it.type, it.id, mv.value));
+              multiSel.clear(); UI.toast("已移动 " + sel.length + " 项"); renderBooks();
+            };
+            bar.querySelector("#multiDel").onclick = async () => {
+              const sel = gatherSelected();
+              if (!sel.length) { UI.toast("请先勾选条目"); return; }
+              if (await UI.confirm(`确定删除选中的 ${sel.length} 项？`)) {
+                sel.forEach(it => { if (it.type === "book") window.KGPdfBooks.remove(it.id); else { const A = db().state.currentAffairs; const i = A.findIndex(x => x.id === it.id); if (i >= 0) A.splice(i, 1); } });
+                db().save(); multiSel.clear(); UI.toast("已删除 " + sel.length + " 项"); renderBooks();
+              }
+            };
+            bar.querySelector("#multiExp").onclick = () => { exportItemsPdf(gatherSelected()); };
+            bar.querySelector("#multiClear").onclick = () => { multiSel.clear(); renderBooks(); };
+          }
           const FT_SUBJECTS = (window.KG_SUBJECTS || []).concat(["时政"]);
           const tabs = UI.el(`<div class="ft-tabs">${FT_SUBJECTS.map(s => `<button class="ft-tab${s === ftsSubject ? " active" : ""}" data-s="${esc(s)}">${esc(s)}</button>`).join("")}</div>`);
           host.appendChild(tabs);

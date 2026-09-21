@@ -1258,3 +1258,90 @@ mark.kw{background:rgba(255,206,0,.38);color:inherit;padding:0 2px;border-radius
 .ft-sec{margin:6px 0 6px 8px;border-left:2px solid var(--line,#e3e8f0);padding-left:8px}
 #ftGhost{background:var(--panel,#fff);border:1px solid var(--accent,#3a6df0);border-radius:8px;padding:6px 8px;font-size:13px;max-width:80vw;box-shadow:0 4px 12px rgba(0,0,0,.3)}
 
+/* ============================================================
+   多主题覆盖：赛博朋克(默认, 见 :root) / 简约 / 可爱 / 武侠 / 自定义背景
+   每个主题覆盖核心变量；.light 仅作用在"浅色"变体上（主题 light 规则写在 body.light 之后，优先级更高）。
+   ============================================================ */
+
+/* —— 简约（中性灰蓝，白底黑字 / 黑底白字） —— */
+body.theme-minimal{
+  --bg:#111418;--bg2:#161a20;--panel:#1b2027;--panel2:#232a33;--line:#2e3742;--txt:#e6e9ef;--txt-dim:#9aa4b2;
+  --cyan:#4a90d9;--magenta:#d96fb0;--purple:#8a7fd0;--yellow:#d9b34a;--green:#4caf7d;--red:#e2626e;
+  --shadow:0 8px 28px rgba(0,0,0,.35);--radius:14px;
+}
+body.theme-minimal.light{
+  --bg:#ffffff;--bg2:#f5f6f8;--panel:#ffffff;--panel2:#f5f6f8;--line:#e3e8f0;--txt:#14181f;--txt-dim:#5a6b86;
+  --cyan:#2f6fd0;--magenta:#c44f93;--purple:#6a4fc0;--yellow:#a9791a;--green:#1f9e6b;--red:#d23b4e;
+  --shadow:0 8px 26px rgba(30,50,90,.10);
+}
+/* 简约：去掉赛博朋克的彩色渐变/光晕，回归干净 */
+body.theme-minimal .brand-logo{background:linear-gradient(135deg,#4a90d9,#8a7fd0);box-shadow:none;color:#fff}
+
+/* —— 可爱（粉色猫猫，黑底白字；浅色为淡粉） —— */
+body.theme-cute{
+  --bg:#1a1420;--bg2:#221a2a;--panel:#2a2030;--panel2:#34273e;--line:#45354f;--txt:#ffffff;--txt-dim:#d9b8d8;
+  --cyan:#ff6fae;--magenta:#ff8ac4;--purple:#c98bff;--yellow:#ffd36b;--green:#7fe0a8;--red:#ff7b8a;
+  --shadow:0 8px 28px rgba(40,10,40,.45);--radius:20px;
+}
+body.theme-cute.light{
+  --bg:#fff0f6;--bg2:#ffe3ef;--panel:#ffffff;--panel2:#fff0f6;--line:#ffd0e0;--txt:#2a1a22;--txt-dim:#9c6b80;
+  --cyan:#ff5ca0;--magenta:#ff8ac4;--purple:#b06fd0;--yellow:#e0a93a;--green:#3fae7d;--red:#e25b76;
+  --shadow:0 8px 26px rgba(220,80,140,.15);
+}
+body.theme-cute .brand-logo{background:linear-gradient(135deg,#ffb3d9,#ff6fae);box-shadow:0 0 18px rgba(255,111,174,.5);color:#fff}
+body.theme-cute .nav-item.active{background:var(--panel2);border-color:var(--cyan)}
+
+/* —— 武侠（墨绿，华文行楷；白底黑字，可自选字体） —— */
+body.theme-wuxia{
+  --bg:#10211c;--bg2:#142a23;--panel:#1a3329;--panel2:#214034;--line:#2c4a3b;--txt:#e8f3ec;--txt-dim:#9dc2b1;
+  --cyan:#4caf7d;--magenta:#c98bd0;--purple:#8fb38f;--yellow:#d9c14a;--green:#5fce92;--red:#e2626e;
+  --shadow:0 8px 28px rgba(0,30,20,.5);--radius:12px;
+  --font-head:"Ma Shan Zheng","华文行楷","STXingkai","行楷",cursive;
+  --font-body:"Ma Shan Zheng","华文行楷","STXingkai","行楷",cursive;
+}
+body.theme-wuxia.light{
+  --bg:#f3f7f2;--bg2:#eaf2ea;--panel:#ffffff;--panel2:#f3f7f2;--line:#d4e2d6;--txt:#16241d;--txt-dim:#5d6f63;
+  --cyan:#2f8f5f;--magenta:#a85fa0;--purple:#5f7f5f;--yellow:#9a821a;--green:#2f8f5f;--red:#c23b4e;
+  --shadow:0 8px 24px rgba(30,60,40,.10);
+  --font-head:"Ma Shan Zheng","华文行楷","STXingkai","行楷",cursive;
+  --font-body:"Ma Shan Zheng","华文行楷","STXingkai","行楷",cursive;
+}
+body.theme-wuxia .brand-logo{background:linear-gradient(135deg,#4caf7d,#2f8f5f);box-shadow:0 0 16px rgba(76,175,125,.45);color:#fff}
+
+/* —— 自定义背景（从相册选图，模糊处理；板块保持不透明；主色可自选） —— */
+body.theme-custom{
+  --bg:#0d1016;--bg2:#141a22;--panel:#1a212c;--panel2:#222b38;--line:#2e3a4a;--txt:#eef2f8;--txt-dim:#aab6c6;
+  --cyan:var(--custom-color,#34e7e4);--magenta:#ff5cf0;--purple:#9b6cff;--yellow:#ffd166;--green:#3ddc97;--red:#ff6b81;
+  --shadow:0 10px 30px rgba(0,0,0,.5);
+}
+body.theme-custom.light{
+  --bg:#f4f7fb;--bg2:#eef2f7;--panel:#ffffff;--panel2:#f4f7fb;--line:#dce3ec;--txt:#16202c;--txt-dim:#5a6b86;
+  --cyan:var(--custom-color,#2f6fd0);--magenta:#c44f93;--purple:#6a4fc0;--yellow:#a9791a;--green:#1f9e6b;--red:#d23b4e;
+  --shadow:0 10px 28px rgba(30,50,90,.14);
+}
+body.theme-custom{ background:#0d1016; }
+body.theme-custom.light{ background:#eef2f7; }
+body.theme-custom::before{
+  content:"";position:fixed;inset:-40px;z-index:-2;
+  background-image:var(--custom-bg);background-size:cover;background-position:center;
+  filter:blur(26px) saturate(1.12);opacity:.6;
+}
+body.theme-custom::after{ content:"";position:fixed;inset:0;z-index:-1;background:rgba(10,12,18,.34); }
+body.theme-custom.light::after{ background:rgba(255,255,255,.5); }
+
+/* 主题选择网格（设置页） */
+.theme-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:10px;margin-top:12px}
+.theme-opt{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 8px;border:2px solid var(--line);border-radius:14px;background:var(--panel2);color:var(--txt);cursor:pointer;font-weight:700;font-size:13px;-webkit-tap-highlight-color:transparent}
+.theme-opt.on{border-color:var(--cyan);box-shadow:0 0 0 2px var(--cyan) inset}
+.theme-opt .theme-sw{width:100%;height:34px;border-radius:10px;border:1px solid rgba(128,128,128,.25)}
+.theme-help-btn{display:inline-flex;align-items:center;gap:6px}
+
+/* 文件夹树：多选 / 批量工具条 */
+.ft-chk-wrap{display:inline-flex;align-items:center;margin-right:4px}
+.ft-chk{width:17px;height:17px;accent-color:var(--accent,#3a6df0)}
+.ft-mbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0 10px;padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:var(--panel2)}
+.ft-mbar .btn.sm{padding:6px 10px;font-size:12px}
+.ft-macts{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ft-macts select{font-size:12px;padding:5px 6px;border-radius:8px;border:1px solid var(--line);background:var(--bg2);color:var(--txt)}
+.ft-fchk{width:17px;height:17px;accent-color:var(--accent,#3a6df0)}
+

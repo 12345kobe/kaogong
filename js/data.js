@@ -82,7 +82,8 @@
     pdfBookFolders: [], // 题册/时政材料 文件夹树（按学科）：[{id, subject, name, parentId, createdAt}]；parentId=null 为学科根「默认文件夹」
     currentAffairs: [], // 时政记录：[ {id,date,title,createdAt,data:{news,essay,words,verbal,quiz}} ]
     profile: { avatar: "", signature: "" }, // 头像（dataURL）/ 个性签名；随 DB.state 云端同步，跨设备一致
-    hotspotsEdits: {} // 时事热点用户修改：{ [hotspotId]: { title, body, summary } }
+    hotspotsEdits: {}, // 时事热点用户修改：{ [hotspotId]: { title, body, summary } }
+    theme: { name: "cyber", mode: "auto", customBg: "", customColor: "" } // 主题：name=cyber/minimal/cute/wuxia/custom；mode=auto/light/dark；customBg=背景图dataURL；customColor=主色
   };
 
   let state = null;

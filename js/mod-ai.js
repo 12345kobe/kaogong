@@ -710,7 +710,8 @@
         scrollBottom();
         sendBtn.disabled = true; busy = true;
         try {
-          const messages = [{ role: "system", content: SYS }]
+          const helpText = (window.KG_HELP_TEXT) ? "\n\n【考公工作台使用说明书（请先熟悉，再据此回答用户问题；用户问到某个模块用法时优先引用这里）】\n" + window.KG_HELP_TEXT : "";
+          const messages = [{ role: "system", content: SYS + helpText }]
             .concat(log.slice(0, -1).map(x => ({ role: x.role, content: x.content })))
             .concat([{ role: "user", content: parts.length === 1 && parts[0].type === "text" ? parts[0].text : parts }]);
           const reply = await chat(messages, { providerId: pid, key: key, model: model });
