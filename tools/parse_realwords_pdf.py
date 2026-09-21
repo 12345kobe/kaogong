@@ -148,6 +148,33 @@ def is_stem_line(s):
     return bool(re.search(r"_{2,}", s)) or bool(EXAM_HEAD_RE.search(s)) or (QUESTION_HINT in s)
 
 
+# ---- 后处理：修掉坐标重建/分题带来的小瑕疵 ----
+_HEAD_NUM_RE = re.compile(r"\d{1,3}[\.．]\s*[\(（]\s*(?:\d{4}|粉笔)")
+_HEAD_PAREN_RE = re.compile(r"[\(（]\s*(?:\d{4}|粉笔)")
+
+
+def polish_stem(q):
+    """题干清洗：①开头混入的成语释义（形如『成语：释义』且后接真题题头）从题头截断；
+       ②提问句括号里的空格线『(______)』还原为空括号『( )』（原题只是填空括号）。"""
+    if not q:
+        return q
+    m = _HEAD_NUM_RE.search(q)
+    if m and m.start() > 0 and re.search(r"[:：]", q[:m.start()]):
+        q = q[m.start():]
+    else:
+        m2 = _HEAD_PAREN_RE.search(q)
+        if m2 and 0 < m2.start() < 60 and re.search(r"[:：]", q[:m2.start()]):
+            q = q[m2.start():]
+    q = re.sub(r"[\(（]\s*_{2,}\s*[\)）]", "( )", q)
+    return q.strip()
+
+
+def polish_option(o):
+    """选项清洗：坐标重建可能把选项两列之间的间隙误补成空格线 → 去掉。"""
+    o = re.sub(r"_{2,}", "", o)
+    return re.sub(r"\s{2,}", " ", o).strip()
+
+
 def parse_exams(lines):
     """行数组 → 真题列表。
        分题边界：答案行（行首『故正确答案为X』等）之后的下一条内容行 = 下一题题干起点。
@@ -181,6 +208,8 @@ def parse_exams(lines):
                       or ans_m.group(4) or ans_m.group(5) or "").upper()
             if letter:
                 a = ord(letter) - ord("A")
+        q = polish_stem(q)
+        options = [polish_option(o) for o in options]
         # 质量门：题干完整（≥25 字，且含空格线或提问句）、选项齐全、答案合法
         if (q and len(q) >= 25 and len(options) >= 2 and a >= 0
                 and (re.search(r"_{2,}", q) or QUESTION_HINT in q)

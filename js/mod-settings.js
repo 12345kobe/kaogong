@@ -232,11 +232,23 @@
       if (pullBtn) pullBtn.onclick = () => {
         if (!DB.isLoggedIn()) { UI.toast("请先在顶栏「账号」里登录云端，再拉取"); return; }
         if (io && io.pull) {
-          io.pull().then(() => {
-            UI.toast("已拉取云端数据");
-            window.__refreshTop && window.__refreshTop();
-            window.__updateTopTimer && window.__updateTopTimer();
-          }).catch(e => UI.toast("拉取失败：" + (e && e.message ? e.message : e)));
+          pullBtn.disabled = true; pullBtn.textContent = "拉取中…";
+          io.pull().then((res) => {
+            res = res || {};
+            if (res.notFound) { UI.toast("云端暂无数据，已保留本机数据"); }
+            else if (res.error) { UI.toast("拉取失败：" + (res.msg || "未知错误")); }
+            else {
+              const s = res.stats || {};
+              const parts = [];
+              if (s.pdfBooks) parts.push(s.pdfBooks + " 个刷题册");
+              if (s.customQuestions) parts.push(s.customQuestions + " 道自建题");
+              if (s.pdfBookPractice) parts.push(s.pdfBookPractice + " 条刷题记录");
+              UI.toast(parts.length ? ("已从云端合并 " + parts.join("、") + "，并回传云端") : "已是最新，无新增");
+              window.__refreshTop && window.__refreshTop();
+              window.__updateTopTimer && window.__updateTopTimer();
+            }
+          }).catch(e => UI.toast("拉取失败：" + (e && e.message ? e.message : e)))
+            .then(() => { pullBtn.disabled = false; pullBtn.textContent = "拉取云端"; });
         } else {
           UI.toast("拉取功能未就绪");
         }

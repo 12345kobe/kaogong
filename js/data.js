@@ -77,6 +77,8 @@
     dailyPlan: {}, // 每日计划：{ 'YYYY-MM-DD': { items: [{id,module,type,text,done,createdAt,accuracy,minutes}], note:"" } }
     taskTimer: { task: "", startTs: 0, accumulated: 0, running: false, planId: null, targetMs: 0, laps: [], subject: "" }, // 上岸计时器（跨界面持续）；targetMs>0 为倒计时专注；laps 为分段记录；subject 为所选学科（用于按学科记时长/正确率）
     customQuestions: {}, // PDF 导入的自定义题库：{ 学科短名: [ {id,q,options,a,e,date,source} ] }
+    pdfBooks: [], // 自定义刷题册：[{id, subject, name, named, date, createdAt, sections:[...]}]
+    pdfBookPractice: [], // 刷题记录：[{id, date, time, bookId, bookName, section, subject, total, correct, pct, totalSec, items:[...]}]
     currentAffairs: [], // 时政记录：[ {id,date,title,createdAt,data:{news,essay,words,verbal,quiz}} ]
     profile: { avatar: "", signature: "" }, // 头像（dataURL）/ 个性签名；随 DB.state 云端同步，跨设备一致
     hotspotsEdits: {} // 时事热点用户修改：{ [hotspotId]: { title, body, summary } }
@@ -578,6 +580,26 @@
         out.essay.essaysEdit[k] = { phrases: phrases, marks: mergeMarks(cur.marks, inc.marks), origin: origin };
       }
 
+      // ===== 自建题库 / 刷题册 / 刷题记录：按 id 增量合并（只导入本机没有的） =====
+      //   跨设备同步：设备 A 自建的题/册，设备 B 拉取后只补它缺的，绝不覆盖本地已有数据，
+      //   也不被下方 fill() 兜底丢弃（fill 对数组字段「本地非空就保留本地、不合并云端」）。
+      //   customQuestions: { subject: [ {id,...} ] }  按学科分组、题 id 去重
+      //   pdfBooks:        [ {id,...} ]                按册 id 去重整册合并
+      //   pdfBookPractice: [ {id,...} ]                按记录 id 去重
+      out.customQuestions = out.customQuestions || {};
+      const cqIn = b.customQuestions || {};
+      for (const subj in cqIn) {
+        const local = out.customQuestions[subj] || [];
+        const have = new Set(local.map(x => S(x && x.id)));
+        (cqIn[subj] || []).forEach(x => {
+          const id = S(x && x.id);
+          if (!id || !have.has(id)) { local.push(x); if (id) have.add(id); }
+        });
+        out.customQuestions[subj] = local;
+      }
+      out.pdfBooks = mergeArrById(out.pdfBooks, b.pdfBooks);
+      out.pdfBookPractice = mergeArrById(out.pdfBookPractice, b.pdfBookPractice);
+
       // 其余字段：本地已有内容优先，缺失的才用传入数据补齐
       function fill(cur, inc) {
         for (const k in (inc || {})) {
@@ -625,8 +647,9 @@
       localStorage.setItem(LS_TOKEN, t);
       localStorage.setItem(LS_USER, safe);
       DB._token = t;
-      let cloudEmpty = false;
-      try { await this.pull(); } catch (e) { cloudEmpty = !!(e && e.notFound); }
+      let cloudEmpty = false, pullRes = null;
+      try { pullRes = await this.pull(); } catch (e) { cloudEmpty = !!(e && e.notFound); }
+      if (pullRes && pullRes.notFound) cloudEmpty = true;
       if (cloudEmpty && localHasData) {
         // 云端尚为空：把本机已有学习数据上传，避免首次登录丢数据
         state = localSnapshot; this._localSave();
@@ -641,16 +664,40 @@
     logout() {
       localStorage.removeItem(LS_TOKEN); localStorage.removeItem(LS_USER); DB._token = null; this._cloudReady = false;
     },
+    // 统计自建数据条数（用于计算跨设备增量导入了多少）
+    _countCustom(s) {
+      s = s || {};
+      let cq = 0;
+      const cqo = s.customQuestions || {};
+      for (const k in cqo) cq += (cqo[k] || []).length;
+      return { customQuestions: cq, pdfBooks: (s.pdfBooks || []).length, pdfBookPractice: (s.pdfBookPractice || []).length };
+    },
     async pull() {
-      if (!this.isLoggedIn()) return;
+      if (!this.isLoggedIn()) return { skip: true, msg: "未登录" };
       try {
         const r = await this._gh(`/repos/${GH.owner}/${GH.repo}/contents/${this._userPath()}?ref=${GH.dataBranch}`);
         const data = mergeDefault(JSON.parse(this._b64dec(r.content)), DEFAULT_STATE);
         // 与本机「累积合并」：本机尚未上传的历史不会被云端覆盖
+        const before = this._countCustom(state);
         state = this.mergeStates(state, data);
         this.state = state;
         this._localSave();
-      } catch (e) { if (!e.notFound) console.warn("云端拉取失败", e); }
+        const after = this._countCustom(state);
+        // 只统计「云端有、本机没有」的增量（按 id 去重后的净新增）
+        const stats = {
+          customQuestions: Math.max(0, after.customQuestions - before.customQuestions),
+          pdfBooks: Math.max(0, after.pdfBooks - before.pdfBooks),
+          pdfBookPractice: Math.max(0, after.pdfBookPractice - before.pdfBookPractice)
+        };
+        const hasNew = stats.customQuestions || stats.pdfBooks || stats.pdfBookPractice;
+        // 导入完成后，把本机所有记录（含刚合并进来的）自动回传云端，保证两端一致
+        if (hasNew) { try { await this.push(); } catch (e) { console.warn("回传云端失败", e); } }
+        return { stats, hasNew };
+      } catch (e) {
+        if (e.notFound) return { skip: true, notFound: true, msg: "云端暂无数据" };
+        console.warn("云端拉取失败", e);
+        return { skip: true, error: true, msg: (e && e.message) || "拉取失败" };
+      }
     },
     async push() {
       if (!this.isLoggedIn()) return;
