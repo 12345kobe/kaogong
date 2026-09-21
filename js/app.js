@@ -59,7 +59,8 @@
       return document.body.classList.contains("light") ? "light" : "dark";
     }
     function current() { return document.body.classList.contains("light") ? "light" : "dark"; }
-    return { init: init, apply: apply, set: set, toggle: toggle, current: current, getState: getState };
+    window.Theme = { init: init, apply: apply, set: set, toggle: toggle, current: current, getState: getState };  // 暴露给 mod-settings 等模块
+    return window.Theme;
   })();
 
   function el(html) { const d = document.createElement("div"); d.innerHTML = html.trim(); return d.firstElementChild; }

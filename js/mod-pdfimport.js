@@ -1589,19 +1589,26 @@
             }
             if (text) texts.push(text);
             const allText = texts.join("\n\n");
-            if (type === "current" || (type === "auto" && looksLikeCurrent(allText))) {
-              const rec = window.KGCurrent.importText(allText, DB.today());
-              const live = (db().state.currentAffairs || []).find(x => x.id === rec.id);
-              if (live) { live.folderId = folderId || window.KGFolders.rootId("时政"); db().save(); }
-              UI.toast("已识别并保存到「时政」：" + (rec && rec.title || ""));
-              renderBooks();
-              if (!aiErr) setRecStatus("✓ 规则识别完成，已保存到「时政」模块。");
-            } else {
+            const wantCurrent = (type === "current" || (type === "auto" && looksLikeCurrent(allText)));
+            let curDone = false;
+            if (wantCurrent) {
+              try {
+                const rec = window.KGCurrent.importText(allText, DB.today());
+                const live = (db().state.currentAffairs || []).find(x => x.id === rec.id);
+                if (live) { live.folderId = folderId || window.KGFolders.rootId("时政"); db().save(); }
+                UI.toast("已识别并保存到「时政」：" + (rec && rec.title || ""));
+                renderBooks();
+                if (!aiErr) setRecStatus("✓ 规则识别完成，已保存到「时政」模块。");
+                curDone = true;
+              } catch (e) { /* 时政格式未匹配 → 兜底按题库解析，保证能练题 */ }
+            }
+            if (!curDone) {
               if (allText.replace(/\s/g, "").length < 40) { setRecStatus(`<span style="color:var(--red)">⚠️ 提取到的文字极少，可能是扫描件/图片型。请配置 AI 识图，或改用文字版。</span>`); return; }
               buildDraft([allText], null, null, subject);
               inputWrap.open = true;
               const st = countStat(draft);
-              setRecStatus(`规则识别到 <b>${draft.sections.length}</b> 个考点块 / <b>${st.q}</b> 道题${st.bad ? `（<b style="color:var(--red)">${st.bad}</b> 题答案待校对）` : ""}，请核对后保存。`);
+              const pre = wantCurrent ? "内容不含时政资料格式，已按<b>题库</b>解析" : "规则识别到";
+              setRecStatus(`${pre} <b>${draft.sections.length}</b> 个考点块 / <b>${st.q}</b> 道题${st.bad ? `（<b style="color:var(--red)">${st.bad}</b> 题答案待校对）` : ""}，请核对后保存。`);
             }
           }
         } catch (e) {
@@ -1616,7 +1623,7 @@
         const A = window.KGAI; const provId = A.getProvider(); const prov = A.providerById(provId); let model = A.getModel();
         const key = A.getKey(provId);
         if (!key && !prov.noKey && !A.hasCustom()) throw new Error("未配置 AI 令牌");
-        const sys = "你是公考题库录入助手。下面是一段公考题或资料的纯文字。请严格只输出一个 JSON 数组（不要任何解释、不要 markdown 代码块、不要 ```），数组每个元素是 {\"q\":\"题干\",\"options\":[\"A选项\",\"B选项\",\"C选项\",\"D选项\"],\"a\":\"A\"或\"B\"或\"C\"或\"D\"（不确定填 null），\"e\":\"解析，可空\"}。选项必须 2-4 个，顺序与文字一致；忽略页眉页脚、页码、非题目文字。";
+        const sys = "你是公考题库录入助手。下面是一段公考题或资料的纯文字。请严格只输出一个 JSON 数组（不要任何解释、不要 markdown 代码块、不要 ```），数组每个元素是 {\"q\":\"题干\",\"options\":[\"A选项\",\"B选项\",\"C选项\",\"D选项\"],\"a\":\"A\"或\"B\"或\"C\"或\"D\"（不确定填 null），\"e\":\"解析，可空\"}。选项必须 2-4 个，顺序与文字一致；忽略页眉页脚、页码、非题目文字。若这段文字不是公考题目（如词语积累、讲义、纯资料），只返回 []。";
         const user = "请识别这段公考题目，按要求只输出 JSON 数组：\n" + text.slice(0, 6000);
         const t = await A.chat([{ role: "system", content: sys }, { role: "user", content: user }], { providerId: provId, model: model, key: key });
         return parseAiQuestions(t, subject);
@@ -1654,7 +1661,7 @@
         const key = window.KGAI.getKey(provId);
         if (!key && !prov.noKey && !window.KGAI.hasCustom()) throw new Error("未配置 AI 令牌，请到「设置 → AI 令牌」填写，或选「共享 AI」");
         const dataUrl = await fileToDataUrl(file);
-        const sys = "你是公考题库录入助手。用户会发一张题目图片。请严格只输出一个 JSON 数组（不要任何解释、不要 markdown 代码块、不要 ```），数组每个元素是 {\"q\":\"题干\",\"options\":[\"A选项\",\"B选项\",\"C选项\",\"D选项\"],\"a\":\"A\"或\"B\"或\"C\"或\"D\"（不确定填 null），\"e\":\"解析，可空\"}。选项必须 2-4 个，顺序与图片一致；若一题含多选，a 用数组。";
+        const sys = "你是公考题库录入助手。用户会发一张题目图片。请严格只输出一个 JSON 数组（不要任何解释、不要 markdown 代码块、不要 ```），数组每个元素是 {\"q\":\"题干\",\"options\":[\"A选项\",\"B选项\",\"C选项\",\"D选项\"],\"a\":\"A\"或\"B\"或\"C\"或\"D\"（不确定填 null），\"e\":\"解析，可空\"}。选项必须 2-4 个，顺序与图片一致；若一题含多选，a 用数组。若图片里不是公考题目，只返回 []。";
         const user = "请识别这张公考题目图片，按要求只输出 JSON 数组。";
         const content = [
           { type: "text", text: user },
@@ -1712,8 +1719,23 @@
             try { const o = JSON.parse(s.slice(k, l + 1)); if (Array.isArray(o.questions)) s = JSON.stringify(o.questions); } catch (e) {}
           }
         }
-        let arr;
-        try { arr = JSON.parse(s); } catch (e) { throw new Error("AI 返回的不是有效 JSON，请重试或换模型"); }
+        let arr = null;
+        try { arr = JSON.parse(s); } catch (e) { arr = null; }
+        if (!Array.isArray(arr)) {
+          // 截断/杂讯容错：扫描出所有完整的 {...} 对象逐个解析，能救多少救多少
+          const objs = []; let depth = 0, start = -1, inStr = false, esc = false;
+          for (let i2 = 0; i2 < s.length; i2++) {
+            const ch = s[i2];
+            if (inStr) { if (esc) esc = false; else if (ch === "\\") esc = true; else if (ch === '"') inStr = false; continue; }
+            if (ch === '"') { inStr = true; continue; }
+            if (ch === "{") { if (depth === 0) start = i2; depth++; }
+            else if (ch === "}") { depth--; if (depth === 0 && start >= 0) { objs.push(s.slice(start, i2 + 1)); start = -1; } }
+          }
+          const picked = [];
+          for (const o of objs) { try { const v = JSON.parse(o); if (v && typeof v === "object") picked.push(v); } catch (e) {} }
+          if (picked.length) arr = picked;
+        }
+        if (!Array.isArray(arr)) throw new Error("AI 返回的不是有效 JSON，请重试或换模型");
         if (!Array.isArray(arr)) arr = [arr];
         return arr.map((x, idx) => {
           const q = sanitizeText(x.q || "").replace(/\s+/g, " ").trim();
