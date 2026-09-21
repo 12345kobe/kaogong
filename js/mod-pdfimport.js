@@ -1204,6 +1204,7 @@
       book = book || {};
       book.id = book.id || DB.uid();
       book.subject = book.subject || "常识";
+      if (!book.folderId) book.folderId = (window.KGFolders && window.KGFolders.rootId(book.subject)) || "";
       book.sections = normalizeSections(book.sections);
       if (!book.name) book.name = suggestName(book.subject);
       book.createdAt = book.createdAt || Date.now();
@@ -1229,6 +1230,62 @@
       const out = [];
       secs.forEach(s => (s.questions || []).forEach(q => out.push(clone(q))));
       return out;
+    }
+  };
+
+  /* ================= 七·五、文件夹树（按学科组织 题册 + 时政材料；跟电脑整理文件一样） ================= */
+  function subjShortName(s) { return (window.KG_SUBJECT_SHORT && window.KG_SUBJECT_SHORT[s]) || (s === "时政" ? "时政" : s); }
+  window.KGFolders = {
+    list(subject) {
+      const DB = db();
+      DB.state.pdfBookFolders = DB.state.pdfBookFolders || [];
+      const arr = subject ? DB.state.pdfBookFolders.filter(f => f.subject === subjShortName(subject)) : DB.state.pdfBookFolders;
+      return arr.map(clone);
+    },
+    rootId(subject) {
+      const DB = db();
+      const sh = subjShortName(subject);
+      DB.state.pdfBookFolders = DB.state.pdfBookFolders || [];
+      let r = DB.state.pdfBookFolders.find(f => f.subject === sh && f.root);
+      if (!r) { r = { id: DB.uid(), subject: sh, name: "默认文件夹", parentId: null, root: true, createdAt: Date.now() }; DB.state.pdfBookFolders.push(r); DB.save(); }
+      return r.id;
+    },
+    ensureRoot(subject) { return this.rootId(subject); },
+    add(opts) {
+      const DB = db();
+      DB.state.pdfBookFolders = DB.state.pdfBookFolders || [];
+      const f = { id: DB.uid(), subject: subjShortName(opts.subject), name: String(opts.name || "新建文件夹").slice(0, 30), parentId: (opts.parentId == null ? null : opts.parentId), createdAt: Date.now() };
+      DB.state.pdfBookFolders.push(f); DB.save();
+      return clone(f);
+    },
+    rename(id, name) {
+      const DB = db();
+      const f = (DB.state.pdfBookFolders || []).find(x => x.id === id);
+      if (f) { f.name = String(name || f.name).slice(0, 30); DB.save(); }
+      return !!f;
+    },
+    // 删除文件夹：子文件夹上移一级，文件夹内题目/材料归到父级（或学科根）
+    remove(id) {
+      const DB = db();
+      const arr = DB.state.pdfBookFolders || [];
+      const f = arr.find(x => x.id === id);
+      if (!f || f.root) return false;
+      const parent = f.parentId || this.rootId(f.subject);
+      arr.forEach(x => { if (x.parentId === id) x.parentId = parent; });
+      const tgt = parent || this.rootId(f.subject);
+      (DB.state.pdfBooks || []).forEach(b => { if (b.folderId === id) b.folderId = tgt; });
+      (DB.state.currentAffairs || []).forEach(a => { if (a.folderId === id) a.folderId = tgt; });
+      const i = arr.findIndex(x => x.id === id);
+      if (i >= 0) arr.splice(i, 1);
+      DB.save();
+      return true;
+    },
+    // 迁移：给尚无 folderId 的题册 / 时政材料 归入学科根文件夹（兼容老数据）
+    migrate() {
+      const DB = db();
+      (DB.state.pdfBooks || []).forEach(b => { if (!b.folderId) b.folderId = this.rootId(b.subject); });
+      (DB.state.currentAffairs || []).forEach(a => { if (!a.folderId) a.folderId = this.rootId("时政"); });
+      DB.save();
     }
   };
 
@@ -1303,14 +1360,39 @@
   /* ================= 八、界面 ================= */
 
   window.MODULES.pdfimport = {
-    title: "PDF 题库", icon: "pdf",
+    title: "AI录入题目", icon: "pdf",
     render(body) {
       const DB = db(), UI = window.UI;
       body.innerHTML = "";
       const root = UI.el(`<div class="pdf-import"></div>`);
       body.appendChild(root);
 
+      // 录入方式折叠区（默认收起，满足「默认关闭不展开」；识别完成后自动展开）
+      const inputWrap = UI.el(`<details class="kg-det"><summary class="kg-det-s"><span class="kg-det-t">📥 录入方式（文件 / 文字 / AI 识图，点开）</span><span class="kg-det-arrow">▸</span></summary><div class="kg-det-b"></div></details>`);
+      root.appendChild(inputWrap);
+      const inputBox = inputWrap.querySelector(".kg-det-b");
+
+      // 文件夹下拉：列出该学科 根 + 子文件夹，支持「新建文件夹」
+      function populateFolderSelect(sel, subject, selectedId) {
+        if (!sel) return;
+        const sh = subjShortName(subject);
+        const folders = window.KGFolders.list(sh);
+        const rootId = window.KGFolders.rootId(sh);
+        let html = folders.map(f => `<option value="${esc(f.id)}">${esc((f.parentId ? "　" : "") + f.name)}</option>`).join("");
+        html += `<option value="__new__">➕ 新建文件夹…</option>`;
+        sel.innerHTML = html;
+        sel.value = (selectedId && folders.some(f => f.id === selectedId)) ? selectedId : rootId;
+        sel.onchange = () => {
+          if (sel.value === "__new__") {
+            const nm = window.prompt ? prompt("新建文件夹名称：", "新建文件夹") : "";
+            if (nm) { const f = window.KGFolders.add({ subject: sh, name: nm }); sel.value = f.id; }
+            else sel.value = rootId;
+          }
+        };
+      }
+
       let draft = null;
+      let ftsSubject = (window.KG_SUBJECTS && window.KG_SUBJECTS[0]) || "言语理解";
       const pageState = Object.create(null);
 
       /* ---------- 导入卡片 ---------- */
@@ -1341,7 +1423,7 @@
         </div>
         <div id="draftHost"></div>
       </div>`);
-      root.appendChild(card);
+      inputBox.appendChild(card);
 
       /* ---------- AI 识图/PDF 录入（图片视觉识别直出；PDF 先浏览器抽字再 AI 结构化） ---------- */
       const aiCard = UI.el(`<div class="card" style="margin-top:12px">
@@ -1360,7 +1442,7 @@
         </div>
         <div class="muted small" id="aiStatus" style="margin-top:10px"></div>
       </div>`);
-      root.appendChild(aiCard);
+      inputBox.appendChild(aiCard);
 
       /* ---------- 时政 / 申论材料：纯文字直接识别 → 存到「时政」模块 ---------- */
       const curCard = UI.el(`<div class="card" style="margin-top:12px">
@@ -1376,11 +1458,13 @@
         </div>
         <textarea id="curText" rows="8" style="width:100%;margin-top:8px" placeholder="第一部分：XXXX年X月X日公考标准时政汇总（星级重难点）&#10;国内时政&#10;⭐1. …"></textarea>
         <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap;align-items:center">
+          <label class="muted small">归类文件夹</label>
+          <select id="curFolder"></select>
           <button class="btn primary" id="curGo">🔍 识别为时政资料</button>
-          <span class="muted small">识别 → 存「时政」模块 → 自动跳转</span>
+          <span class="muted small">识别后归入所选文件夹（可在下方拖动整理）</span>
         </div>
       </div>`);
-      root.appendChild(curCard);
+      inputBox.appendChild(curCard);
 
       const CUR_SAMPLE = [
         "第一部分：2026年9月12日公考标准时政汇总（星级重难点）",
@@ -1410,19 +1494,26 @@
         "【答案】B"
       ].join("\n");
       curCard.querySelector("#curSample").onclick = () => { curCard.querySelector("#curText").value = CUR_SAMPLE; };
+      try { populateFolderSelect(curCard.querySelector("#curFolder"), "时政", null); } catch (e) {}
       curCard.querySelector("#curGo").onclick = () => {
         const txt = curCard.querySelector("#curText").value.trim();
         if (!txt) { UI.toast("请先粘贴文字"); return; }
         if (!window.KGCurrent) { UI.toast("时政模块未加载，请刷新后重试"); return; }
         try {
           const rec = window.KGCurrent.importText(txt, curCard.querySelector("#curDate").value || DB.today());
-          UI.toast("已识别并保存到「时政」：" + rec.title);
-          location.hash = "#/current";
+          if (rec && rec.id) {
+            const fsel = curCard.querySelector("#curFolder");
+            const fid = (fsel && fsel.value && fsel.value !== "__new__") ? fsel.value : window.KGFolders.rootId("时政");
+            const live = (db().state.currentAffairs || []).find(x => x.id === rec.id);
+            if (live) { live.folderId = fid; db().save(); }
+          }
+          UI.toast("已识别并保存到「时政」：" + (rec && rec.title || ""));
+          renderBooks();
         } catch (e) { UI.toast("识别失败：" + e.message); }
       };
 
       const bookCard = UI.el(`<div class="card" style="margin-top:12px">
-        <h3>📚 我的题册（可在各模块「我导入的题册」使用）</h3>
+        <h3>📚 我的题册与文件夹（长按拖动整理，跟电脑整理文件一样）</h3>
         <div class="muted small">点开题册 → 展开章节：有考点的先看考点，再分页刷题；练习会记录每题用时与正确率。</div>
         <div id="bookHost" style="margin-top:8px"></div>
       </div>`);
@@ -1478,6 +1569,7 @@
             return;
           }
           buildDraft(pages, r.outline, ansBook);
+          inputWrap.open = true;
           const stat = countStat(draft);
           setStatus(`✓ 提取 ${qText.length} 字符${r.outline ? "（按 PDF 目录分组）" : "（按内容标题分组）"}，共 <b>${draft.sections.length}</b> 个考点块 / <b>${stat.q}</b> 道题${stat.bad ? `（其中 <b style="color:var(--red)">${stat.bad}</b> 题答案待校对）` : ""}${aNote}。请核对后保存。`);
         } catch (e) {
@@ -1495,6 +1587,7 @@
       card.querySelector("#pdfReparse").onclick = () => {
         try {
           buildDraft([sanitizeText(rawTa.value || "")], null, null);
+          inputWrap.open = true;
           const stat = countStat(draft);
           setStatus(`识别到 <b>${draft.sections.length}</b> 个考点块 / <b>${stat.q}</b> 道题${stat.bad ? `（<b style="color:var(--red)">${stat.bad}</b> 题答案待校对）` : ""}，请核对后保存。`);
         } catch (e) { setStatus(`<span style="color:var(--red)">识别失败：${esc(e.message)}</span>`); }
@@ -1533,10 +1626,12 @@
             return;
           }
           buildAiDraft(all, aiCard.querySelector("#aiSubj").value || "常识");
+          inputWrap.open = true;
           const stat = countStat(draft);
           aiStatus.innerHTML = `✓ AI 识别到 <b>${all.length}</b> 道题${stat.bad ? `（<b style="color:var(--red)">${stat.bad}</b> 题答案待校对）` : ""}，已加入下方「识别结果」，请核对后保存。`;
         } catch (e) {
-          aiStatus.innerHTML = `<span style="color:var(--red)">AI 识别失败：${esc(e.message || e)}</span>`;
+          aiStatus.innerHTML = `<span style="color:var(--red)">❌ AI 识别失败：${esc(e.message || e)}</span><br><span class="muted small">不影响录入：你也可以改用上方「文件 / 文字」方式（不依赖 AI 的正则识别）来完成识别，重点是识别完能练题。</span>`;
+          UI.toast("❌ AI 识别失败，可改用「文件 / 文字」方式识别");
         } finally {
           aiGo.disabled = false;
         }
@@ -1750,6 +1845,12 @@
           const head = UI.el(`<div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
             <b>识别结果：${draft.sections.length} 个考点块 / ${stat.q} 道题${stat.bad ? `（${stat.bad} 题答案待校对）` : ""}</b>
             <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">
+              <label class="muted small">学科</label>
+              <select id="dSubj">${SUBJECTS.concat(["时政"]).map(s => `<option value="${esc(s)}" ${s === subjectLabel(draft.subject) ? "selected" : ""}>${esc(s)}</option>`).join("")}</select>
+              <label class="muted small">文件夹</label>
+              <select id="dFolder"></select>
+            </div>
+            <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">
               <label class="muted small">题册名称</label>
               <input id="dName" style="flex:1;min-width:160px" placeholder="${esc(defName)}" value="${esc(draft.name || "")}"/>
             </div>
@@ -1762,20 +1863,28 @@
           </div>`);
           host.appendChild(head);
           head.querySelector("#dName").oninput = e => { draft.name = e.target.value.trim(); };
+          const dSubj = head.querySelector("#dSubj");
+          const dFolder = head.querySelector("#dFolder");
+          const refreshFolder = () => populateFolderSelect(dFolder, dSubj.value, null);
+          dSubj.onchange = refreshFolder;
+          refreshFolder();
           head.querySelector("#dSave").onclick = () => {
             try {
-              const name = (head.querySelector("#dName").value || "").trim() || suggestName(draft.subject);
+              const subject = subjShortName(dSubj.value);
+              const folderId = (dFolder.value && dFolder.value !== "__new__") ? dFolder.value : window.KGFolders.rootId(subject);
+              const name = (head.querySelector("#dName").value || "").trim() || suggestName(subject);
               const book = window.KGPdfBooks.add({
-                subject: draft.subject, name: name, named: !!(head.querySelector("#dName").value || "").trim(),
+                subject: subject, name: name, named: !!(head.querySelector("#dName").value || "").trim(),
+                folderId: folderId,
                 sections: draft.sections.map(s => ({ name: s.name, theory: s.theory || "", questions: (s.questions || []).slice() }))
               });
               let n = 0;
               if (head.querySelector("#dToCustom").checked) {
-                n = saveToCustom(draft.subject, draft.sections.reduce((a, s) => a.concat(s.questions || []), []));
+                n = saveToCustom(subject, draft.sections.reduce((a, s) => a.concat(s.questions || []), []));
               }
               UI.toast(`已保存题册「${name}」${n ? "，并存入自定义题库 " + n + " 题" : ""}`);
               draft = null; host.innerHTML = "";
-              renderBooks(); renderCustom();
+              ftsSubject = subjectLabel(subject); renderBooks(); renderCustom();
             } catch (e) { UI.toast("保存失败：" + e.message); }
           };
           head.querySelector("#dCancel").onclick = () => { draft = null; host.innerHTML = ""; setStatus("已取消。"); };
@@ -1918,49 +2027,170 @@
         } catch (e) { UI.toast("启动练习失败：" + e.message); }
       }
 
-      /* ===== 我的题册 ===== */
+      /* ===== 我的题册 + 文件夹（按学科整理，长按拖动，跟电脑整理文件一样） ===== */
+      let _ftDrag = null; // 移动端长按拖动的临时状态
+      function itemsInFolder(subj, folderId) {
+        const DB = db();
+        const books = (DB.state.pdfBooks || []).filter(b => b.subject === subj && (b.folderId || null) === (folderId || null)).map(b => {
+          const tq = (b.sections || []).reduce((a, s) => a + ((s.questions || []).length), 0);
+          return { type: "book", id: b.id, title: b.name, sub: subjectLabel(b.subject) + " · " + ((b.sections || []).length) + " 块 / " + tq + " 题", date: b.date, ref: b };
+        });
+        const affairs = (DB.state.currentAffairs || []).filter(a => (a.folderId || null) === (folderId || null)).map(a => ({
+          type: "affair", id: a.id, title: (a.title || a.date || "时政材料"), sub: "时政材料 · " + (a.date || ""), date: a.date, ref: a
+        }));
+        return books.concat(affairs);
+      }
+      function moveItem(type, id, folderId) {
+        if (!type || !id || !folderId) return;
+        const DB = db();
+        if (type === "book") { const b = (DB.state.pdfBooks || []).find(x => x.id === id); if (b) { b.folderId = folderId; DB.save(); } }
+        else if (type === "affair") { const a = (DB.state.currentAffairs || []).find(x => x.id === id); if (a) { a.folderId = folderId; DB.save(); } }
+        UI.toast("已移动到文件夹");
+        renderBooks();
+      }
+      function itemRow(it) {
+        const row = UI.el(`<div class="ft-item" draggable="true" data-type="${esc(it.type)}" data-id="${esc(it.id)}">
+          <span class="ft-ico">${it.type === "affair" ? "📰" : "📚"}</span>
+          <span class="ft-name ft-open">${esc(it.title)}</span>
+          <span class="ft-sub">${esc(it.sub || "")}</span>
+          ${it.type === "book"
+            ? `<button class="btn xs ft-act" data-act="ren">✏️</button><button class="btn xs ghost ft-act" data-act="del">🗑</button>`
+            : `<button class="btn xs ft-act" data-act="open">查看</button>`}
+          <div class="ft-sec" style="display:none"></div>
+        </div>`);
+        if (it.type === "book") {
+          row.querySelector('[data-act="ren"]').onclick = (e) => { e.stopPropagation(); openRename(it.ref); };
+          row.querySelector('[data-act="del"]').onclick = async (e) => {
+            e.stopPropagation();
+            if (await UI.confirm(`确定删除题册「${it.title}」？`)) { window.KGPdfBooks.remove(it.id); UI.toast("已删除题册"); renderBooks(); }
+          };
+          row.querySelector(".ft-open").onclick = () => toggleExpand(row, it);
+        } else {
+          row.querySelector('[data-act="open"]').onclick = (e) => { e.stopPropagation(); location.hash = "#/current"; };
+        }
+        wireDrag(row, it);
+        return row;
+      }
+      function toggleExpand(row, it) {
+        const sec = row.querySelector(".ft-sec");
+        if (sec.style.display === "none") {
+          sec.style.display = "block"; sec.innerHTML = "";
+          (it.ref.sections || []).forEach((s, si) => {
+            const det = UI.section(`§ ${s.name || ("第" + (si + 1) + "块")} · ${(s.questions || []).length} 题${(s.theory && String(s.theory).trim()) ? " · 有考点" : ""}`);
+            sec.appendChild(det);
+            renderSectionBody(det.querySelector(".kg-det-b"), it.ref, si, false);
+          });
+        } else { sec.style.display = "none"; sec.innerHTML = ""; }
+      }
+      function wireDrag(el, it) {
+        el.draggable = true;
+        el.addEventListener("dragstart", e => {
+          e.dataTransfer.setData("text/plain", JSON.stringify({ type: it.type, id: it.id }));
+          e.dataTransfer.effectAllowed = "move";
+        });
+        let timer = null, sx = 0, sy = 0;
+        el.addEventListener("touchstart", e => {
+          const t = e.touches[0]; sx = t.clientX; sy = t.clientY;
+          timer = setTimeout(() => startTouchDrag(it, el, t), 450);
+        }, { passive: true });
+        el.addEventListener("touchmove", e => {
+          const t = e.touches[0];
+          if (Math.abs(t.clientX - sx) > 8 || Math.abs(t.clientY - sy) > 8) clearTimeout(timer);
+          if (_ftDrag) { e.preventDefault(); moveTouchDrag(t.clientX, t.clientY); }
+        }, { passive: false });
+        el.addEventListener("touchend", () => { clearTimeout(timer); if (_ftDrag) endTouchDrag(); });
+        el.addEventListener("touchcancel", () => { clearTimeout(timer); if (_ftDrag) endTouchDrag(); });
+      }
+      function startTouchDrag(it, el, t) {
+        _ftDrag = { type: it.type, id: it.id };
+        const g = el.cloneNode(true);
+        g.style.position = "fixed"; g.style.zIndex = 9999; g.style.pointerEvents = "none";
+        g.style.opacity = "0.9"; g.style.width = el.offsetWidth + "px"; g.style.boxShadow = "0 4px 12px rgba(0,0,0,.3)";
+        g.id = "ftGhost"; document.body.appendChild(g);
+        moveTouchDrag(t.clientX, t.clientY);
+        UI.toast("拖动到目标文件夹松手即可归类");
+      }
+      function moveTouchDrag(x, y) {
+        const g = document.getElementById("ftGhost");
+        if (g) { g.style.left = (x - 20) + "px"; g.style.top = (y - 16) + "px"; }
+        document.querySelectorAll(".ft-node").forEach(n => n.classList.remove("ft-drop"));
+        const tgt = document.elementFromPoint(x, y);
+        const node = tgt && tgt.closest && tgt.closest(".ft-node");
+        if (node) node.classList.add("ft-drop");
+      }
+      function endTouchDrag() {
+        const g = document.getElementById("ftGhost");
+        const d = _ftDrag; let tgtFid = null;
+        if (g) {
+          const r = g.getBoundingClientRect();
+          const elp = document.elementFromPoint(r.left + 20, r.top + 16);
+          const node = elp && elp.closest && elp.closest(".ft-node");
+          if (node) tgtFid = node.getAttribute("data-fid");
+          g.remove();
+        }
+        document.querySelectorAll(".ft-node").forEach(n => n.classList.remove("ft-drop"));
+        _ftDrag = null;
+        if (d && tgtFid) moveItem(d.type, d.id, tgtFid);
+      }
+      function wireDrop(el, folderId) {
+        el.addEventListener("dragover", e => { e.preventDefault(); e.stopPropagation(); el.classList.add("ft-drop"); });
+        el.addEventListener("dragleave", () => el.classList.remove("ft-drop"));
+        el.addEventListener("drop", e => {
+          e.preventDefault(); e.stopPropagation(); el.classList.remove("ft-drop");
+          try { const d = JSON.parse(e.dataTransfer.getData("text/plain")); moveItem(d.type, d.id, folderId); } catch (err) {}
+        });
+      }
+      function renderFolderNode(subj, folderId, depth) {
+        const allFolders = window.KGFolders.list(subj);
+        const folders = allFolders.filter(f => (f.parentId || null) === (folderId || null));
+        const items = itemsInFolder(subj, folderId);
+        const f = (folderId != null) ? allFolders.find(x => x.id === folderId) : null;
+        const node = UI.el(`<div class="ft-node" data-fid="${esc(folderId || "")}" style="margin-left:${depth * 14}px">
+          <div class="ft-folder" data-fid="${esc(folderId || "")}">
+            <span class="ft-ico">📁</span>
+            <span class="ft-name">${esc(f ? f.name : "默认文件夹")}</span>
+            <span class="ft-count">${items.length} 项</span>
+            ${f && f.root ? `<button class="btn xs ft-act" data-act="add">➕ 子文件夹</button>` : (folderId ? `<button class="btn xs ft-act" data-act="add">➕</button><button class="btn xs ft-act" data-act="ren">✏️</button><button class="btn xs ghost ft-act" data-act="del">🗑</button>` : `<button class="btn xs ft-act" data-act="add">➕ 子文件夹</button>`)}
+          </div>
+          <div class="ft-items"></div>
+        </div>`);
+        const listWrap = node.querySelector(".ft-items");
+        items.forEach(it => listWrap.appendChild(itemRow(it)));
+        folders.forEach(ch => node.appendChild(renderFolderNode(subj, ch.id, depth + 1)));
+        const fEl = node.querySelector(".ft-folder");
+        fEl.querySelector('[data-act="add"]').onclick = () => {
+          const nm = window.prompt ? prompt("新建子文件夹名称：", "新建文件夹") : "";
+          if (nm) { window.KGFolders.add({ subject: subj, name: nm, parentId: folderId || null }); renderBooks(); }
+        };
+        if (folderId) {
+          const renBtn = fEl.querySelector('[data-act="ren"]');
+          const delBtn = fEl.querySelector('[data-act="del"]');
+          if (renBtn) renBtn.onclick = () => {
+            const nm = window.prompt ? prompt("重命名文件夹：", f ? f.name : "") : "";
+            if (nm) { window.KGFolders.rename(folderId, nm); renderBooks(); }
+          };
+          if (delBtn) delBtn.onclick = async () => {
+            if (await UI.confirm(`确定删除文件夹「${f ? f.name : ""}」？其内题目 / 材料会移回上一级。`)) { window.KGFolders.remove(folderId); renderBooks(); }
+          };
+          wireDrop(fEl, folderId);
+        }
+        return node;
+      }
       function renderBooks() {
         const host = bookCard.querySelector("#bookHost");
         if (!host) return;
         try {
           host.innerHTML = "";
-          const books = window.KGPdfBooks.all();
-          if (!books.length) { host.innerHTML = `<div class="empty">还没有题册，导入一份文件试试。</div>`; return; }
-          books.forEach(bk => {
-            const tq = (bk.sections || []).reduce((a, s) => a + ((s.questions || []).length), 0);
-            const det = UI.section(`📚 ${bk.name} · ${subjectLabel(bk.subject)} · ${(bk.sections || []).length} 块 / ${tq} 题`);
-            host.appendChild(det);
-            const box = det.querySelector(".kg-det-b");
-            const bar = UI.el(`<div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px">
-              <button class="btn xs" data-a="rename">✏️ 重命名</button>
-              <button class="btn xs" data-a="tocustom">📦 存入自定义题库</button>
-              <button class="btn xs ghost" data-a="del">🗑 删除题册</button>
-              <span class="muted small">${esc(bk.date || "")}</span>
-            </div>`);
-            box.appendChild(bar);
-            bar.querySelector('[data-a="rename"]').onclick = () => openRename(bk);
-            bar.querySelector('[data-a="tocustom"]').onclick = () => {
-              const n = saveToCustom(bk.subject, (bk.sections || []).reduce((a, s) => a.concat(s.questions || []), []));
-              UI.toast(n ? `已存入「${subjectLabel(bk.subject)}」自定义题库 ${n} 题` : "没有可存入的题目");
-              renderCustom();
-            };
-            bar.querySelector('[data-a="del"]').onclick = async () => {
-              if (await UI.confirm(`确定删除题册「${bk.name}」？`)) {
-                window.KGPdfBooks.remove(bk.id);
-                UI.toast("已删除题册");
-                renderBooks();
-              }
-            };
-            (bk.sections || []).forEach((s, si) => {
-              try {
-                const sub = UI.section(`§ ${s.name || ("第" + (si + 1) + "块")} · ${(s.questions || []).length} 题${(s.theory && String(s.theory).trim()) ? " · 有考点" : ""}`);
-                box.appendChild(sub);
-                renderSectionBody(sub.querySelector(".kg-det-b"), bk, si, false);
-              } catch (e) {
-                box.appendChild(UI.el(`<div class="muted small">章节渲染失败：${esc(e.message)}</div>`));
-              }
-            });
-          });
+          window.KGFolders.migrate(); // 兼容老数据：归入学科根
+          const FT_SUBJECTS = (window.KG_SUBJECTS || []).concat(["时政"]);
+          const tabs = UI.el(`<div class="ft-tabs">${FT_SUBJECTS.map(s => `<button class="ft-tab${s === ftsSubject ? " active" : ""}" data-s="${esc(s)}">${esc(s)}</button>`).join("")}</div>`);
+          host.appendChild(tabs);
+          tabs.querySelectorAll(".ft-tab").forEach(b => b.onclick = () => { ftsSubject = b.dataset.s; renderBooks(); });
+          const subj = subjShortName(ftsSubject);
+          const rootId = window.KGFolders.rootId(subj);
+          const tree = UI.el(`<div class="ft-tree"></div>`);
+          host.appendChild(tree);
+          tree.appendChild(renderFolderNode(subj, rootId, 0));
         } catch (e) {
           host.innerHTML = `<div class="empty">题册列表加载失败：${esc(e.message)}</div>`;
         }

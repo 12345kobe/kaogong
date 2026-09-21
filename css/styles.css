@@ -1234,3 +1234,27 @@ mark.kw{background:rgba(255,206,0,.38);color:inherit;padding:0 2px;border-radius
   .wx-cover{height:200px}
 }
 
+/* ===== AI录入题目：文件夹树（跟电脑整理文件一样） ===== */
+.ft-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.ft-tab{padding:6px 12px;border:1px solid var(--line,#e3e8f0);border-radius:16px;background:var(--panel,#fff);color:inherit;font-size:13px;cursor:pointer}
+.ft-tab.active{background:var(--accent,#3a6df0);color:#fff;border-color:var(--accent,#3a6df0)}
+.ft-tree{margin-top:4px}
+.ft-node{margin:2px 0}
+.ft-folder{display:flex;align-items:center;gap:6px;padding:6px 8px;border:1px solid var(--line,#e3e8f0);border-radius:8px;background:var(--panel,#fff)}
+.ft-node > .ft-folder{margin-bottom:4px}
+.ft-folder .ft-ico{font-size:16px}
+.ft-folder .ft-name{font-weight:600;flex:0 0 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ft-folder .ft-count{color:var(--muted,#999);font-size:12px}
+.ft-folder .ft-act{margin-left:2px}
+.ft-folder .ft-act:last-child{margin-left:auto}
+.ft-items{display:flex;flex-direction:column;gap:4px;padding:4px 0 4px 10px}
+.ft-item{display:flex;align-items:center;gap:6px;padding:6px 8px;border:1px solid var(--line,#e3e8f0);border-radius:8px;background:var(--panel,#fff)}
+.ft-item .ft-ico{font-size:15px;flex:0 0 auto}
+.ft-item .ft-name{flex:1;min-width:0;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ft-item .ft-sub{color:var(--muted,#999);font-size:12px;flex:0 0 auto;max-width:42%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ft-item .ft-act{flex:0 0 auto}
+.ft-item[draggable=true]{cursor:grab}
+.ft-node.ft-drop > .ft-folder,.ft-folder.ft-drop{outline:2px dashed var(--accent,#3a6df0);background:rgba(58,109,240,.10)}
+.ft-sec{margin:6px 0 6px 8px;border-left:2px solid var(--line,#e3e8f0);padding-left:8px}
+#ftGhost{background:var(--panel,#fff);border:1px solid var(--accent,#3a6df0);border-radius:8px;padding:6px 8px;font-size:13px;max-width:80vw;box-shadow:0 4px 12px rgba(0,0,0,.3)}
+

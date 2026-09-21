@@ -79,6 +79,7 @@
     customQuestions: {}, // PDF 导入的自定义题库：{ 学科短名: [ {id,q,options,a,e,date,source} ] }
     pdfBooks: [], // 自定义刷题册：[{id, subject, name, named, date, createdAt, sections:[...]}]
     pdfBookPractice: [], // 刷题记录：[{id, date, time, bookId, bookName, section, subject, total, correct, pct, totalSec, items:[...]}]
+    pdfBookFolders: [], // 题册/时政材料 文件夹树（按学科）：[{id, subject, name, parentId, createdAt}]；parentId=null 为学科根「默认文件夹」
     currentAffairs: [], // 时政记录：[ {id,date,title,createdAt,data:{news,essay,words,verbal,quiz}} ]
     profile: { avatar: "", signature: "" }, // 头像（dataURL）/ 个性签名；随 DB.state 云端同步，跨设备一致
     hotspotsEdits: {} // 时事热点用户修改：{ [hotspotId]: { title, body, summary } }
@@ -599,6 +600,8 @@
       }
       out.pdfBooks = mergeArrById(out.pdfBooks, b.pdfBooks);
       out.pdfBookPractice = mergeArrById(out.pdfBookPractice, b.pdfBookPractice);
+      // 文件夹树：按 id 去重合并（跨设备一致，新增文件夹只补本机没有的）
+      out.pdfBookFolders = mergeArrById(out.pdfBookFolders, b.pdfBookFolders);
 
       // 其余字段：本地已有内容优先，缺失的才用传入数据补齐
       function fill(cur, inc) {

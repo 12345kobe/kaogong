@@ -160,7 +160,7 @@
         </div>`;
 
       /* ===== PDF 题库导入（合并进设置的子板块） ===== */
-      const pdfSec = UI.section("📄 PDF 题库导入");
+      const pdfSec = UI.section("📄 PDF 题库导入", { open: false });
       body.appendChild(pdfSec);
       try { window.MODULES.pdfimport.render(pdfSec.querySelector(".kg-det-b")); }
       catch (e) { pdfSec.querySelector(".kg-det-b").innerHTML = `<div class="card empty">PDF 题库加载失败：${UI.esc(e.message)}</div>`; }
