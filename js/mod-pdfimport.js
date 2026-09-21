@@ -1555,18 +1555,21 @@
                 }
               }
               if (text) texts.push(text);
-              let curText = null;
+              let curData = null;
               if (texts.length) {
-                if (type === "current") curText = await aiCurrent(texts.join("\n\n"), subject);
+                if (type === "current") curData = await aiCurrentData(texts.join("\n\n"));   // AI 一步出「资料+题目+答案」
                 else { const qs = await aiTextQuestions(texts.join("\n\n"), subject); if (qs && qs.length) quizQs = quizQs.concat(qs); }
               }
               if (type === "current") {
-                if (!curText) throw new Error("AI 未整理出资料");
-                const rec = window.KGCurrent.importText(curText, DB.today());
-                const live = (db().state.currentAffairs || []).find(x => x.id === rec.id);
-                if (live) { live.folderId = folderId || window.KGFolders.rootId("时政"); db().save(); }
-                UI.toast("已用 AI 整理并保存到「时政」：" + (rec && rec.title || ""));
+                if (!curData) throw new Error("AI 未整理出资料");
+                const r = saveCurrentStructured(curData, folderId);
+                const bits = ["资料 " + r.news + " 条"];
+                if (r.words) bits.push("词语 " + r.words + " 个");
+                if (r.nq) bits.push("时政题 " + r.nq + " 道");
+                if (r.nv) bits.push("言语题 " + r.nv + " 道");
+                UI.toast("✓ AI 已解析并分类保存：" + bits.join(" / "));
                 renderBooks();
+                setRecStatus(`✓ <b>AI 直接解析并分类完成</b>：${bits.join(" / ")}。<br>资料已进「时政」模块，题目已按学科存进对应题册（可在下方题册里校对）。`);
               } else {
                 if (!quizQs.length) throw new Error("AI 未识别到题目");
                 buildAiDraft(quizQs, subject);
@@ -1638,6 +1641,48 @@
         const user = "请整理这段资料：\n" + text.slice(0, 6000);
         const t = await A.chat([{ role: "system", content: sys }, { role: "user", content: user }], { providerId: provId, model: model, key: key });
         return (t || "").trim();
+      }
+
+      /* ===== 时政：AI 一步解析成「资料 + 题目+答案」并自动分类入库 ===== */
+      function parseAiObject(text) {
+        if (!text) throw new Error("AI 无返回");
+        let s = String(text).trim().replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
+        const i = s.indexOf("{"), j = s.lastIndexOf("}");
+        if (i >= 0 && j > i) s = s.slice(i, j + 1);
+        try { return JSON.parse(s); } catch (e) { throw new Error("AI 返回的不是有效 JSON，请重试或换模型"); }
+      }
+
+      async function aiCurrentData(text) {
+        const A = window.KGAI; const provId = A.getProvider(); const prov = A.providerById(provId); let model = A.getModel();
+        const key = A.getKey(provId);
+        if (!key && !prov.noKey && !A.hasCustom()) throw new Error("未配置 AI 令牌");
+        const sys = "你是公考时政资料解析助手。用户会给一段时政/申论资料（常见结构：上面是资料，下面是题目）。请严格只输出一个 JSON 对象（不要任何解释、不要 markdown 代码块），格式：{\"date\":\"YYYY-MM-DD\",\"title\":\"标题\",\"news\":[{\"area\":\"国内时政\",\"star\":1,\"title\":\"要点\",\"body\":\"正文\"}],\"essay\":{\"topic\":\"时评主题\",\"paras\":[\"段落\"],\"quotes\":[\"金句\"]},\"words\":[{\"word\":\"词语\",\"type\":\"两字\",\"def\":\"释义\"}],\"verbal\":[{\"q\":\"题干\",\"options\":[\"A选项\",\"B选项\",\"C选项\",\"D选项\"],\"a\":\"A\",\"e\":\"解析\"}],\"quiz\":[{\"q\":\"题干\",\"options\":[\"A选项\",\"B选项\",\"C选项\",\"D选项\"],\"a\":\"B\",\"e\":\"解析\"}]}。规则：资料部分归入 news/essay/words；所有选择题（言语真题、时政单选等）归入 verbal/quiz，且必须给出答案 a（A/B/C/D）与解析 e；没有的字段填空数组。";
+        const user = "请把这段资料按上面格式解析，只输出 JSON：\n" + text.slice(0, 8000);
+        const t = await A.chat([{ role: "system", content: sys }, { role: "user", content: user }], { providerId: provId, model: model, key: key });
+        return parseAiObject(t);
+      }
+
+      function saveQuestionsAs(subject, qs) {
+        const norm = (qs || []).filter(q => q && q.q && (q.options || []).length >= 2);
+        if (!norm.length) return 0;
+        window.KGPdfBooks.add({
+          subject: subject, name: suggestName(subject), named: false,
+          folderId: window.KGFolders.rootId(subject),
+          sections: [{ name: "AI 解析", theory: "", questions: norm }]
+        });
+        saveToCustom(subject, norm);
+        return norm.length;
+      }
+
+      function saveCurrentStructured(data, folderId) {
+        const rec = window.KGCurrent.importData(data, DB.today());
+        const live = (db().state.currentAffairs || []).find(x => x.id === rec.id);
+        if (live) { live.folderId = folderId || window.KGFolders.rootId("时政"); db().save(); }
+        const qz = parseAiQuestions(JSON.stringify(data.quiz || []), "时政");   // 复用归一化（答案索引/解析/待校对标记）
+        const vb = parseAiQuestions(JSON.stringify(data.verbal || []), "言语");
+        const nq = qz.length ? saveQuestionsAs("时政", qz) : 0;
+        const nv = vb.length ? saveQuestionsAs("言语", vb) : 0;
+        return { rec: rec, news: (data.news || []).length, words: (data.words || []).length, nq: nq, nv: nv };
       }
 
       function fileToDataUrl(file) {

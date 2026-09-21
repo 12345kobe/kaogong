@@ -440,9 +440,37 @@
     return rec;
   }
 
+  /* AI 结构化解析后直接入库：data 已符合 {news,essay,words,verbal,quiz} 结构，跳过容易失败的文本规则解析 */
+  function importData(data, date, title) {
+    data = data || {};
+    data.news = Array.isArray(data.news) ? data.news : [];
+    data.essay = Object.assign({ topic: "", paras: [], quotes: [] }, data.essay || {});
+    data.words = Array.isArray(data.words) ? data.words : [];
+    data.verbal = Array.isArray(data.verbal) ? data.verbal : [];
+    data.quiz = Array.isArray(data.quiz) ? data.quiz : [];
+    const hasAny = data.news.length || (data.essay.paras || []).length || data.words.length || data.verbal.length || data.quiz.length;
+    if (!hasAny) throw new Error("AI 未解析出可用的时政内容");
+    const rec = addRecord(data, date || data.date || DB.today(), title);
+    const eq = data.essay || {};
+    if ((eq.quotes || []).length) {
+      DB.state.essay = DB.state.essay || {};
+      DB.state.essay.userQuotes = DB.state.essay.userQuotes || [];
+      const existing = new Set(DB.state.essay.userQuotes.map(q => (q.date || "") + "|" + q.t));
+      eq.quotes.forEach(q => {
+        const key = (rec.date || "") + "|" + q;
+        if (!existing.has(key)) {
+          DB.state.essay.userQuotes.push({ t: q, theme: eq.topic || "时政", date: rec.date, source: rec.id });
+          existing.add(key);
+        }
+      });
+      DB.save();
+    }
+    return rec;
+  }
+
   /* ================= 五、模块 UI ================= */
   window.KGCurrent = {
-    parse: parseCurrentText, importText, list: listRecords, get: getRecord,
+    parse: parseCurrentText, importText, importData, list: listRecords, get: getRecord,
     remove: removeRecord, setDate: setDate, setTitle: setTitle, allQuestions: allQuestions,
     recordHtml: recordHtml, subject: SUBJECT
   };
