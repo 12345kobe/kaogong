@@ -1409,7 +1409,7 @@
             <option value="current">时政 / 申论资料</option>
           </select>
           <span id="recSubjWrap"><label class="muted small">学科</label>
-          <select id="recSubj">${SUBJECTS.map(s => `<option value="${esc(SUBJECT_SHORT[s] || s)}">${esc(s)}</option>`).join("")}</select></span>
+          <select id="recSubj">${SUBJECTS.concat(["时政"]).map(s => `<option value="${esc(SUBJECT_SHORT[s] || s)}">${esc(s)}</option>`).join("")}</select></span>
           <label class="muted small">文件夹</label>
           <select id="recFolder"></select>
           <button class="btn primary" id="recGo">🤖 识别整理（优先 AI）</button>
@@ -1460,6 +1460,26 @@
         "【答案】B"
       ].join("\n");
 
+      // 题库示例（普通学科）
+      const QUIZ_SAMPLE = "1. 下列关于法的效力的表述，正确的是（  ）。\nA. 属人主义原则是指法律只适用于本国公民\nB. 属地主义原则是指法律适用于本国领域内的所有人\nC. 保护主义原则是指法律只保护本国公民的利益\nD. 折中主义是以属人主义为主\n【答案】B\n【解析】属地主义强调领域内的所有人，不论国籍。";
+      // 题库示例（时政学科：原创时政单选）
+      const CUR_QUIZ_SAMPLE = [
+        "1. 2026年9月闭幕的第十六次APEC能源部长会议，确立的三大核心理念是（）",
+        "A.绿色、低碳、高效",
+        "B.普惠、创新、协同",
+        "C.开放、包容、共赢",
+        "D.创新、协调、绿色",
+        "【答案】B",
+        "【解析】官方固定表述为“普惠、创新、协同”三大合作理念。",
+        "2. 下列关于我国碳达峰碳中和目标的表述，正确的是（）",
+        "A.2030年前实现碳中和、2060年前实现碳达峰",
+        "B.2030年前实现碳达峰、2060年前实现碳中和",
+        "C.2035年前实现碳达峰、2050年前实现碳中和",
+        "D.2025年前实现碳达峰、2050年前实现碳中和",
+        "【答案】B",
+        "【解析】我国承诺2030年前碳达峰、2060年前碳中和，顺序不可颠倒。"
+      ].join("\n");
+
       // 刷新文件夹下拉（时政用「时政」根，其余用所选学科短名）
       function refreshRecFolder() {
         const subj = (recType.value === "current") ? "时政" : (KG_SUBJECT_LABEL[recSubj.value] || recSubj.value);
@@ -1467,6 +1487,7 @@
         populateFolderSelect(recFolder, subj, null);
       }
       recType.onchange = refreshRecFolder;
+      recSubj.onchange = refreshRecFolder;   // 切学科也要换文件夹（含「时政」）
       try { refreshRecFolder(); } catch (e) {}
 
       // 粘贴截图：把剪贴板图片转成可识别文件
@@ -1482,7 +1503,8 @@
       // 示例
       recCard.querySelector("#recSample").onclick = () => {
         if (recType.value === "current") recText.value = CUR_SAMPLE;
-        else recText.value = "1. 下列关于法的效力的表述，正确的是（  ）。\nA. 属人主义原则是指法律只适用于本国公民\nB. 属地主义原则是指法律适用于本国领域内的所有人\nC. 保护主义原则是指法律只保护本国公民的利益\nD. 折中主义是以属人主义为主\n【答案】B\n【解析】属地主义强调领域内的所有人，不论国籍。";
+        else if (recSubj.value === "时政") recText.value = CUR_QUIZ_SAMPLE;
+        else recText.value = QUIZ_SAMPLE;
         setRecStatus("已填入示例，可点「识别整理」试一下。");
       };
 
