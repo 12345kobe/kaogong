@@ -1204,7 +1204,7 @@
       book = book || {};
       book.id = book.id || DB.uid();
       book.subject = book.subject || "常识";
-      if (!book.folderId) book.folderId = (window.KGFolders && window.KGFolders.rootId(book.subject)) || "";
+      if (!book.folderId) book.folderId = (window.KGFolders && window.KGFolders.rootId(subjShortName(book.subject))) || "";
       book.sections = normalizeSections(book.sections);
       if (!book.name) book.name = suggestName(book.subject);
       book.createdAt = book.createdAt || Date.now();
@@ -1283,7 +1283,7 @@
     // 迁移：给尚无 folderId 的题册 / 时政材料 归入学科根文件夹（兼容老数据）
     migrate() {
       const DB = db();
-      (DB.state.pdfBooks || []).forEach(b => { if (!b.folderId) b.folderId = this.rootId(b.subject); });
+      (DB.state.pdfBooks || []).forEach(b => { if (!b.folderId) b.folderId = this.rootId(subjShortName(b.subject)); });
       (DB.state.currentAffairs || []).forEach(a => { if (!a.folderId) a.folderId = this.rootId("时政"); });
       DB.save();
     }
@@ -2031,7 +2031,7 @@
       let _ftDrag = null; // 移动端长按拖动的临时状态
       function itemsInFolder(subj, folderId) {
         const DB = db();
-        const books = (DB.state.pdfBooks || []).filter(b => b.subject === subj && (b.folderId || null) === (folderId || null)).map(b => {
+        const books = (DB.state.pdfBooks || []).filter(b => subjShortName(b.subject) === subj && (b.folderId || null) === (folderId || null)).map(b => {
           const tq = (b.sections || []).reduce((a, s) => a + ((s.questions || []).length), 0);
           return { type: "book", id: b.id, title: b.name, sub: subjectLabel(b.subject) + " · " + ((b.sections || []).length) + " 块 / " + tq + " 题", date: b.date, ref: b };
         });
