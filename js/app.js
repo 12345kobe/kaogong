@@ -11,7 +11,7 @@
   const Theme = (function () {
     function getState() {
       const s = (window.DB && DB.state && DB.state.theme) || {};
-      return { name: s.name || "cyber", mode: s.mode || "auto", customBg: s.customBg || "", customColor: s.customColor || "" };
+      return { name: s.name || "wuxia", mode: s.mode || "auto", customBg: s.customBg || "", customColor: s.customColor || "", accent: s.accent || "", emojis: s.emojis || {} };
     }
     function autoMode() {
       const now = new Date(); const t = now.getHours() * 60 + now.getMinutes();
@@ -28,13 +28,32 @@
       document.body.className = cls.join(" ");
       // 自定义背景 / 主色（通过 CSS 变量注入；无则清除）
       if (s.name === "custom") {
-        if (s.customBg) document.body.style.setProperty("--custom-bg", "url(" + JSON.stringify(s.customBg) + ")");
-        else document.body.style.removeProperty("--custom-bg");
-        if (s.customColor) document.body.style.setProperty("--custom-color", s.customColor);
+        if (s.customBg) { document.body.style.setProperty("--custom-bg", "url(" + JSON.stringify(s.customBg) + ")"); document.body.classList.add("has-bg"); }
+        else { document.body.style.removeProperty("--custom-bg"); document.body.classList.remove("has-bg"); }
+        if (s.customColor || s.accent) document.body.style.setProperty("--custom-color", s.customColor || s.accent);
         else document.body.style.removeProperty("--custom-color");
       } else {
         document.body.style.removeProperty("--custom-bg");
         document.body.style.removeProperty("--custom-color");
+        document.body.classList.remove("has-bg");
+      }
+      applyEmojis();
+    }
+    /* 自定义主题的板块表情：只在 custom 主题生效（跳过则保持默认武侠元素） */
+    function applyEmojis() {
+      const s = getState();
+      const em = (s.name === "custom" && s.emojis) || {};
+      document.querySelectorAll("#nav .nav-item").forEach(n => {
+        const key = n.dataset.key, m = MODULES[key]; if (!m) return;
+        const span = n.querySelector("span"); if (!span) return;
+        span.textContent = (em[key] ? em[key] + " " : "") + m.title;
+      });
+      const cur = location.hash.replace("#/", "") || "countdown";
+      const cm = MODULES[cur];
+      const pt = document.getElementById("pageTitle");
+      if (pt && cm) {
+        const span = pt.querySelector("span");
+        if (span) span.textContent = (em[cur] ? em[cur] + " " : "") + cm.title;
       }
     }
     function set(opts) {
@@ -43,6 +62,8 @@
       if (opts.mode !== undefined) st.mode = opts.mode;
       if (opts.customBg !== undefined) st.customBg = opts.customBg;
       if (opts.customColor !== undefined) st.customColor = opts.customColor;
+      if (opts.accent !== undefined) st.accent = opts.accent;
+      if (opts.emojis !== undefined) st.emojis = opts.emojis;
       try {
         DB.save();                                  // 本地保存（含 theme）
         if (DB.isLoggedIn && DB.isLoggedIn()) { DB.push && DB.push(); }  // 已登录则立即上传云端
@@ -50,6 +71,11 @@
       apply();
     }
     function init() {
+      // 默认主题迁移：老用户存的是旧默认 cyber → 一次性切到武侠（用户手动选 cyber 后不再迁移）
+      try {
+        const st = DB.state && DB.state.theme;
+        if (st && st.name === "cyber" && !st._wuxiaMig) { st.name = "wuxia"; st._wuxiaMig = true; DB.save(); }
+      } catch (e) {}
       apply();
       setInterval(() => { const s = getState(); if (s.mode === "auto") apply(); }, 60000);
     }
@@ -838,14 +864,19 @@
     if (!location.hash) location.hash = "#/countdown";
     // 更新日志：新版本首次打开自动弹出（点×/空白关闭），关闭后导航上标气泡
     try { window.Changelog && Changelog.maybeShow(); } catch (e) { console.error(e); }
-      if (DB.isLoggedIn()) {
-        UI.toast("正在从云端拉取数据…");
-        DB.pull().then(() => { DB._cloudReady = true; DB.startAutoSync(); renderRoute(); refreshTop(); })
-                .catch(() => { DB._cloudReady = true; DB.startAutoSync(); renderRoute(); });
-      } else {
-        DB._cloudReady = true;
-        renderRoute();
-      }
+    // 启动页：至少展示 2s，期间并行完成云端拉取与设置恢复（boot 前半段已恢复本地设置）。
+    // 云端最慢 6s 也放行（未拉完的部分由 startAutoSync 后台续跑，不阻塞进入）。
+    const splash = document.getElementById("kgSplash");
+    const pullP = DB.isLoggedIn()
+      ? DB.pull().then(() => { DB._cloudReady = true; }).catch(() => { DB._cloudReady = true; })
+      : Promise.resolve().then(() => { DB._cloudReady = true; });
+    const minWait = new Promise(r => setTimeout(r, 2000));
+    const capWait = new Promise(r => setTimeout(r, 6000));
+    Promise.all([Promise.race([pullP, capWait]), minWait]).then(() => {
+      if (DB.isLoggedIn()) DB.startAutoSync();
+      renderRoute(); refreshTop();
+      if (splash) { splash.classList.add("kg-splash-hide"); setTimeout(() => { try { splash.remove(); } catch (e) {} }, 500); }
+    });
 
       // 每个模块的「专注计时」浮动按钮：跳到计时器并预填本模块名（默认计入计划）
       const fab = document.getElementById("focusFab");

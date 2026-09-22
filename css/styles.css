@@ -2,13 +2,13 @@
   /* 标题用黑体类：苹果优先“华文黑体/苹方黑”，Windows 回退“黑体(SimHei)”；正文用楷体类：苹果优先“华文楷体(Kaiti SC)”，Windows 回退“楷体(KaiTi)” */
   --font-head:"Heiti SC","PingFang SC","SimHei","黑体","STHeiti","Microsoft YaHei",sans-serif;
   --font-body:"Kaiti SC","STKaiti","KaiTi","楷体",serif;
-  --bg:#0b1020;
-  --bg2:#0f1730;
-  --panel:#141d3b;
-  --panel2:#1b2750;
-  --line:#27345f;
-  --txt:#e6ecff;
-  --txt-dim:#9fb0d8;
+  --bg:#0a0a0d;
+  --bg2:#101014;
+  --panel:#15151a;
+  --panel2:#1d1d23;
+  --line:#2b2b33;
+  --txt:#f5f2ea;
+  --txt-dim:#a8a8b4;
   --cyan:#34e7e4;
   --magenta:#ff5cf0;
   --purple:#9b6cff;
@@ -742,22 +742,23 @@ body.light .wn-btn.on{color:#0f1828}
   --txt2:var(--txt);
 }
 body.light{
-  --bg:#ffffff;
-  --bg2:#ffffff;
-  --panel:#ffffff;
-  --panel2:#fafbfc;          /* 极浅灰，仅用于次级背景的细微区分 */
-  --line:#e3e8f0;
-  --txt:#0f1828;
-  --txt-dim:#5a6b86;
-  --cyan:#0fb3b0;
-  --magenta:#d633a8;
-  --purple:#7a4ddb;
-  --yellow:#b8860b;
-  --green:#1f9e6b;
-  --red:#e23b54;
-  --shadow:0 8px 28px rgba(30,50,90,.10);
+  /* 任务4统一：浅色=米黄护眼纸底 + 黑字（特殊标记字体不受影响） */
+  --bg:#f6efdc;
+  --bg2:#efe6cf;
+  --panel:#fbf6e7;
+  --panel2:#f3ecd8;
+  --line:#d8cba8;
+  --txt:#1c1c1c;
+  --txt-dim:#6b5f45;
+  --cyan:#0f8f8c;
+  --magenta:#c22d95;
+  --purple:#6a42c8;
+  --yellow:#9a7410;
+  --green:#1f8f5f;
+  --red:#c43348;
+  --shadow:0 8px 28px rgba(90,70,30,.12);
 }
-body.light{ background:#ffffff; }
+body.light{ background:#f6efdc; }
 body{ transition: background .35s ease, color .35s ease; }
 
 /* —— 浅色模式：所有可见背景纯白 + 黑色文字，去掉深色渐变 —— */
@@ -1263,71 +1264,96 @@ mark.kw{background:rgba(255,206,0,.38);color:inherit;padding:0 2px;border-radius
    每个主题覆盖核心变量；.light 仅作用在"浅色"变体上（主题 light 规则写在 body.light 之后，优先级更高）。
    ============================================================ */
 
-/* —— 简约（中性灰蓝，白底黑字 / 黑底白字） —— */
+/* —— 简约（黑底白字 / 米黄底黑字，中性无装饰） —— */
 body.theme-minimal{
-  --bg:#111418;--bg2:#161a20;--panel:#1b2027;--panel2:#232a33;--line:#2e3742;--txt:#e6e9ef;--txt-dim:#9aa4b2;
+  --bg:#0c0d10;--bg2:#121318;--panel:#181a20;--panel2:#20232b;--line:#2d313b;--txt:#f2f2f2;--txt-dim:#9aa4b2;
   --cyan:#4a90d9;--magenta:#d96fb0;--purple:#8a7fd0;--yellow:#d9b34a;--green:#4caf7d;--red:#e2626e;
   --shadow:0 8px 28px rgba(0,0,0,.35);--radius:14px;
 }
 body.theme-minimal.light{
-  --bg:#ffffff;--bg2:#f5f6f8;--panel:#ffffff;--panel2:#f5f6f8;--line:#e3e8f0;--txt:#14181f;--txt-dim:#5a6b86;
+  --bg:#f6efdc;--bg2:#efe6cf;--panel:#fbf6e7;--panel2:#f3ecd8;--line:#d8cba8;--txt:#1c1c1c;--txt-dim:#6b5f45;
   --cyan:#2f6fd0;--magenta:#c44f93;--purple:#6a4fc0;--yellow:#a9791a;--green:#1f9e6b;--red:#d23b4e;
-  --shadow:0 8px 26px rgba(30,50,90,.10);
+  --shadow:0 8px 26px rgba(90,70,30,.10);
 }
 /* 简约：去掉赛博朋克的彩色渐变/光晕，回归干净 */
 body.theme-minimal .brand-logo{background:linear-gradient(135deg,#4a90d9,#8a7fd0);box-shadow:none;color:#fff}
 
-/* —— 可爱（粉色猫猫，黑底白字；浅色为淡粉） —— */
+/* —— 可爱（猫猫 + 粉色 + 手写体；黑底白字 / 米黄底黑字） —— */
 body.theme-cute{
-  --bg:#1a1420;--bg2:#221a2a;--panel:#2a2030;--panel2:#34273e;--line:#45354f;--txt:#ffffff;--txt-dim:#d9b8d8;
+  --bg:#0d0a0e;--bg2:#151016;--panel:#1d151f;--panel2:#261b29;--line:#3d2c42;--txt:#f7eef4;--txt-dim:#c9a0c0;
   --cyan:#ff6fae;--magenta:#ff8ac4;--purple:#c98bff;--yellow:#ffd36b;--green:#7fe0a8;--red:#ff7b8a;
-  --shadow:0 8px 28px rgba(40,10,40,.45);--radius:20px;
+  --shadow:0 8px 28px rgba(30,5,25,.5);--radius:22px;
+  --font-head:"LXGW WenKai","霞鹜文楷","楷体","KaiTi","Kaiti SC",serif;
+  --font-body:"LXGW WenKai","霞鹜文楷","楷体","KaiTi","Kaiti SC",serif;
 }
 body.theme-cute.light{
-  --bg:#fff0f6;--bg2:#ffe3ef;--panel:#ffffff;--panel2:#fff0f6;--line:#ffd0e0;--txt:#2a1a22;--txt-dim:#9c6b80;
-  --cyan:#ff5ca0;--magenta:#ff8ac4;--purple:#b06fd0;--yellow:#e0a93a;--green:#3fae7d;--red:#e25b76;
-  --shadow:0 8px 26px rgba(220,80,140,.15);
+  --bg:#fdf3e3;--bg2:#f9ead2;--panel:#fffaf0;--panel2:#fdf0f5;--line:#e8cfd8;--txt:#241a20;--txt-dim:#a07085;
+  --cyan:#e8478f;--magenta:#f06fb0;--purple:#a86fc8;--yellow:#c8942a;--green:#3fae7d;--red:#e25b76;
+  --shadow:0 8px 26px rgba(220,80,140,.14);
+  --font-head:"LXGW WenKai","霞鹜文楷","楷体","KaiTi","Kaiti SC",serif;
+  --font-body:"LXGW WenKai","霞鹜文楷","楷体","KaiTi","Kaiti SC",serif;
 }
-body.theme-cute .brand-logo{background:linear-gradient(135deg,#ffb3d9,#ff6fae);box-shadow:0 0 18px rgba(255,111,174,.5);color:#fff}
+body.theme-cute .brand-logo{background:linear-gradient(135deg,#ffb3d9,#ff6fae);box-shadow:0 2px 10px rgba(255,111,174,.35);color:#fff;border-radius:18px}
 body.theme-cute .nav-item.active{background:var(--panel2);border-color:var(--cyan)}
+/* 猫猫元素：标题带猫爪/蝴蝶结，卡片大圆角软萌感 */
+body.theme-cute h3::before{content:"🐾 ";font-size:.9em}
+body.theme-cute .card{border-radius:22px;border:1.5px solid var(--line)}
+body.theme-cute .btn{border-radius:999px}
+body.theme-cute .btn.primary{background:linear-gradient(135deg,#ff8ac4,#ff6fae);border:none;color:#fff}
 
-/* —— 武侠（墨绿，华文行楷；白底黑字，可自选字体） —— */
+/* —— 武侠（水墨碑刻：黑底白字 / 米黄宣纸底黑字；行楷；竹简印章元素，无科技感描边） —— */
 body.theme-wuxia{
-  --bg:#10211c;--bg2:#142a23;--panel:#1a3329;--panel2:#214034;--line:#2c4a3b;--txt:#e8f3ec;--txt-dim:#9dc2b1;
-  --cyan:#4caf7d;--magenta:#c98bd0;--purple:#8fb38f;--yellow:#d9c14a;--green:#5fce92;--red:#e2626e;
-  --shadow:0 8px 28px rgba(0,30,20,.5);--radius:12px;
+  --bg:#0b0b0c;--bg2:#111113;--panel:#171718;--panel2:#1f1f21;--line:#33342f;--txt:#efe9d8;--txt-dim:#a89f8a;
+  --cyan:#6f9f7f;--magenta:#b087ab;--purple:#8f9f8f;--yellow:#c9a227;--green:#5f8f6f;--red:#b03a2e;
+  --shadow:0 6px 20px rgba(0,0,0,.5);--radius:10px;
   --font-head:"Ma Shan Zheng","华文行楷","STXingkai","行楷",cursive;
   --font-body:"Ma Shan Zheng","华文行楷","STXingkai","行楷",cursive;
 }
 body.theme-wuxia.light{
-  --bg:#f3f7f2;--bg2:#eaf2ea;--panel:#ffffff;--panel2:#f3f7f2;--line:#d4e2d6;--txt:#16241d;--txt-dim:#5d6f63;
-  --cyan:#2f8f5f;--magenta:#a85fa0;--purple:#5f7f5f;--yellow:#9a821a;--green:#2f8f5f;--red:#c23b4e;
-  --shadow:0 8px 24px rgba(30,60,40,.10);
+  --bg:#f3ecd6;--bg2:#ece2c6;--panel:#faf4e2;--panel2:#f1e9d0;--line:#cfc19c;--txt:#22201a;--txt-dim:#6b6350;
+  --cyan:#3f7a52;--magenta:#8f5a88;--purple:#5f7a5f;--yellow:#9a7a10;--green:#3f7a52;--red:#a53026;
+  --shadow:0 6px 18px rgba(80,60,20,.12);
   --font-head:"Ma Shan Zheng","华文行楷","STXingkai","行楷",cursive;
   --font-body:"Ma Shan Zheng","华文行楷","STXingkai","行楷",cursive;
 }
-body.theme-wuxia .brand-logo{background:linear-gradient(135deg,#4caf7d,#2f8f5f);box-shadow:0 0 16px rgba(76,175,125,.45);color:#fff}
-
-/* —— 自定义背景（从相册选图，模糊处理；板块保持不透明；主色可自选） —— */
+/* 水墨宣纸质感（极淡的墨晕渐变，无发光） */
+body.theme-wuxia{background:radial-gradient(1200px 500px at 85% -10%,rgba(120,120,110,.10),transparent 60%),radial-gradient(900px 420px at -10% 110%,rgba(120,120,110,.08),transparent 55%),var(--bg)}
+body.theme-wuxia.light{background:radial-gradient(1200px 500px at 85% -10%,rgba(120,100,50,.07),transparent 60%),radial-gradient(900px 420px at -10% 110%,rgba(120,100,50,.06),transparent 55%),var(--bg)}
+/* 竹简感：标题左侧朱砂/竹青竖线；卡片双边框古风；按钮方印感 */
+body.theme-wuxia h3{border-left:4px solid var(--cyan);padding-left:10px}
+body.theme-wuxia .card{border:1px solid var(--line);box-shadow:inset 0 0 0 1px rgba(128,120,100,.08),var(--shadow)}
+body.theme-wuxia .btn{border-radius:8px;border:1px solid var(--line)}
+body.theme-wuxia .btn.primary{background:var(--cyan);border-color:var(--cyan);color:#10120f;box-shadow:none}
+body.theme-wuxia .brand-logo{background:linear-gradient(135deg,#2f2f2d,#1a1a19);border:1px solid #4a4a44;box-shadow:none;color:#efe9d8}
+body.theme-wuxia .brand-logo::after{content:"俠";display:inline-block;margin-left:4px;color:var(--red);font-size:.8em}
+/* —— 自定义（武侠基底：默认武侠元素不变，仅按钮边框色可自选；可选背景图；emoji 由 JS 注入） —— */
 body.theme-custom{
-  --bg:#0d1016;--bg2:#141a22;--panel:#1a212c;--panel2:#222b38;--line:#2e3a4a;--txt:#eef2f8;--txt-dim:#aab6c6;
-  --cyan:var(--custom-color,#34e7e4);--magenta:#ff5cf0;--purple:#9b6cff;--yellow:#ffd166;--green:#3ddc97;--red:#ff6b81;
-  --shadow:0 10px 30px rgba(0,0,0,.5);
+  --bg:#0b0b0c;--bg2:#111113;--panel:#171718;--panel2:#1f1f21;--line:#33342f;--txt:#efe9d8;--txt-dim:#a89f8a;
+  --cyan:var(--custom-color,#6f9f7f);--magenta:#b087ab;--purple:#8f9f8f;--yellow:#c9a227;--green:#5f8f6f;--red:#b03a2e;
+  --shadow:0 6px 20px rgba(0,0,0,.5);--radius:10px;
+  --font-head:"Ma Shan Zheng","华文行楷","STXingkai","行楷",cursive;
+  --font-body:"Ma Shan Zheng","华文行楷","STXingkai","行楷",cursive;
 }
 body.theme-custom.light{
-  --bg:#f4f7fb;--bg2:#eef2f7;--panel:#ffffff;--panel2:#f4f7fb;--line:#dce3ec;--txt:#16202c;--txt-dim:#5a6b86;
-  --cyan:var(--custom-color,#2f6fd0);--magenta:#c44f93;--purple:#6a4fc0;--yellow:#a9791a;--green:#1f9e6b;--red:#d23b4e;
-  --shadow:0 10px 28px rgba(30,50,90,.14);
+  --bg:#f3ecd6;--bg2:#ece2c6;--panel:#faf4e2;--panel2:#f1e9d0;--line:#cfc19c;--txt:#22201a;--txt-dim:#6b6350;
+  --cyan:var(--custom-color,#3f7a52);--magenta:#8f5a88;--purple:#5f7a5f;--yellow:#9a7a10;--green:#3f7a52;--red:#a53026;
+  --shadow:0 6px 18px rgba(80,60,20,.12);
 }
-body.theme-custom{ background:#0d1016; }
-body.theme-custom.light{ background:#eef2f7; }
-body.theme-custom::before{
+body.theme-custom h3{border-left:4px solid var(--cyan);padding-left:10px}
+/* 仅按钮边框色跟随自选主色（任务3：跳过自定义则只有按钮边框色变化） */
+body.theme-custom .btn{border:1.5px solid var(--cyan);border-radius:8px}
+body.theme-custom .btn.primary{background:var(--cyan);border-color:var(--cyan);color:#10120f;box-shadow:none}
+body.theme-custom .brand-logo{background:linear-gradient(135deg,#2f2f2d,#1a1a19);border:1px solid #4a4a44;box-shadow:none;color:#efe9d8}
+/* 可选背景图（沿用原自定义背景能力，不选则纯武侠水墨底） */
+body.theme-custom{background:radial-gradient(1200px 500px at 85% -10%,rgba(120,120,110,.10),transparent 60%),var(--bg)}
+body.theme-custom.light{background:radial-gradient(1200px 500px at 85% -10%,rgba(120,100,50,.07),transparent 60%),var(--bg)}
+body.theme-custom.has-bg::before{
   content:"";position:fixed;inset:-40px;z-index:-2;
   background-image:var(--custom-bg);background-size:cover;background-position:center;
   filter:blur(26px) saturate(1.12);opacity:.6;
 }
-body.theme-custom::after{ content:"";position:fixed;inset:0;z-index:-1;background:rgba(10,12,18,.34); }
-body.theme-custom.light::after{ background:rgba(255,255,255,.5); }
+body.theme-custom.has-bg::after{ content:"";position:fixed;inset:0;z-index:-1;background:rgba(10,10,12,.34); }
+body.theme-custom.has-bg.light::after{ background:rgba(255,250,235,.5); }
 
 /* 主题选择网格（设置页） */
 .theme-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:10px;margin-top:12px}
@@ -1344,4 +1370,22 @@ body.theme-custom.light::after{ background:rgba(255,255,255,.5); }
 .ft-macts{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}
 .ft-macts select{font-size:12px;padding:5px 6px;border-radius:8px;border:1px solid var(--line);background:var(--bg2);color:var(--txt)}
 .ft-fchk{width:17px;height:17px;accent-color:var(--accent,#3a6df0)}
+
+/* ===== 每周时政演练 ===== */
+.dr-list{display:flex;flex-direction:column;gap:8px}
+.dr-item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);cursor:pointer;color:var(--txt);font-family:inherit}
+.dr-item:hover{border-color:var(--cyan)}
+.dr-ic{font-size:18px;flex:0 0 auto}
+.dr-name{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.dr-name b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dr-go{color:var(--txt-dim);font-size:20px;flex:0 0 auto}
+.dr-h{margin:8px 0}
+.dr-pt{padding:8px 12px;border-left:3px solid var(--cyan);margin:0 0 10px;background:var(--panel);border-radius:0 var(--radius) var(--radius) 0;line-height:1.75}
+.dr-pt-t{font-weight:700}
+.dr-pt b{color:var(--cyan)}
+
+/* ===== 启动页（2s，主题横竖屏图，右下角小版本号） ===== */
+#kgSplash{position:fixed;inset:0;z-index:99999;background:#0b0b0c center/cover no-repeat;transition:opacity .45s ease}
+#kgSplash.kg-splash-hide{opacity:0;pointer-events:none}
+#kgSplashVer{position:absolute;right:8px;bottom:6px;font-size:9px;opacity:.55;color:#fff;text-shadow:0 0 3px rgba(0,0,0,.6);font-family:monospace}
 

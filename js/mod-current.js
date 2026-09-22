@@ -887,6 +887,195 @@
         }, 15000);
       };
 
+      /* =========== 🎯 每周时政演练（考点学习 + 模拟演练，支持自导入） =========== */
+      const drSec = UI.section("🎯 每周时政演练（考点学习 + 模拟演练）", { open: true });
+      body.appendChild(drSec);
+      const drBody = drSec.querySelector(".kg-det-b");
+      const drBold = s => esc(s || "").replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+
+      function allDrills() {
+        const built = (window.KG_DRILLS || []).map(w => Object.assign({ id: "d_" + w.label, custom: false }, w));
+        const mine = (DB.state.weeklyDrills || []).slice();
+        const key = w => { const m = /^(\d{1,2})\.(\d{1,2})/.exec(w.label || ""); return m ? (+m[1]) * 100 + (+m[2]) : 0; };
+        return mine.concat(built).sort((a, b) => key(b) - key(a) || (b.createdAt || 0) - (a.createdAt || 0)); // 最新在前
+      }
+
+      function drillLabelSub(w) {
+        return w.points.length + " 个考点 · " + w.questions.length + " 题" + (w.custom ? " · 自导入" : "");
+      }
+
+      function renderDrillList() {
+        const ds = allDrills();
+        drBody.innerHTML = `
+          <div class="muted small" style="margin-bottom:8px">每周一期：先看<b>考点</b>（重点已加粗），再做<b>模拟演练</b>（单选 + 多选，做完统一核对答案，错题自动进错题本、可 AI 咨询）。最新一期在最前。</div>
+          <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">
+            <button class="btn sm primary" id="drImport">➕ 导入演练 PDF</button>
+            <input type="file" id="drFile" accept=".pdf,.txt,.md" style="display:none"/>
+            <span class="muted small" id="drStat"></span>
+          </div>
+          <div id="drList" class="dr-list"></div>`;
+        const list = drBody.querySelector("#drList");
+        list.innerHTML = ds.map(w => `
+          <button class="dr-item" data-id="${esc(w.id)}">
+            <span class="dr-ic">📄</span>
+            <span class="dr-name"><b>${esc(w.name || ("每周时政演练 " + w.label))}</b><span class="muted small">${esc(drillLabelSub(w))}</span></span>
+            <span class="dr-go">›</span>
+          </button>`).join("");
+        list.querySelectorAll(".dr-item").forEach(btn => {
+          btn.onclick = () => {
+            const w = ds.find(x => x.id === btn.dataset.id);
+            if (w) openDrill(w);
+          };
+        });
+        const file = drBody.querySelector("#drFile");
+        drBody.querySelector("#drImport").onclick = () => file.click();
+        file.onchange = () => importDrillFile(file.files[0]);
+      }
+
+      // 自导入：PDF/文本 → 解析（考点+题目+答案），命名默认取文件名、可修改
+      async function importDrillFile(f) {
+        if (!f) return;
+        const stat = drBody.querySelector("#drStat");
+        try {
+          stat.textContent = "正在提取 " + f.name + " …";
+          let text = "";
+          if (/\.pdf$/i.test(f.name)) {
+            const r = await window.KGPdfImport.fileToPages(f);
+            text = (r.pages || []).join("\n");
+          } else {
+            text = await f.text();
+          }
+          const parsed = parseDrillText(text);
+          if (!parsed.points.length && !parsed.questions.length) {
+            stat.innerHTML = '<span style="color:var(--red)">⚠️ 未识别到考点/题目（请确认是「每周时政演练」格式 PDF）</span>';
+            return;
+          }
+          const defName = f.name.replace(/\.(pdf|txt|md)$/i, "");
+          const m = /(\d{1,2}\.\d{1,2})\s*-\s*(\d{1,2}\.\d{1,2})/.exec(defName);
+          const defLabel = m ? m[1] + "-" + m[2] : "";
+          UI.modal({
+            title: "确认导入演练", width: "440px", body: UI.el(`<div>
+              <label class="kg-fld">名称<input id="drNm" value="${esc(defName)}" maxlength="60"/></label>
+              <label class="kg-fld">时间标签（如 9.14-9.20）<input id="drLb" value="${esc(defLabel)}" placeholder="自动识别，可修改" maxlength="20"/></label>
+              <div class="muted small">识别到 <b>${parsed.points.length}</b> 个考点、<b>${parsed.questions.length}</b> 道题（单选 ${parsed.questions.filter(q => q.t === "单选").length} / 多选 ${parsed.questions.filter(q => q.t === "多选").length}）。导入后随云端同步到所有设备。</div>
+            </div>`),
+            actions: [
+              { label: "取消", cls: "ghost", onClick: (m2, c) => { c(); stat.textContent = ""; } },
+              { label: "导入", cls: "primary", onClick: (m2, c) => {
+                  const name = m2.body.querySelector("#drNm").value.trim() || defName;
+                  const label = m2.body.querySelector("#drLb").value.trim() || defName;
+                  DB.state.weeklyDrills = DB.state.weeklyDrills || [];
+                  DB.state.weeklyDrills.push({
+                    id: "u_" + Date.now(), label: label, name: name, custom: true,
+                    points: parsed.points, questions: parsed.questions, createdAt: Date.now()
+                  });
+                  DB.save();
+                  c(); UI.toast("✓ 演练已导入：" + name);
+                  renderDrillList();
+                } }
+            ]
+          });
+          stat.textContent = "";
+        } catch (e) {
+          stat.innerHTML = '<span style="color:var(--red)">❌ 提取失败：' + esc(e.message || e) + '</span>';
+        }
+      }
+
+      // 客户端解析器（与 tools/extract_drills.py 同规则）：考点 + 模拟演练 + 答案
+      function parseDrillText(text) {
+        const CJK = "\\u4e00-\\u9fff\\u3000-\\u303f\\uff00-\\uffef";
+        const cleanLine = s => s
+          .replace(new RegExp("(?<=[" + CJK + "])\\s+(?=[" + CJK + "])", "g"), "")
+          .replace(new RegExp("(?<=\\d)\\s+(?=[" + CJK + "])", "g"), "")
+          .replace(new RegExp("(?<=[" + CJK + "])\\s+(?=\\d)", "g"), "")
+          .replace(/\s+([，。、；：？！）】》])/g, "$1")
+          .replace(/([（【《])\s+/g, "$1")
+          .replace(/[（(]\s*[）)]/g, "（  ）")
+          .trim();
+        const ITEM = /^(\d{1,3})[.、．]\s*(.+)$/, OPT = /^([A-D])[.、．]\s*(.*)$/,
+              QM = /^(\d{1,3})\s*[.、．]?\s*【(单选|多选|判断)】\s*(.*)$/,
+              ANS = /^(\d{1,3})\s*[.、．]\s*([A-D]{1,4})\s*$/, MARK = /^【(.+?)】\s*$/;
+        let lines = String(text || "").replace(/\r\n?/g, "\n").split("\n").map(cleanLine).filter(Boolean);
+        lines = lines.filter(l => {
+          if (/^\d{1,3}$/.test(l)) return false;
+          if (/^\d{1,2}\.\d{1,2}\s*-\s*\d{1,2}\.\d{1,2}$/.test(l)) return false;
+          if (l === "本资料仅供内部交流使用" || /官方微信/.test(l)) return false;
+          return true;
+        });
+        const cut = lines.findIndex(l => /免责声明/.test(l));
+        if (cut >= 0) lines = lines.slice(0, cut);
+        const points = [], questions = [], answers = {};
+        let mode = "point", cur = null, curq = null;
+        for (const raw of lines) {
+          const l = raw.replace(/\*\*/g, "");
+          const mm = MARK.exec(l);
+          if (mm) {
+            if (/模拟演练/.test(mm[1])) { mode = "quiz"; if (cur) { points.push(cur); cur = null; } continue; }
+            if (/^答案|^参考答案/.test(mm[1])) { mode = "answer"; if (curq) { questions.push(curq); curq = null; } continue; }
+          }
+          if (mode === "point") {
+            const im = ITEM.exec(l);
+            if (im && !OPT.test(l)) {
+              if (cur) points.push(cur);
+              cur = { n: +im[1], title: "**" + im[2].replace(/^\*\*|\*\*$/g, "").trim() + "**", body: "" };
+              continue;
+            }
+            if (cur) { cur.body += l; }
+          } else if (mode === "quiz") {
+            const qm = QM.exec(l);
+            if (qm) { if (curq) questions.push(curq); curq = { t: qm[2], n: +qm[1], q: qm[3], options: [] }; continue; }
+            const om = OPT.exec(l);
+            if (om && curq) { curq.options.push(om[1] + "." + om[2]); continue; }
+            const am = ANS.exec(l);
+            if (am && !curq) { answers[am[1]] = am[2]; continue; }
+            if (curq) { if (curq.options.length) curq.options[curq.options.length - 1] += l; else curq.q += l; }
+          } else {
+            const am = ANS.exec(l);
+            if (am) answers[am[1]] = am[2];
+            else { let m2; const re = /(\d{1,3})\s*[.、．]\s*([A-D]{1,4})/g; while ((m2 = re.exec(l))) answers[m2[1]] = m2[2]; }
+          }
+        }
+        if (cur) points.push(cur);
+        if (curq) questions.push(curq);
+        const qs = [];
+        for (const q of questions) {
+          const a = answers[String(q.n)] || "";
+          if (!a || !q.options.length) continue;
+          qs.push({ t: q.t, q: q.q, options: q.options, a: a });
+        }
+        return { points: points, questions: qs };
+      }
+
+      function openDrill(w) {
+        drBody.innerHTML = `
+          <div class="row" style="gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+            <button class="btn sm ghost" id="drBack">‹ 返回列表</button>
+            <b>${esc(w.name || ("每周时政演练 " + w.label))}</b>
+            <span class="muted small">${esc(drillLabelSub(w))}</span>
+          </div>
+          <div id="drPoints"></div>
+          <div class="row" style="gap:8px;margin:10px 0;flex-wrap:wrap">
+            <button class="btn primary" id="drQuiz">📝 开始模拟演练（${w.questions.length} 题）</button>
+            <span class="muted small">做完统一核对答案；错题自动进错题本，可 AI 咨询</span>
+          </div>
+          <div id="drQuizHost"></div>`;
+        const pts = drBody.querySelector("#drPoints");
+        pts.innerHTML = `<h3 class="dr-h">📖 本周考点</h3>` + w.points.map(p => `
+          <div class="dr-pt">
+            <div class="dr-pt-t">${drBold(p.n + ". " + p.title)}</div>
+            ${p.body ? `<div class="dr-pt-b">${drBold(p.body)}</div>` : ""}
+          </div>`).join("");
+        drBody.querySelector("#drBack").onclick = renderDrillList;
+        drBody.querySelector("#drQuiz").onclick = () => {
+          if (!w.questions.length) { UI.toast("该周没有题目"); return; }
+          const qs = w.questions.map(q => ({ q: q.q, options: q.options, a: q.a, e: "", kp: "时政演练" }));
+          const run = () => window.Quiz.start(drBody.querySelector("#drQuizHost"), qs.map(q => Object.assign({}, q)), "时政演练", { onAgain: run });
+          run();
+          setTimeout(() => { const h = drBody.querySelector("#drQuizHost"); if (h) h.scrollIntoView({ behavior: "smooth", block: "start" }); }, 60);
+        };
+      }
+      renderDrillList();
+
       /* =========== 历史时政（全部归档：自动抓取 + 导入网页 + 我的记录） =========== */
       const histSec = UI.section("🗂 历史时政（全部归档 · 可搜索）", { open: false });
       body.appendChild(histSec);

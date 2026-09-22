@@ -82,9 +82,10 @@
     pdfBookPractice: [], // 刷题记录：[{id, date, time, bookId, bookName, section, subject, total, correct, pct, totalSec, items:[...]}]
     pdfBookFolders: [], // 题册/时政材料 文件夹树（按学科）：[{id, subject, name, parentId, createdAt}]；parentId=null 为学科根「默认文件夹」
     currentAffairs: [], // 时政记录：[ {id,date,title,createdAt,data:{news,essay,words,verbal,quiz}} ]
+    weeklyDrills: [], // 用户自导入每周时政演练：[{id,label,name,points,questions,createdAt}]（内置周演练在 js/drills-data.js）
     profile: { avatar: "", signature: "" }, // 头像（dataURL）/ 个性签名；随 DB.state 云端同步，跨设备一致
     hotspotsEdits: {}, // 时事热点用户修改：{ [hotspotId]: { title, body, summary } }
-    theme: { name: "cyber", mode: "auto", customBg: "", customColor: "" } // 主题：name=cyber/minimal/cute/wuxia/custom；mode=auto/light/dark；customBg=背景图dataURL；customColor=主色
+    theme: { name: "wuxia", mode: "auto", customBg: "", customColor: "", emojis: {}, accent: "" } // 主题：name=cyber/minimal/cute/wuxia/custom；mode=auto/light/dark；customBg=背景图dataURL；customColor/accent=主色；emojis=自定义主题各模块emoji
   };
 
   let state = null;
@@ -604,6 +605,8 @@
       out.pdfBookPractice = mergeArrById(out.pdfBookPractice, b.pdfBookPractice);
       // 文件夹树：按 id 去重合并（跨设备一致，新增文件夹只补本机没有的）
       out.pdfBookFolders = mergeArrById(out.pdfBookFolders, b.pdfBookFolders);
+      // 自导入周演练：按 id 去重合并（跨设备一致）
+      out.weeklyDrills = mergeArrById(out.weeklyDrills, b.weeklyDrills);
 
       // 题目文字笔记：按 updatedAt 取较新一份（AI 解答自动追加 + 用户手填，双向同步不丢失）
       out.qnotes = out.qnotes || {};

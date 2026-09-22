@@ -1185,6 +1185,9 @@
     return out;
   }
 
+  // 暴露给时政模块复用：客户端 PDF/文档抽字（每周时政演练自导入用）
+  window.KGPdfImport = { fileToPages: fileToPages };
+
   window.KGPdfBooks = {
     list(subject) {
       const DB = db();
@@ -2223,16 +2226,21 @@
       /* ===== 我的题册 + 文件夹（按学科整理，长按拖动，跟电脑整理文件一样） ===== */
       let _ftDrag = null; // 移动端长按拖动的临时状态
       let multiOn = false; const multiSel = new Set(); // 多选模式：选中的条目 "type:id"
+      let bookSearchKw = ""; // 题册关键字搜索（标题/副标题）
       function itemsInFolder(subj, folderId) {
         const DB = db();
         const books = (DB.state.pdfBooks || []).filter(b => subjShortName(b.subject) === subj && (b.folderId || null) === (folderId || null)).map(b => {
           const tq = (b.sections || []).reduce((a, s) => a + ((s.questions || []).length), 0);
-          return { type: "book", id: b.id, title: b.name, sub: subjectLabel(b.subject) + " · " + ((b.sections || []).length) + " 块 / " + tq + " 题", date: b.date, ref: b };
+          return { type: "book", id: b.id, title: b.name, sub: subjectLabel(b.subject) + " · " + ((b.sections || []).length) + " 块 / " + tq + " 题", date: b.date, ts: b.createdAt || 0, ref: b };
         });
         const affairs = (DB.state.currentAffairs || []).filter(a => (a.folderId || null) === (folderId || null)).map(a => ({
-          type: "affair", id: a.id, title: (a.title || a.date || "时政材料"), sub: "时政材料 · " + (a.date || ""), date: a.date, ref: a
+          type: "affair", id: a.id, title: (a.title || a.date || "时政材料"), sub: "时政材料 · " + (a.date || ""), date: a.date, ts: a.createdAt || 0, ref: a
         }));
-        return books.concat(affairs);
+        const kw = (bookSearchKw || "").trim().toLowerCase();
+        let items = books.concat(affairs);
+        if (kw) items = items.filter(it => ((it.title || "") + " " + (it.sub || "")).toLowerCase().indexOf(kw) >= 0);
+        items.sort((a, b) => (b.ts || 0) - (a.ts || 0)); // 最新在前
+        return items;
       }
       function moveItem(type, id, folderId) {
         if (!type || !id || !folderId) return;
@@ -2488,6 +2496,17 @@
         try {
           host.innerHTML = "";
           window.KGFolders.migrate(); // 兼容老数据：归入学科根
+          // 关键字搜索框（按题册/材料名称过滤，全学科生效）
+          const sbar = UI.el(`<div class="ft-mbar" style="margin-bottom:6px">
+            <input id="bookSearch" type="search" placeholder="🔍 搜索题册 / 材料名称…" style="flex:1;min-width:0;padding:7px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg2);color:var(--txt)" value="${esc(bookSearchKw)}"/>
+            ${bookSearchKw ? `<button class="btn sm ghost" id="bookSearchClear">✕</button>` : ""}
+          </div>`);
+          host.appendChild(sbar);
+          const sInp = sbar.querySelector("#bookSearch");
+          let deb = null;
+          sInp.oninput = () => { clearTimeout(deb); deb = setTimeout(() => { bookSearchKw = sInp.value; renderBooks(); const inp = bookCard.querySelector("#bookSearch"); if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); } }, 300); };
+          const sClr = sbar.querySelector("#bookSearchClear");
+          if (sClr) sClr.onclick = () => { bookSearchKw = ""; renderBooks(); };
           // 多选工具条
           const bar = UI.el(`<div class="ft-mbar">
             <button class="btn sm ${multiOn ? "primary" : "ghost"}" id="multiToggle">${multiOn ? "✓ 多选模式" : "▢ 多选"}</button>

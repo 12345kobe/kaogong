@@ -178,11 +178,12 @@
             </select>
           </div>
           <div id="customThemeBox" style="display:none;margin-top:12px">
-            <div class="muted small">从相册选择一张照片作为背景（自动模糊处理，板块保持不透明）：</div>
+            <div class="muted small">自定义主题 = 武侠水墨基底 + 你自己的修饰：可选背景图、按钮边框色，还能给每个板块挑专属 emoji。</div>
             <div class="row" style="margin-top:8px;gap:10px;align-items:center;flex-wrap:wrap">
               <input type="file" id="customBg" accept="image/*"/>
-              <label class="muted small">系统主色</label>
-              <input type="color" id="customColor" value="#34e7e4"/>
+              <label class="muted small">按钮边框色</label>
+              <input type="color" id="customColor" value="#6f9f7f"/>
+              <button class="btn sm ghost" id="customEmoji">🎨 板块表情</button>
               <button class="btn sm ghost" id="customBgClear">清除背景</button>
             </div>
           </div>
@@ -385,6 +386,29 @@
       };
       const customColor = body.querySelector("#customColor");
       if (customColor) customColor.onchange = () => { window.Theme.set({ customColor: customColor.value }); };
+      /* 板块表情自定义：每个主屏导航模块可指定一个 emoji，仅自定义主题生效 */
+      const customEmojiBtn = body.querySelector("#customEmoji");
+      if (customEmojiBtn) customEmojiBtn.onclick = () => {
+        const cur = (Theme.getState().emojis) || {};
+        const keys = Object.keys(window.MODULES || {}).filter(k => (window.NAV || []).indexOf(k) >= 0);
+        const list = (keys.length ? keys : Object.keys(window.MODULES || {}));
+        const box = UI.el(`<div>
+          <div class="muted small" style="margin-bottom:8px">给各板块挑一个 emoji 修饰（留空 = 用默认武侠元素）。点「跳过/关闭」即保持默认。</div>
+          ${list.map(k => `<label class="kg-fld">${UI.esc((window.MODULES[k] && window.MODULES[k].title) || k)}<input data-k="${k}" value="${UI.esc(cur[k] || "")}" placeholder="如 ⚔️ 📖 🧘" maxlength="4"/></label>`).join("")}
+        </div>`);
+        UI.modal({
+          title: "🎨 自定义板块表情", body: box, width: "420px",
+          actions: [
+            { label: "恢复默认", cls: "ghost", onClick: (m2, c) => { window.Theme.set({ emojis: {} }); c(); UI.toast("已恢复默认武侠元素"); } },
+            { label: "保存", cls: "primary", onClick: (m2, c) => {
+                const em = {};
+                box.querySelectorAll("input[data-k]").forEach(inp => { const v = inp.value.trim(); if (v) em[inp.dataset.k] = v; });
+                window.Theme.set({ emojis: em });
+                c(); UI.toast("✓ 板块表情已保存");
+              } }
+          ]
+        });
+      };
       const customBgClear = body.querySelector("#customBgClear");
       if (customBgClear) customBgClear.onclick = () => { window.Theme.set({ customBg: "" }); UI.toast("已清除背景"); };
       reflectTheme();
