@@ -642,7 +642,7 @@
         const W = notes.vw || card.clientWidth || 720;
         const H = notes.vh || card.scrollHeight || 800;
         const inner = (window.UI && UI.Notes && UI.Notes._svgInner) ? UI.Notes._svgInner(notes, W, H) : "";
-        const ov = el(`<div class="kg-hw-session-ov" style="position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:6"><svg width="100%" height="100%" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${inner}</svg></div>`);
+        const ov = el(`<div class="kg-hw-session-ov" style="position:absolute;left:0;top:0;width:100%;height:${H}px;pointer-events:none;z-index:6;overflow:visible"><svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${inner}</svg></div>`);
         card.style.position = "relative";
         card.appendChild(ov);
       }
@@ -694,7 +694,7 @@
         if (!notes || !notes.strokes || !notes.strokes.length) return;
         const W = notes.vw || container.clientWidth || 720;
         const H = notes.vh || container.scrollHeight || 800;
-        const ov = el(`<div class="kg-inline-ov" title="双击隐藏/显示笔迹" style="height:${H}px"><svg width="100%" height="100%" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${this._svgInner(notes, W, H)}</svg></div>`);
+        const ov = el(`<div class="kg-inline-ov" title="双击隐藏/显示笔迹" style="width:100%;height:${H}px"><svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${this._svgInner(notes, W, H)}</svg></div>`);
         container.style.position = "relative";
         container.appendChild(ov);
         ov.ondblclick = () => ov.classList.toggle("kg-inline-ov-hidden");
@@ -753,15 +753,24 @@
     notebook(subject, id, anchor) {
       const DB = window.DB;
       const wrap = el(`<div class="card kg-notebook" style="margin-top:12px">
-        <h3>📝 我的笔记（手写 / 附件）</h3>
+        <h3>📝 我的笔记（文字 / 手写 / 附件）</h3>
         <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px">
+          <button class="btn kg-qnote-btn">✏️ 文字笔记</button>
           <button class="btn kg-hw-btn">✎ 手写标注</button>
           <button class="btn kg-ov-btn">👁 查看笔迹</button>
           <button class="btn kg-ov-clear">🗑 清除笔迹</button>
           <label class="btn kg-att-btn">📎 添加图片/PDF<input type="file" accept="image/*,application/pdf" multiple hidden class="kg-att-file"/></label>
         </div>
+        <div class="kg-qnote-view muted small" style="white-space:pre-wrap;display:none"></div>
         <div class="kg-att-grid"></div>
       </div>`);
+      const qnView = wrap.querySelector(".kg-qnote-view");
+      function renderQNote() {
+        const t = DB.qnote(subject, id);
+        qnView.style.display = t ? "" : "none";
+        qnView.textContent = t ? "🗒 笔记：\n" + t : "";
+      }
+      wrap.querySelector(".kg-qnote-btn").onclick = () => UI.textNote(subject, id, renderQNote);
       const grid = wrap.querySelector(".kg-att-grid");
       function renderGrid() { grid.innerHTML = UI.Attachments.gridHtml(subject, id);
         grid.querySelectorAll("[data-rm]").forEach(b => b.onclick = () => { UI.Attachments.remove(subject, id, +b.dataset.rm); renderGrid(); });
@@ -779,8 +788,30 @@
         });
       };
       wrap.querySelector(".kg-att-file").onchange = e => { UI.Attachments.addFiles(subject, id, e.target.files); e.target.value = ""; renderGrid(); };
-      renderGrid(); refreshOverlay();
+      renderQNote(); renderGrid(); refreshOverlay();
       return wrap;
+    },
+
+    /* 题目文字笔记弹窗：用户手填 + AI 解答自动追加，保存即入库并随云端同步 */
+    textNote(subject, id, onChange) {
+      const DB = window.DB;
+      const cur = DB.qnote(subject, id);
+      const body = el(`<div>
+        <div class="muted small" style="margin-bottom:6px">记录本题的思路、易错点；点「🤖 没看懂？询问 AI」后，AI 的解答也会自动存进这里。</div>
+        <textarea class="kg-qnote-ta" style="width:100%;min-height:180px;resize:vertical;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--text);font:inherit"></textarea>
+      </div>`);
+      const ta = body.querySelector(".kg-qnote-ta");
+      ta.value = cur;
+      UI.modal({
+        title: "📝 题目笔记",
+        body: body,
+        width: "560px",
+        actions: [
+          { label: "取消", cls: "ghost", onClick: (m, c) => c() },
+          { label: "💾 保存并同步", cls: "primary", onClick: (m, c) => { DB.setQNote(subject, id, ta.value); UI.toast("✓ 笔记已保存，云端同步中"); if (onChange) onChange(); c(); } }
+        ]
+      });
+      setTimeout(() => ta.focus(), 80);
     },
 
     /* 左下角悬浮标注按钮：点击进入笔记模式（手写见解），笔迹直接覆盖在内容上。

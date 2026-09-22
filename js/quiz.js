@@ -322,6 +322,7 @@
             <span class="tag">第 ${qi + 1} 题</span>
             <span class="tag q-type q-type-${tl}">${TYPE_CN[tl] || "单选题"}</span>
             <span class="q-time muted small" style="margin-left:auto"></span>
+            <button class="qnote-btn ${DB.qnote(subject, qid) ? "has" : ""}" title="题目笔记（记思路/易错点，AI 解答自动存入，云端同步）">📝${DB.qnote(subject, qid) ? "•" : ""}</button>
             <button class="pen-btn ${hasNote ? "has" : ""}" title="手写标注（Apple Pencil）">✏️${hasNote ? "•" : ""}</button>
             <button class="star-btn ${isFav() ? "on" : ""}" title="收藏题目">${isFav() ? "★" : "☆"}</button>
           </div>
@@ -344,6 +345,12 @@
               const ov = card.querySelector(".kg-hw-session-ov"); if (ov) ov.remove();
             }
           }
+        });
+        card.querySelector(".qnote-btn").onclick = () => UI.textNote(subject, qid, () => {
+          const has = !!DB.qnote(subject, qid);
+          const b = card.querySelector(".qnote-btn");
+          b.classList.toggle("has", has);
+          b.textContent = "📝" + (has ? "•" : "");
         });
         card.querySelector(".star-btn").onclick = () => {
           const idx = favList.findIndex(f => f.qid === qid);

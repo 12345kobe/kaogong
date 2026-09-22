@@ -72,6 +72,7 @@
     wrongbook: {}, // { subject: [ {id, q, a, ua, date, note, img} ] }
     favorites: {}, // { subject: [ {id, q, options, a, e, subject, addedAt, qid} ] }
     notes: {}, // { subject: { qid: [ {color,width,points:[{x,y}]} ] } }  手写标注笔迹
+    qnotes: {}, // 题目文字笔记：{ subject: { qid: { text, updatedAt } } }；AI 解答自动追加 + 用户手填，随云端同步
     reviews: { verbal: {} }, // { word: {box, next} }
     lastResetDay: null,
     dailyPlan: {}, // 每日计划：{ 'YYYY-MM-DD': { items: [{id,module,type,text,done,createdAt,accuracy,minutes}], note:"" } }
@@ -604,6 +605,17 @@
       // 文件夹树：按 id 去重合并（跨设备一致，新增文件夹只补本机没有的）
       out.pdfBookFolders = mergeArrById(out.pdfBookFolders, b.pdfBookFolders);
 
+      // 题目文字笔记：按 updatedAt 取较新一份（AI 解答自动追加 + 用户手填，双向同步不丢失）
+      out.qnotes = out.qnotes || {};
+      const qnIn = b.qnotes || {};
+      for (const s in qnIn) {
+        out.qnotes[s] = out.qnotes[s] || {};
+        for (const id in (qnIn[s] || {})) {
+          const inc = qnIn[s][id], cur = out.qnotes[s][id];
+          if (!cur || ((inc && inc.updatedAt) || 0) > ((cur && cur.updatedAt) || 0)) out.qnotes[s][id] = inc;
+        }
+      }
+
       // 其余字段：本地已有内容优先，缺失的才用传入数据补齐
       function fill(cur, inc) {
         for (const k in (inc || {})) {
@@ -613,6 +625,32 @@
       }
       fill(out, b);
       return out;
+    },
+
+    /* ===== 题目文字笔记：{ subject: { qid: { text, updatedAt } } }，随 DB.state 云端同步 ===== */
+    qnote(subject, id) {
+      const r = (state.qnotes || {})[subject];
+      return (r && r[id] && r[id].text) || "";
+    },
+    qnoteUpdatedAt(subject, id) {
+      const r = (state.qnotes || {})[subject];
+      return (r && r[id] && r[id].updatedAt) || 0;
+    },
+    setQNote(subject, id, text) {
+      state.qnotes = state.qnotes || {};
+      state.qnotes[subject] = state.qnotes[subject] || {};
+      const t = String(text || "").trim();
+      if (t) state.qnotes[subject][id] = { text: t, updatedAt: Date.now() };
+      else delete state.qnotes[subject][id];
+      this.save();
+    },
+    appendQNote(subject, id, add) {
+      const cur = this.qnote(subject, id);
+      const piece = String(add || "").trim();
+      if (!piece) return false;
+      if (cur && cur.indexOf(piece.slice(0, 60)) >= 0) return false; // 已存过同一段 AI 结果，不重复追加
+      this.setQNote(subject, id, (cur ? cur + "\n\n" : "") + "🤖 AI 解答：\n" + piece);
+      return true;
     },
 
     /* ===== 自动同步：定时拉取 + 切回页面 / 获得焦点时立即拉取（保存时自动上传已在 save() 中） ===== */

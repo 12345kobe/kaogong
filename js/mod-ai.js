@@ -139,6 +139,12 @@
   let overlayClose = null;
   // 「举一反三」上下文：最近一次来自答题/错题页的题目（AI 仿出同类题用）；持久化以免刷新丢失
   let qCtx = null;
+  // 题目笔记目标：来自答题页/错题本时记录 {subject, qid}，AI 每次回复后把解答自动追加进该题笔记
+  let noteTarget = null;
+  // 与 quiz.js 的 hashId 保持同一算法，保证笔记 id 一致
+  function hashId(s) { let h = 0; for (let i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) >>> 0; } return h.toString(36); }
+  function setNoteTarget(subject, qid) { noteTarget = (subject && qid) ? { subject: subject, qid: qid } : null; }
+  function noteTargetFromQ(subject, q) { try { setNoteTarget(subject, hashId(subject + "|" + (q && q.q || ""))); } catch (e) {} }
   // 当前对话（由 AI 页渲染时同步，供出题核心在无 AI 页场景下取上下文）
   let curLog = [];
   function saveQCtx() { try { localStorage.setItem("kg_ai_qctx", JSON.stringify(qCtx)); } catch (e) {} }
@@ -171,6 +177,8 @@
     // 记录题目上下文：供「举一反三」仿出同类题（申论除外）
     qCtx = { subject: subject, q: { q: qq.q, options: qq.options, a: qq.a, e: qq.e, img: qq.img || null } };
     saveQCtx();
+    // 记录笔记目标：AI 回复后解答自动追加进该题笔记
+    noteTargetFromQ(subject, qq);
     const optsTxt = (qq.options || []).map((o, i) => A(i) + ". " + (o == null ? "" : o)).join("\n");
     // 多选答案：多字母原样输出（"BCD"）；单选/判断：转字母
     const ansLabel = (qq.a == null) ? "（见解析）" : (typeof qq.a === "string" ? qq.a.toUpperCase() : A(qq.a));
@@ -197,7 +205,7 @@
   function askOverlay(text, hook, ctx) {
     const UI = window.UI;
     // 记录题目上下文（供「举一反三」）：内嵌答题页不经过 askQuestion，需显式传入
-    if (ctx && ctx.subject && ctx.q) { qCtx = { subject: ctx.subject, q: Object.assign({}, ctx.q, { img: (ctx.q && ctx.q.img) || null }) }; saveQCtx(); }
+    if (ctx && ctx.subject && ctx.q) { qCtx = { subject: ctx.subject, q: Object.assign({}, ctx.q, { img: (ctx.q && ctx.q.img) || null }) }; saveQCtx(); noteTargetFromQ(ctx.subject, ctx.q); }
     const root = document.getElementById("modalRoot") || document.body;
     const mask = UI.el(`<div class="modal-mask ai-overlay-mask">
       <div class="modal ai-overlay" style="width:min(900px,96vw);height:92vh;max-height:92vh;display:flex;flex-direction:column;overflow:hidden">
@@ -408,6 +416,7 @@
     getLog: getLog, setLog: setLog,
     getTemp: getTemp, setTemp: setTemp, ask: ask, askQuestion: askQuestion, askOverlay: askOverlay, test: test, chat: chat,
     setReturnHook: setReturnHook, getReturn: () => returnHash,
+    setNoteTarget: setNoteTarget,
     jyfsAuto: jyfsAuto
   };
 
@@ -718,6 +727,14 @@
           log.push({ role: "assistant", content: reply });
           setLog(log); curLog = log; renderMsgs();
           showJyfs();
+          // AI 解答自动存入题目笔记（保存即上传云端，跨设备可见）
+          if (noteTarget && window.DB && window.DB.appendQNote) {
+            try {
+              if (window.DB.appendQNote(noteTarget.subject, noteTarget.qid, String(reply).trim())) {
+                UI.toast("📝 AI 解答已存入题目笔记（云端同步）");
+              }
+            } catch (e) {}
+          }
         } catch (e) {
           const p = msgs.querySelector("#aiPending"); if (p) p.remove();
           const em = e.message || "";

@@ -1567,13 +1567,14 @@
 
           if (type === "current") {
             const data = buildCurrentData(split, qs);
-            const r = saveCurrentStructured(data, chosenFolder);
-            const bits = ["资料 " + ((data.essay.paras.length) + (data.words.length)) + " 项"];
+            const r = saveCurrentStructured(data, chosenFolder, split.materials);
+            const bits = [];
+            if (r.matName) bits.push("📄 " + r.matName + "（资料原文一字不省）");
+            if (r.nq) bits.push("🎯 " + r.bookName + "（" + r.nq + " 题）");
             if (r.words) bits.push("词语 " + r.words + " 个");
-            if (r.nq) bits.push("题目 " + r.nq + " 道");
-            UI.toast("✓ 已解析并分类保存：" + bits.join(" / "));
+            UI.toast("✓ 已解析并分类保存：" + (bits.join(" / ") || "无内容"));
             renderBooks();
-            setRecStatus(`✓ <b>资料 + 题目已拆分并分类保存</b>：${bits.join(" / ")}。<br>资料进「时政」模块（金句自动进申论时评），题目存为时政题（同一文件夹，可在下方题册里练习）。`);
+            setRecStatus(`✓ <b>资料与题目已分开成册</b>：${bits.join(" / ")}。<br>资料册进「我的题册与文件夹」（原文全量保存），题目册可直接练习；时政模块同步收录资料（金句自动进申论时评）。`);
           } else {
             buildDraftWithMaterials(split.materials, qs, subject, chosenFolder);
             inputWrap.open = true;
@@ -1623,12 +1624,28 @@
         });
       }
 
-      // 从资料里解析成语释义 + 金句（资料完整保留进 essay.paras）
+      // 从资料里解析成语释义 + 金句（资料完整保留进 essay.paras，一字不省）
+      // 支持豆包定稿格式：时评：/金句N：/词语：XX + 解释：xxx，以及原有「词语（两字）：释义」格式
       function parseMaterialsIntoData(materials) {
         const data = { news: [], essay: { topic: "", paras: [], quotes: [] }, words: [], verbal: [], quiz: [], title: "", date: "" };
         const lines = String(materials || "").split("\n").map(l => l.trim()).filter(Boolean);
         let inQuote = false; const body = [];
         lines.forEach(l => {
+          // 豆包格式：时评：一段文字
+          const pm = /^时评\s*[:：]\s*(.+)$/.exec(l);
+          if (pm) { data.essay.topic = data.essay.topic || "时评"; data.essay.paras.push(pm[1].trim()); return; }
+          // 豆包格式：金句1：文字
+          const qm = /^金句\d*\s*[:：]\s*(.+)$/.exec(l);
+          if (qm) { data.essay.quotes.push(qm[1].trim()); return; }
+          // 豆包格式：词语：XX（释义在随后的「解释：」行）
+          const wm2 = /^词语\s*[:：]\s*(.+)$/.exec(l);
+          if (wm2) {
+            const w = wm2[1].trim();
+            data.words.push({ word: w, type: (w.length === 2 ? "两字" : (w.length === 4 ? "四字" : "")), def: "" });
+            return;
+          }
+          const dm = /^解释\s*[:：]\s*(.+)$/.exec(l);
+          if (dm && data.words.length && !data.words[data.words.length - 1].def) { data.words[data.words.length - 1].def = dm[1].trim(); return; }
           if (/金句|必背|背诵/.test(l) && l.length <= 12) { inQuote = true; return; }
           if (inQuote) {
             const m = /^(\d{1,3})\s*[.．、]\s*(.+)$/.exec(l);
@@ -1638,11 +1655,11 @@
           }
           if (/^(考点|部分|第|注|说明|解析)/.test(l)) { body.push(l); return; }
           const wm = /^(?:\d{1,3}\s*[.．、]\s*)?([一-龥]{2,8})\s*[：:]\s*(.+)$/.exec(l);
-          if (wm && !/^[A-Da-d][.．、]/.test(l)) {
+          if (wm && !/^[A-Da-d][.．、]/.test(l) && wm[1] !== "词语" && wm[1] !== "解释" && !/^时评|^金句/.test(l)) {
             data.words.push({ word: wm[1], type: (wm[1].length === 2 ? "两字" : (wm[1].length === 4 ? "四字" : "")), def: wm[2] });
           } else { body.push(l); }
         });
-        data.essay.paras = body;
+        data.essay.paras = body.concat(data.essay.paras);
         return data;
       }
 
@@ -1751,20 +1768,40 @@
         return parseAiObject(t);
       }
 
-      function saveQuestionsAs(subject, qs, folderId) {
+      function saveQuestionsAs(subject, qs, folderId, nameOverride) {
         const norm = (qs || []).filter(q => q && q.q && (q.options || []).length >= 2);
         if (!norm.length) return 0;
         window.KGPdfBooks.add({
-          subject: subject, name: suggestName(subject), named: false,
+          subject: subject, name: nameOverride || suggestName(subject), named: !!nameOverride,
           folderId: folderId || window.KGFolders.rootId(subject),
-          sections: [{ name: "AI 解析", theory: "", questions: norm }]
+          sections: [{ name: "🎯 题目", theory: "", questions: norm }]
         });
         saveToCustom(subject, norm);
         return norm.length;
       }
 
-      function saveCurrentStructured(data, folderId) {
-        // 时政记录只存资料（news/essay/words），题目单独存为时政题册，落在同一文件夹，避免重复
+      // 资料日期：优先从资料原文抓「YYYY年M月D日」，否则用今天（中文格式，如 2026年9月22日）
+      function cnDateOf(materials) {
+        const dm = /(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/.exec(String(materials || ""));
+        if (dm) return dm[1] + "年" + (+dm[2]) + "月" + (+dm[3]) + "日";
+        const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(DB.today() || "");
+        return m ? m[1] + "年" + (+m[2]) + "月" + (+m[3]) + "日" : (DB.today() || "");
+      }
+
+      function saveCurrentStructured(data, folderId, materialsText) {
+        const mat = String(materialsText || "").trim();
+        // ① 资料册：资料原文一字不省，整册保存（可随时翻阅），落同一文件夹
+        if (mat) {
+          window.KGPdfBooks.add({
+            subject: "时政", name: cnDateOf(mat) + "时政材料", named: true,
+            folderId: folderId || window.KGFolders.rootId("时政"),
+            sections: [{ name: "📄 时政材料（原文）", theory: mat, questions: [] }]
+          });
+        }
+        // ② 题目册：题目+答案+解析
+        const qs = toBookQuestions(data.questions || []);
+        const nq = qs.length ? saveQuestionsAs("时政", qs, folderId, cnDateOf(mat) + "时政题目") : 0;
+        // ③ 时政模块记录：资料结构化进时政模块（金句自动进申论时评），题不重复存
         const recData = Object.assign({}, data, { verbal: [], quiz: [] });
         const hasAny = (recData.news || []).length || (recData.essay.paras || []).length || (recData.essay.quotes || []).length || (recData.words || []).length;
         let rec = null;
@@ -1773,9 +1810,7 @@
           const live = (db().state.currentAffairs || []).find(x => x.id === rec.id);
           if (live) { live.folderId = folderId || window.KGFolders.rootId("时政"); db().save(); }
         }
-        const qs = toBookQuestions(data.questions || []);
-        const nq = qs.length ? saveQuestionsAs("时政", qs, folderId) : 0;
-        return { rec: rec, news: (data.news || []).length, words: (data.words || []).length, nq: nq, nv: 0 };
+        return { rec: rec, news: (data.news || []).length, words: (data.words || []).length, nq: nq, nv: 0, matName: mat ? (cnDateOf(mat) + "时政材料") : "", bookName: nq ? (cnDateOf(mat) + "时政题目") : "" };
       }
 
       function fileToDataUrl(file) {

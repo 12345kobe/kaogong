@@ -158,7 +158,7 @@
         const t = clean(lines[i]);
         if (!t) { i++; continue; }
         if (/^[A-D][.．、]/.test(t)) break;
-        if (/^【答案】|^【解析】/.test(t)) break;
+        if (/^【答案】|^【解析】|^(?:正确答案|答案|解析|【答案解析】)\s*[:：]/.test(t)) break;
         if (qRe.test(t) && opts.length === 0) {
           // 下一题开始了，说明本题没有选项（极少见）→ 结束
           break;
@@ -195,6 +195,15 @@
           i++; continue;
         }
         const tm = /^(?:【?答案】?|正确答案|正确选项)\s*[:：]?\s*(.+)$/.exec(t);
+        // 判断题：答案写 √/×/对/错/正确/错误 且题目本身无选项 → 自动补「正确/错误」两项
+        const jm = tm && !opts.length && /^(√|×|✓|✗|对|错|正确|错误)\s*$/.test(tm[1].trim());
+        if (jm) {
+          const v = tm[1].trim();
+          opts.push("正确", "错误");
+          a = /^(√|✓|对|正确)$/.test(v) ? 0 : 1;
+          type = type || "判断";
+          i++; continue;
+        }
         if (tm) {
           const txt = tm[1].trim();
           const fi = opts.findIndex(o => o.replace(/\s+/g, "") === txt.replace(/\s+/g, ""));
@@ -202,7 +211,8 @@
           e = (e ? e + "　" : "") + "【答案】" + txt;
           i++; continue;
         }
-        const em = /^【解析】\s*[:：]?\s*(.+)$/.exec(t);
+        // 解析：支持「【解析】xxx」「解析：xxx」「【答案解析】xxx」等写法（豆包定稿格式为「解析：」无括号）
+        const em = /^(?:【解析】|解析|【答案解析】|答案解析)\s*[:：]?\s*(.+)$/.exec(t);
         if (em) { e = (e ? e + "　" : "") + em[1]; i++; continue; }
         if (/^【.{1,10}】/.test(t)) { i++; continue; } // 【文段出处】等
         if (/^\d{1,4}\s*[.．、]/.test(t)) break;        // 下一题
