@@ -1389,3 +1389,12 @@ body.theme-custom.has-bg.light::after{ background:rgba(255,250,235,.5); }
 #kgSplash.kg-splash-hide{opacity:0;pointer-events:none}
 #kgSplashVer{position:absolute;right:8px;bottom:6px;font-size:9px;opacity:.55;color:#fff;text-shadow:0 0 3px rgba(0,0,0,.6);font-family:monospace}
 
+
+/* ===== 主题化导航图标（水墨武侠 / 可爱贴纸 / 自定义emoji） ===== */
+.nav-ico-wrap{display:inline-flex;align-items:center;justify-content:center}
+.nav-item .nav-ico-wrap{width:26px;height:26px;flex:0 0 26px}
+.nav-item .nav-ico-wrap svg.ico{width:26px;height:26px}
+.nav-ico-wrap img.t-ico{width:100%;height:100%;object-fit:contain;border-radius:50%}
+.t-ico-emoji{font-size:20px;line-height:1}
+.page-title .nav-ico-wrap{width:30px;height:30px;flex:0 0 30px}
+.page-title img.t-ico{width:30px;height:30px;object-fit:contain;border-radius:50%;vertical-align:middle}

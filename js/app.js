@@ -39,21 +39,34 @@
       }
       applyEmojis();
     }
-    /* 自定义主题的板块表情：只在 custom 主题生效（跳过则保持默认武侠元素） */
+    /* 主题图标 + 自定义板块表情（导航/页标题图标按主题切换）：
+       cyber → 原 SVG；cute → 可爱贴纸图标；wuxia/minimal/custom → 水墨武侠图标；
+       custom 且给某板块设了 emoji 时，用该 emoji 替换图标。 */
+    function themeIconHtml(key, m) {
+      const s = getState();
+      const fallback = (window.ICONS && window.ICONS[m.icon]) || "";
+      if (s.name === "cyber") return fallback;
+      const em = (s.name === "custom" && s.emojis && s.emojis[key]) || "";
+      if (em) return '<span class="t-ico-emoji">' + em + "</span>";
+      const th = s.name === "cute" ? "cute" : "wuxia";
+      return '<img class="t-ico" src="assets/icons/' + th + '/' + key + '.png" alt="">';
+    }
     function applyEmojis() {
       const s = getState();
       const em = (s.name === "custom" && s.emojis) || {};
       document.querySelectorAll("#nav .nav-item").forEach(n => {
         const key = n.dataset.key, m = MODULES[key]; if (!m) return;
-        const span = n.querySelector("span"); if (!span) return;
-        span.textContent = (em[key] ? em[key] + " " : "") + m.title;
+        n.innerHTML = '<span class="nav-ico-wrap">' + themeIconHtml(key, m) + '</span><span class="nav-txt">' + m.title + "</span>";
+        const img = n.querySelector("img.t-ico");
+        if (img) img.onerror = () => { img.outerHTML = (window.ICONS && window.ICONS[m.icon]) || ""; };
       });
       const cur = location.hash.replace("#/", "") || "countdown";
       const cm = MODULES[cur];
       const pt = document.getElementById("pageTitle");
       if (pt && cm) {
-        const span = pt.querySelector("span");
-        if (span) span.textContent = (em[cur] ? em[cur] + " " : "") + cm.title;
+        pt.innerHTML = '<span class="nav-ico-wrap pt-ico">' + themeIconHtml(cur, cm) + '</span><span class="nav-txt">' + cm.title + "</span>";
+        const img = pt.querySelector("img.t-ico");
+        if (img) img.onerror = () => { img.outerHTML = (window.ICONS && window.ICONS[cm.icon]) || ""; };
       }
     }
     function set(opts) {
@@ -85,7 +98,7 @@
       return document.body.classList.contains("light") ? "light" : "dark";
     }
     function current() { return document.body.classList.contains("light") ? "light" : "dark"; }
-    window.Theme = { init: init, apply: apply, set: set, toggle: toggle, current: current, getState: getState };  // 暴露给 mod-settings 等模块
+    window.Theme = { init: init, apply: apply, set: set, toggle: toggle, current: current, getState: getState, themeIconHtml: themeIconHtml };  // 暴露给 mod-settings 等模块
     return window.Theme;
   })();
 
@@ -95,15 +108,19 @@
     const nav = document.getElementById("nav"); nav.innerHTML = "";
     NAV.forEach(key => {
       const m = MODULES[key]; if (!m) return;
-      const item = el(`<div class="nav-item" data-key="${key}">${ICONS[m.icon] || ""}<span>${m.title}</span></div>`);
+      const item = el(`<div class="nav-item" data-key="${key}"><span class="nav-ico-wrap">${ICONS[m.icon] || ""}</span><span class="nav-txt">${m.title}</span></div>`);
       item.onclick = () => { location.hash = "#/" + key; closeSidebar(); };
       nav.appendChild(item);
     });
+    try { window.Theme && Theme.apply && Theme.apply(); } catch (e) {} // 主题图标注入（武侠/可爱/自定义）
   }
   function setActive(key) {
     document.querySelectorAll(".nav-item").forEach(n => n.classList.toggle("active", n.dataset.key === key));
     const m = MODULES[key];
-    document.getElementById("pageTitle").innerHTML = (ICONS[m.icon] || "") + `<span>${m.title}</span>`;
+    const pt = document.getElementById("pageTitle");
+    pt.innerHTML = `<span class="nav-ico-wrap pt-ico">${(window.Theme && Theme.themeIconHtml) ? Theme.themeIconHtml(key, m) : (ICONS[m.icon] || "")}</span><span class="nav-txt">${m.title}</span>`;
+    const img = pt.querySelector("img.t-ico");
+    if (img) img.onerror = () => { img.outerHTML = ICONS[m.icon] || ""; };
   }
 
   let lastKey = null;
