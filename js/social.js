@@ -7,7 +7,11 @@ window.Social = (function () {
   const LS_TOKEN = "kg_social_token";
   const LS_USER = "kg_social_user";
   const LS_PW = "kg_social_pw"; // 仅用于自动重登，存 localStorage（个人应用）
-  let base = localStorage.getItem(LS_BASE) || "";
+  // 备用后端：本项目已部署在 Railway 的常驻实例（仅作者与伴侣使用，地址稳定）。
+  // 默认即指向它，保证「登录社交账号」按钮始终可用、登录始终有目标后端，
+  // 即使自动探测（同域/健康探测）因网络抖动失败也不会卡在“未配置”。
+  const FALLBACK_BASE = "https://kaogong-production.up.railway.app";
+  let base = localStorage.getItem(LS_BASE) || FALLBACK_BASE;
   let token = localStorage.getItem(LS_TOKEN) || "";
   let me = localStorage.getItem(LS_USER) || "";
   let ws = null, wsRetry = 0, pingTimer = null;
@@ -17,11 +21,10 @@ window.Social = (function () {
   function getBase() { return base; }
   function isConfigured() { return !!base; }
   // 同域自动探测：若后端与前端同域部署（一次部署同时托管网页+接口），
-  // 无需用户手动填地址。GitHub Pages 等同域无后端时探测失败 → 试备用后端，仍失败则保持「未配置」。
-  // 备用后端：本项目已部署在 Railway 的常驻实例（仅作者与伴侣使用，地址稳定）。
-  const FALLBACK_BASE = "https://kaogong-production.up.railway.app";
+  // 无需用户手动填地址。GitHub Pages 等同域无后端时探测失败 → 试备用后端，仍失败则保持 Railway 默认。
   async function autoDetect() {
-    if (base) return false;
+    // 已配置且不是默认备用地址（自定义或已升级到同域）时，不再重复探测
+    if (base && base !== FALLBACK_BASE) return false;
     // 1) 同域
     try {
       const r = await fetch(location.origin + "/api/health", { cache: "no-store" });
@@ -34,6 +37,14 @@ window.Social = (function () {
       if (r2.ok) { const j2 = await r2.json(); if (j2 && j2.ok) { setBase(FALLBACK_BASE); return true; } }
     } catch (e) { /* 备用不可达，忽略 */ }
     return false;
+  }
+  // 兜底：确保有可用后端。已自定义/已升级同域则直接用；否则尝试自动探测，
+  // 探测不到也至少回落到 Railway 共享后端（保证登录不会因“未配置”而卡死）。
+  async function ensureBase() {
+    if (base && base !== FALLBACK_BASE) return base;
+    try { await autoDetect(); } catch (e) {}
+    if (!base) setBase(FALLBACK_BASE);
+    return base;
   }
   function isLoggedIn() { return !!token && !!me; }
   function currentUser() { return me; }
@@ -138,7 +149,7 @@ window.Social = (function () {
   function emit(ev, data) { (listeners[ev] || []).forEach(cb => { try { cb(data); } catch (e) {} }); }
 
   return {
-    setBase, getBase, isConfigured, isLoggedIn, currentUser, autoDetect,
+    setBase, getBase, isConfigured, isLoggedIn, currentUser, autoDetect, ensureBase,
     register, login, autoLogin, logout,
     getProfile, saveProfile, getProfileOf,
     search, sendRequest, listRequests, accept, listFriends, setRemark, setSpecial, removeFriend,

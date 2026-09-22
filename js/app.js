@@ -556,7 +556,9 @@
   function renderSocialSection(host) {
     if (!host) return;
     if (!Social.isConfigured()) {
-      host.innerHTML = `💬 聊天/好友功能需在「设置 → 后端服务地址」填写后端（部署 backend 后获得），填写后将自动启用。`;
+      host.innerHTML = `<div class="muted small" style="margin-bottom:6px">💬 聊天/好友功能需连后端（已自动连 Railway 共享服务）。若仍连不上，可在「设置 → 后端服务地址」手动填写。</div><button class="btn sm" id="pSLogin">🔑 登录社交账号</button> <button class="btn sm ghost" id="pSReg">注册</button>`;
+      host.querySelector("#pSLogin").onclick = () => openSocialAuth(false);
+      host.querySelector("#pSReg").onclick = () => openSocialAuth(true);
       return;
     }
     if (!Social.isLoggedIn()) {
@@ -579,12 +581,13 @@
       title: isReg ? "注册社交账号" : "登录社交账号", body: box, width: "420px",
       actions: [
         { label: "取消", cls: "ghost", onClick: (m, c) => c() },
-        { label: isReg ? "注册" : "登录", cls: "primary", onClick: (m, c) => {
+        { label: isReg ? "注册" : "登录", cls: "primary", onClick: async (m, c) => {
           const u = box.querySelector("#saU").value.trim(), p = box.querySelector("#saP").value;
           if (!u || !p) { UI.toast("请输入用户名和密码"); return; }
+          try { await Social.ensureBase(); } catch (e) {}
           const fn = isReg ? Social.register(u, p) : Social.login(u, p);
           fn.then(() => { c(); UI.toast("已" + (isReg ? "注册并" : "") + "登录"); openProfileEdit(true); })
-            .catch(e => UI.toast("失败：" + e.message));
+            .catch(e => UI.toast("登录失败：" + (e && e.message ? e.message : e)));
         } }
       ]
     });
