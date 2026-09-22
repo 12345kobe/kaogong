@@ -2,7 +2,7 @@
   "name": "考公工作台 · 个人备考助手",
   "short_name": "考公工作台",
   "description": "集计划、学习、训练、复盘于一体的考公备考工具",
-  "start_url": "./?v=20260922a",
+  "start_url": "./?v=20260922b",
   "scope": ".",
   "display": "standalone",
   "orientation": "any",

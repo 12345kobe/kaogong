@@ -1398,7 +1398,7 @@
       /* ---------- 统一录入卡片：一个输入框搞定（AI 优先 + 规则兜底） ---------- */
       const recCard = UI.el(`<div class="card">
         <h3>📥 录入题目 / 资料（一个框，AI 优先整理）</h3>
-        <div class="muted small">支持 <b>PDF / Word / 文本 / 扫描件（图片）</b>：选文件或把文字粘到下面，点「识别整理」。系统<b>优先调用 AI</b>整理（题目+答案、时政资料都更准）；AI 不可用或失败时<b>自动改用规则识别</b>，保证能练题。详细说明见「❓ 帮助」。</div>
+        <div class="muted small">支持 <b>PDF / Word / 文本 / 扫描件（图片）</b>：选文件或把文字粘到下面，点「识别整理」。系统用<b>内置规则引擎</b>切分题目：全部识别、答案考点不丢、不被 AI 截断；<b>图片和杂乱文字才用 AI 兜底</b>。详细说明见「❓ 帮助」。</div>
         <input type="file" id="recFile" accept=".pdf,.doc,.docx,.txt,.md,.markdown,.csv,image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple style="margin-top:10px"/>
         <textarea id="recText" rows="6" style="width:100%;margin-top:10px" placeholder="也可以直接把题目或时政资料文字粘贴到这里（支持 Ctrl+V 粘贴截图）"></textarea>
         <div class="row" style="margin-top:10px;gap:10px;flex-wrap:wrap;align-items:center">
@@ -1412,7 +1412,7 @@
           <select id="recSubj">${SUBJECTS.concat(["时政"]).map(s => `<option value="${esc(SUBJECT_SHORT[s] || s)}">${esc(s)}</option>`).join("")}</select></span>
           <label class="muted small">文件夹</label>
           <select id="recFolder"></select>
-          <button class="btn primary" id="recGo">🤖 识别整理（优先 AI）</button>
+          <button class="btn primary" id="recGo">⚡ 识别整理（规则引擎 · 0 漏题）</button>
           <button class="btn ghost" id="recSample">填入示例</button>
         </div>
         <div class="muted small" id="recStatus" style="margin-top:10px"></div>
