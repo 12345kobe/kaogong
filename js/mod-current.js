@@ -472,6 +472,7 @@
   window.KGCurrent = {
     parse: parseCurrentText, importText, importData, list: listRecords, get: getRecord,
     remove: removeRecord, setDate: setDate, setTitle: setTitle, allQuestions: allQuestions,
+    parseQuestions: parseQuestions,
     recordHtml: recordHtml, subject: SUBJECT
   };
 

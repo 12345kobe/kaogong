@@ -1527,98 +1527,187 @@
       root.appendChild(customCard);
 
       /* ===== 统一识别整理：AI 优先，失败自动规则兜底 ===== */
+      /* ===== 统一识别整理：规则解析为主（保证 0 漏题、考点不丢）+ AI 仅用于图片转写 / 杂乱文本分批兜底 ===== */
       async function runRecognize() {
         const files = (Array.from(recFile.files || [])).concat(recImages.slice());
         const text = (recText && recText.value || "").trim();
         if (!files.length && !text) { UI.toast("请先选择文件或粘贴文字"); return; }
-        recGo.disabled = true; setRecStatus("正在准备…");
+        recGo.disabled = true; setRecStatus("正在识别…");
         try {
           const type = recType.value;
           const subject = (type === "current") ? "时政" : (KG_SUBJECT_LABEL[recSubj.value] || recSubj.value);
-          const folderId = (recFolder.value && recFolder.value !== "__new__") ? recFolder.value : null;
+          const chosenFolder = (recFolder.value && recFolder.value !== "__new__") ? recFolder.value : null;
           const A = window.KGAI;
-          const prov = A && A.getProvider && A.providerById(A.getProvider());
-          const aiReady = !!(A && ((A.hasCustom && A.hasCustom()) || (prov && prov.noKey) || (A.getToken && A.getToken())));
-          let usedAI = false, aiErr = null;
-          if (aiReady) {
-            try {
-              let quizQs = [];
-              const texts = [];
-              for (const f of files) {
-                const isImg = (f.type && f.type.indexOf("image/") === 0) || /\.(png|jpe?g|gif|bmp|webp)$/i.test(f.name || "");
-                if (isImg) {
-                  const qs = await aiVisionQuestions(f, subject);   // 图片：视觉识别直出题目
-                  if (qs && qs.length) quizQs = quizQs.concat(qs);
-                } else {
-                  const r = await fileToPages(f);                   // 文档：本机抽字
-                  texts.push((r.pages || []).map(sanitizeText).join("\n"));
-                }
-              }
-              if (text) texts.push(text);
-              let curData = null;
-              if (texts.length) {
-                if (type === "current") curData = await aiCurrentData(texts.join("\n\n"));   // AI 一步出「资料+题目+答案」
-                else { const qs = await aiTextQuestions(texts.join("\n\n"), subject); if (qs && qs.length) quizQs = quizQs.concat(qs); }
-              }
-              if (type === "current") {
-                if (!curData) throw new Error("AI 未整理出资料");
-                const r = saveCurrentStructured(curData, folderId);
-                const bits = ["资料 " + r.news + " 条"];
-                if (r.words) bits.push("词语 " + r.words + " 个");
-                if (r.nq) bits.push("时政题 " + r.nq + " 道");
-                if (r.nv) bits.push("言语题 " + r.nv + " 道");
-                UI.toast("✓ AI 已解析并分类保存：" + bits.join(" / "));
-                renderBooks();
-                setRecStatus(`✓ <b>AI 直接解析并分类完成</b>：${bits.join(" / ")}。<br>资料已进「时政」模块，题目已按学科存进对应题册（可在下方题册里校对）。`);
-              } else {
-                if (!quizQs.length) throw new Error("AI 未识别到题目");
-                buildAiDraft(quizQs, subject);
-                if (draft) draft.raw = texts.join("\n\n");
-                inputWrap.open = true;
-                const st = countStat(draft);
-                setRecStatus(`✓ AI 整理到 <b>${quizQs.length}</b> 道题${st.bad ? `（<b style="color:var(--red)">${st.bad}</b> 题答案待校对）` : ""}，已加入下方「识别结果」，核对后保存。`);
-              }
-              usedAI = true;
-            } catch (e) { aiErr = e; }
+          const aiReady = !!(A && ((A.hasCustom && A.hasCustom()) || (A.getProvider && A.getProvider() && A.providerById(A.getProvider()) && A.providerById(A.getProvider()).noKey) || (A.getToken && A.getToken())));
+
+          // 1) 收集纯文字：图片先让 AI 完整抄写，再交给规则解析；文档本机抽字
+          const texts = [];
+          for (const f of files) {
+            const isImg = (f.type && f.type.indexOf("image/") === 0) || /\.(png|jpe?g|gif|bmp|webp)$/i.test(f.name || "");
+            if (isImg) {
+              try { const t = await aiVisionToText(f); if (t) texts.push(t); }
+              catch (e) { setRecStatus(`<span style="color:var(--red)">❌ 图片识别失败：${esc(e.message || e)}（可改用文字版粘贴）</span>`); return; }
+            } else {
+              try { const r = await fileToPages(f); texts.push((r.pages || []).map(sanitizeText).join("\n")); } catch (e) { texts.push(""); }
+            }
           }
-          if (!usedAI) {
-            if (aiErr) setRecStatus(`<span style="color:var(--red)">❌ AI 识别失败，已自动改用规则识别：</span>${esc(aiErr.message || aiErr)}`);
-            else setRecStatus("未配置 AI，使用规则识别…");
-            const texts = [];
-            for (const f of files) {
-              if (!((f.type && f.type.indexOf("image/") === 0))) {
-                try { const r = await fileToPages(f); texts.push((r.pages || []).map(sanitizeText).join("\n")); } catch (e) { texts.push(""); }
-              }
-            }
-            if (text) texts.push(text);
-            const allText = texts.join("\n\n");
-            const wantCurrent = (type === "current" || (type === "auto" && looksLikeCurrent(allText)));
-            let curDone = false;
-            if (wantCurrent) {
-              try {
-                const rec = window.KGCurrent.importText(allText, DB.today());
-                const live = (db().state.currentAffairs || []).find(x => x.id === rec.id);
-                if (live) { live.folderId = folderId || window.KGFolders.rootId("时政"); db().save(); }
-                UI.toast("已识别并保存到「时政」：" + (rec && rec.title || ""));
-                renderBooks();
-                if (!aiErr) setRecStatus("✓ 规则识别完成，已保存到「时政」模块。");
-                curDone = true;
-              } catch (e) { /* 时政格式未匹配 → 兜底按题库解析，保证能练题 */ }
-            }
-            if (!curDone) {
-              if (allText.replace(/\s/g, "").length < 40) { setRecStatus(`<span style="color:var(--red)">⚠️ 提取到的文字极少，可能是扫描件/图片型。请配置 AI 识图，或改用文字版。</span>`); return; }
-              buildDraft([allText], null, null, subject);
-              inputWrap.open = true;
-              const st = countStat(draft);
-              const pre = wantCurrent ? "内容不含时政资料格式，已按<b>题库</b>解析" : "规则识别到";
-              setRecStatus(`${pre} <b>${draft.sections.length}</b> 个考点块 / <b>${st.q}</b> 道题${st.bad ? `（<b style="color:var(--red)">${st.bad}</b> 题答案待校对）` : ""}，请核对后保存。`);
-            }
+          if (text) texts.push(text);
+          const allText = texts.join("\n\n").replace(/\r\n?/g, "\n");
+          if (allText.replace(/\s/g, "").length < 20) { setRecStatus(`<span style="color:var(--red)">⚠️ 没有可识别的内容。</span>`); return; }
+
+          // 2) 切分「资料 / 考点」与「题目」
+          const split = splitMaterialsQuestions(allText);
+
+          // 3) 规则解析题目（本地、不截断，保证全部识别）
+          let qs = window.KGCurrent.parseQuestions(split.questionsText.split("\n"), kpFor(type, subject));
+          if (!qs.length && aiReady) {
+            try { qs = await aiTextQuestionsBatched(split.questionsText, subject); }
+            catch (e) { setRecStatus(`<span style="color:var(--red)">❌ AI 兜底失败：${esc(e.message || e)}</span>`); }
+          }
+
+          if (type === "current") {
+            const data = buildCurrentData(split, qs);
+            const r = saveCurrentStructured(data, chosenFolder);
+            const bits = ["资料 " + ((data.essay.paras.length) + (data.words.length)) + " 项"];
+            if (r.words) bits.push("词语 " + r.words + " 个");
+            if (r.nq) bits.push("题目 " + r.nq + " 道");
+            UI.toast("✓ 已解析并分类保存：" + bits.join(" / "));
+            renderBooks();
+            setRecStatus(`✓ <b>资料 + 题目已拆分并分类保存</b>：${bits.join(" / ")}。<br>资料进「时政」模块（金句自动进申论时评），题目存为时政题（同一文件夹，可在下方题册里练习）。`);
+          } else {
+            buildDraftWithMaterials(split.materials, qs, subject, chosenFolder);
+            inputWrap.open = true;
+            const st = countStat(draft);
+            const matNote = (split.materials && split.materials.trim()) ? `资料/考点已单独成块（${split.materials.trim().length} 字），` : "";
+            setRecStatus(`✓ 识别到 <b>${st.q}</b> 道题${st.bad ? `（<b style="color:var(--red)">${st.bad}</b> 题答案待校对）` : ""}。${matNote}已加入下方「识别结果」，核对后保存。`);
           }
         } catch (e) {
           setRecStatus(`<span style="color:var(--red)">识别失败：${esc(e.message || e)}</span>`);
         } finally {
           recGo.disabled = false;
         }
+      }
+
+      // 把「资料/考点」与「题目」切分：首个带 A/B/C/D 选项的题目之前的内容都算资料
+      function splitMaterialsQuestions(text) {
+        const lines = String(text || "").replace(/\r\n?/g, "\n").split("\n");
+        const qRe = /^(\d{1,4})\s*[.．、]\s*(.+)$/;
+        const optRe = /^[A-Da-d][.．、]/;
+        let qStart = -1;
+        for (let i = 0; i < lines.length; i++) {
+          if (!qRe.test(lines[i].trim())) continue;
+          let hasOpt = false;
+          for (let j = i + 1; j < Math.min(i + 7, lines.length); j++) {
+            if (optRe.test(lines[j].trim())) { hasOpt = true; break; }
+          }
+          if (hasOpt) { qStart = i; break; }
+        }
+        if (qStart < 0) return { materials: lines.join("\n").trim(), questionsText: "" };
+        return {
+          materials: lines.slice(0, qStart).join("\n").trim(),
+          questionsText: lines.slice(qStart).join("\n").trim()
+        };
+      }
+
+      function kpFor(type, subject) { return (type === "current") ? "时政单选" : (subject || "通用"); }
+
+      // 题目 -> 题库标准格式（a 为 0 基索引，needCheck 标记待校对）
+      function toBookQuestions(qs) {
+        return (qs || []).filter(q => q && q.q && (q.options || []).length >= 2).map((q) => {
+          const a = (typeof q.a === "number") ? q.a : -1;
+          return {
+            q: q.q, options: (q.options || []).slice(0, 6), a: a, e: q.e || "",
+            kp: q.kp || "通用", num: (q.num || 0),
+            needCheck: !(a >= 0 && a < (q.options || []).length)
+          };
+        });
+      }
+
+      // 从资料里解析成语释义 + 金句（资料完整保留进 essay.paras）
+      function parseMaterialsIntoData(materials) {
+        const data = { news: [], essay: { topic: "", paras: [], quotes: [] }, words: [], verbal: [], quiz: [], title: "", date: "" };
+        const lines = String(materials || "").split("\n").map(l => l.trim()).filter(Boolean);
+        let inQuote = false; const body = [];
+        lines.forEach(l => {
+          if (/金句|必背|背诵/.test(l) && l.length <= 12) { inQuote = true; return; }
+          if (inQuote) {
+            const m = /^(\d{1,3})\s*[.．、]\s*(.+)$/.exec(l);
+            if (m) data.essay.quotes.push(m[2].trim());
+            else if (data.essay.quotes.length) data.essay.quotes[data.essay.quotes.length - 1] += l;
+            return;
+          }
+          if (/^(考点|部分|第|注|说明|解析)/.test(l)) { body.push(l); return; }
+          const wm = /^(?:\d{1,3}\s*[.．、]\s*)?([一-龥]{2,8})\s*[：:]\s*(.+)$/.exec(l);
+          if (wm && !/^[A-Da-d][.．、]/.test(l)) {
+            data.words.push({ word: wm[1], type: (wm[1].length === 2 ? "两字" : (wm[1].length === 4 ? "四字" : "")), def: wm[2] });
+          } else { body.push(l); }
+        });
+        data.essay.paras = body;
+        return data;
+      }
+
+      function buildCurrentData(split, qs) {
+        const data = parseMaterialsIntoData(split.materials || "");
+        data.questions = toBookQuestions(qs);
+        data.title = (data.date || DB.today()) + " 时政";
+        return data;
+      }
+
+      function buildDraftWithMaterials(materials, qs, subject, folderId) {
+        const secs = [];
+        const mat = (materials || "").trim();
+        if (mat) secs.push({ name: "📚 考点 / 资料", theory: mat, questions: [] });
+        secs.push({ name: "🎯 题目", theory: "", questions: toBookQuestions(qs) });
+        draft = {
+          subject: subject, name: "",
+          raw: [mat, (qs || []).map(q => q.q).join("\n")].filter(Boolean).join("\n\n"),
+          sections: secs.filter(s => (s.questions && s.questions.length) || (s.theory && s.theory.trim()))
+        };
+        renderDraft();
+      }
+
+      // 图片：让 AI 完整抄写为纯文字（非 JSON，避免截断），再交给规则解析
+      async function aiVisionToText(file) {
+        const provId = window.KGAI.getProvider();
+        const prov = window.KGAI.providerById(provId);
+        let model = window.KGAI.getModel();
+        if (!window.KGAI.canVision(provId, model)) {
+          const v = (prov.models || []).filter(m => m.vision)[0];
+          if (v) model = v.id; else throw new Error("当前模型不支持识图，请在「设置 → AI」选一个可识图模型（如 Gemini 2.0 Flash）");
+        }
+        const key = window.KGAI.getKey(provId);
+        if (!key && !prov.noKey && !window.KGAI.hasCustom()) throw new Error("未配置 AI 令牌，请到「设置 → AI 令牌」填写，或选「共享 AI」");
+        const dataUrl = await fileToDataUrl(file);
+        const sys = "你是文字转录助手。请把图片里的全部文字完整抄写下来，严格保持原有换行、编号与顺序，不要省略、不要改写、不要加任何解释。如果是题目，连同题干、选项（A./B./C./D.）、【答案】、【解析】一起完整抄写。";
+        const user = "请完整抄写这张图片的全部文字：";
+        const content = [{ type: "text", text: user }, { type: "image_url", image_url: { url: dataUrl } }];
+        const t = await window.KGAI.chat([
+          { role: "system", content: sys },
+          { role: "user", content: content }
+        ], { providerId: provId, model: model, key: key });
+        return (t || "").trim();
+      }
+
+      // 杂乱文本：按题目数量分批（每批约 12 题）调用 AI，避免一次输出被截断
+      async function aiTextQuestionsBatched(text, subject) {
+        const lines = String(text || "").replace(/\r\n?/g, "\n").split("\n");
+        const qRe = /^(\d{1,4})\s*[.．、]\s*(.+)$/;
+        const starts = [];
+        lines.forEach((l, i) => { if (qRe.test(l.trim())) starts.push(i); });
+        if (!starts.length) return [];
+        const chunks = []; let cur = []; let cnt = 0;
+        for (let k = 0; k < starts.length; k++) {
+          const a = starts[k]; const b = (k + 1 < starts.length) ? starts[k + 1] : lines.length;
+          cur.push(lines.slice(a, b).join("\n")); cnt++;
+          if (cnt >= 12) { chunks.push(cur.join("\n\n")); cur = []; cnt = 0; }
+        }
+        if (cur.length) chunks.push(cur.join("\n\n"));
+        let out = [];
+        for (const ch of chunks) {
+          const part = await aiTextQuestions(ch, subject);
+          if (part && part.length) out = out.concat(part);
+        }
+        return out;
       }
 
       // AI 文本 → 题目结构化（粘贴 / PDF / Word 文字，比纯正则更准）
@@ -1662,12 +1751,12 @@
         return parseAiObject(t);
       }
 
-      function saveQuestionsAs(subject, qs) {
+      function saveQuestionsAs(subject, qs, folderId) {
         const norm = (qs || []).filter(q => q && q.q && (q.options || []).length >= 2);
         if (!norm.length) return 0;
         window.KGPdfBooks.add({
           subject: subject, name: suggestName(subject), named: false,
-          folderId: window.KGFolders.rootId(subject),
+          folderId: folderId || window.KGFolders.rootId(subject),
           sections: [{ name: "AI 解析", theory: "", questions: norm }]
         });
         saveToCustom(subject, norm);
@@ -1675,14 +1764,18 @@
       }
 
       function saveCurrentStructured(data, folderId) {
-        const rec = window.KGCurrent.importData(data, DB.today());
-        const live = (db().state.currentAffairs || []).find(x => x.id === rec.id);
-        if (live) { live.folderId = folderId || window.KGFolders.rootId("时政"); db().save(); }
-        const qz = parseAiQuestions(JSON.stringify(data.quiz || []), "时政");   // 复用归一化（答案索引/解析/待校对标记）
-        const vb = parseAiQuestions(JSON.stringify(data.verbal || []), "言语");
-        const nq = qz.length ? saveQuestionsAs("时政", qz) : 0;
-        const nv = vb.length ? saveQuestionsAs("言语", vb) : 0;
-        return { rec: rec, news: (data.news || []).length, words: (data.words || []).length, nq: nq, nv: nv };
+        // 时政记录只存资料（news/essay/words），题目单独存为时政题册，落在同一文件夹，避免重复
+        const recData = Object.assign({}, data, { verbal: [], quiz: [] });
+        const hasAny = (recData.news || []).length || (recData.essay.paras || []).length || (recData.essay.quotes || []).length || (recData.words || []).length;
+        let rec = null;
+        if (hasAny) {
+          rec = window.KGCurrent.importData(recData, DB.today());
+          const live = (db().state.currentAffairs || []).find(x => x.id === rec.id);
+          if (live) { live.folderId = folderId || window.KGFolders.rootId("时政"); db().save(); }
+        }
+        const qs = toBookQuestions(data.questions || []);
+        const nq = qs.length ? saveQuestionsAs("时政", qs, folderId) : 0;
+        return { rec: rec, news: (data.news || []).length, words: (data.words || []).length, nq: nq, nv: 0 };
       }
 
       function fileToDataUrl(file) {
