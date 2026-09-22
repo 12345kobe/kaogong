@@ -1398,3 +1398,26 @@ body.theme-custom.has-bg.light::after{ background:rgba(255,250,235,.5); }
 .t-ico-emoji{font-size:20px;line-height:1}
 .page-title .nav-ico-wrap{width:30px;height:30px;flex:0 0 30px}
 .page-title img.t-ico{width:30px;height:30px;object-fit:contain;border-radius:50%;vertical-align:middle}
+
+/* ===== iOS 透明键（ios27 质感）：毛玻璃 → 全透明 可调 ===== */
+body.glass .btn, body.glass .chip{
+  background:rgba(255,255,255,var(--glass-tint,.34));
+  -webkit-backdrop-filter:blur(var(--glass-blur,22px)) saturate(1.6);
+  backdrop-filter:blur(var(--glass-blur,22px)) saturate(1.6);
+  border:1px solid rgba(255,255,255,.30);
+  box-shadow:0 4px 14px rgba(0,0,0,.12);
+}
+body.glass.light .btn, body.glass.light .chip{
+  background:rgba(255,255,255,var(--glass-tint,.34));
+  -webkit-backdrop-filter:blur(var(--glass-blur,22px)) saturate(1.4);
+  backdrop-filter:blur(var(--glass-blur,22px)) saturate(1.4);
+  border:1px solid rgba(40,35,20,.14);
+  box-shadow:0 4px 12px rgba(90,70,30,.10);
+}
+body.glass .btn.primary{
+  background:linear-gradient(135deg,rgba(255,255,255,.10),rgba(255,255,255,.04)),var(--cyan);
+  -webkit-backdrop-filter:blur(var(--glass-blur,22px)) saturate(1.6);
+  backdrop-filter:blur(var(--glass-blur,22px)) saturate(1.6);
+}
+/* 自定义背景模糊程度可调（0=清晰 100=最糊，默认50%） */
+body.theme-custom.has-bg::before{ filter:blur(var(--custom-blur,20px)) saturate(1.12); }

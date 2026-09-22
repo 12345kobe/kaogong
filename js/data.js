@@ -85,7 +85,7 @@
     weeklyDrills: [], // 用户自导入每周时政演练：[{id,label,name,points,questions,createdAt}]（内置周演练在 js/drills-data.js）
     profile: { avatar: "", signature: "" }, // 头像（dataURL）/ 个性签名；随 DB.state 云端同步，跨设备一致
     hotspotsEdits: {}, // 时事热点用户修改：{ [hotspotId]: { title, body, summary } }
-    theme: { name: "wuxia", mode: "auto", customBg: "", customColor: "", emojis: {}, accent: "" } // 主题：name=cyber/minimal/cute/wuxia/custom；mode=auto/light/dark；customBg=背景图dataURL；customColor/accent=主色；emojis=自定义主题各模块emoji
+    theme: { name: "wuxia", mode: "auto", customBg: "", customColor: "", emojis: {}, accent: "", iosGlass: false, glassLevel: 0, customBlur: 50 } // 主题：name/mode/customBg/customColor/accent/emojis；iosGlass=iOS透明键；glassLevel=0毛玻璃~100全透明；customBlur=自定义背景模糊%
   };
 
   let state = null;

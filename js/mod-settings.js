@@ -49,14 +49,20 @@
   }
   function applyFont(stack) {
     try {
-      // 覆盖全站字体变量，让标题/正文/卡片/输入框全部统一切换（含移动端）
+      // 关键修复：字体变量必须设在 <body> 的内联样式上。
+      // 主题 CSS（body.theme-wuxia 等）在 body 级定义 --font-body/--font-head，
+      // 会覆盖 <html> 上继承下来的值；body 内联样式优先级最高，任何主题下都能生效。
+      const t = document.body.style;
       if (stack) {
-        document.documentElement.style.setProperty("--font-body", stack);
-        document.documentElement.style.setProperty("--font-head", stack);
+        t.setProperty("--font-body", stack);
+        t.setProperty("--font-head", stack);
       } else {
-        document.documentElement.style.removeProperty("--font-body");
-        document.documentElement.style.removeProperty("--font-head");
+        t.removeProperty("--font-body");
+        t.removeProperty("--font-head");
       }
+      // 清掉历史版本设在 <html> 上的残留
+      document.documentElement.style.removeProperty("--font-body");
+      document.documentElement.style.removeProperty("--font-head");
     } catch (e) {}
   }
   function keyOfStack(stack) {
@@ -78,8 +84,20 @@
   }
   function applyFontSize(scale) {
     try {
+      // 关键修复：iOS Safari 的 CSS zoom 只放大盒子、文字不跟着变（WebKit 已知怪癖）。
+      // 改用 transform:scale + 反向宽高（1/s），全平台文字与布局一起缩放，视觉占满视口。
       const app = document.getElementById("app");
-      if (app) app.style.zoom = (scale && scale !== 1) ? String(scale) : "";
+      if (!app) return;
+      const s = (scale && scale !== 1 && scale >= 0.7 && scale <= 1.6) ? scale : 0;
+      if (!s) {
+        app.style.transform = ""; app.style.width = ""; app.style.height = "";
+        app.style.transformOrigin = "";
+      } else {
+        app.style.transformOrigin = "0 0";
+        app.style.transform = "scale(" + s + ")";
+        app.style.width = (100 / s) + "%";
+        app.style.height = (100 / s) + "%";
+      }
     } catch (e) {}
   }
   window.applyKgFontSize = applyFontSize; // 供 app.js 启动调用
@@ -176,6 +194,18 @@
               <option value="light">浅色</option>
               <option value="dark">深色</option>
             </select>
+            <label class="row" style="gap:6px;align-items:center;margin:0 0 0 8px">
+              <input type="checkbox" id="iosGlass"/>
+              <span class="muted small">iOS 透明键（ios27 质感）</span>
+            </label>
+          </div>
+          <div id="glassBox" style="display:none;margin-top:8px">
+            <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap">
+              <span class="muted small">玻璃质感</span>
+              <span class="muted small" style="flex:0 0 auto">🧊 毛玻璃</span>
+              <input type="range" id="glassLevel" min="0" max="100" step="5" value="0" style="flex:1;min-width:130px"/>
+              <span class="muted small" style="flex:0 0 auto">💎 全透明</span>
+            </div>
           </div>
           <div id="customThemeBox" style="display:none;margin-top:12px">
             <div class="muted small">自定义主题 = 武侠水墨基底 + 你自己的修饰：可选背景图、按钮边框色，还能给每个板块挑专属 emoji。</div>
@@ -185,6 +215,13 @@
               <input type="color" id="customColor" value="#6f9f7f"/>
               <button class="btn sm ghost" id="customEmoji">🎨 板块表情</button>
               <button class="btn sm ghost" id="customBgClear">清除背景</button>
+            </div>
+            <div class="row" style="margin-top:8px;gap:10px;align-items:center;flex-wrap:wrap">
+              <span class="muted small">背景模糊</span>
+              <span class="muted small" style="flex:0 0 auto">清晰</span>
+              <input type="range" id="customBlur" min="0" max="100" step="5" value="50" style="flex:1;min-width:130px"/>
+              <span class="muted small" style="flex:0 0 auto">最糊</span>
+              <span class="muted small" id="customBlurVal">50%</span>
             </div>
           </div>
         </div>
@@ -364,10 +401,17 @@
       const themeMode = body.querySelector("#themeMode");
       const customThemeBox = body.querySelector("#customThemeBox");
       function reflectTheme() {
-        const s = (window.Theme && Theme.getState()) || { name: "cyber", mode: "auto" };
+        const s = (window.Theme && Theme.getState()) || { name: "wuxia", mode: "auto", iosGlass: false, glassLevel: 0, customBlur: 50 };
         if (themeGrid) themeGrid.querySelectorAll(".theme-opt").forEach(b => b.classList.toggle("on", b.dataset.name === s.name));
         if (themeMode) themeMode.value = s.mode;
         if (customThemeBox) customThemeBox.style.display = (s.name === "custom") ? "block" : "none";
+        const gChk = body.querySelector("#iosGlass"), gBox = body.querySelector("#glassBox"), gLv = body.querySelector("#glassLevel");
+        if (gChk) gChk.checked = !!s.iosGlass;
+        if (gBox) gBox.style.display = s.iosGlass ? "block" : "none";
+        if (gLv) gLv.value = String(s.glassLevel);
+        const cBl = body.querySelector("#customBlur"), cBlV = body.querySelector("#customBlurVal");
+        if (cBl) cBl.value = String(s.customBlur);
+        if (cBlV) cBlV.textContent = s.customBlur + "%";
       }
       if (themeGrid) themeGrid.querySelectorAll(".theme-opt").forEach(b => {
         b.onclick = () => {
@@ -411,6 +455,27 @@
       };
       const customBgClear = body.querySelector("#customBgClear");
       if (customBgClear) customBgClear.onclick = () => { window.Theme.set({ customBg: "" }); UI.toast("已清除背景"); };
+      /* iOS 透明键（ios27 质感）+ 玻璃质感滑条（毛玻璃↔全透明）+ 自定义背景模糊滑条 */
+      const iosGlassChk = body.querySelector("#iosGlass");
+      if (iosGlassChk) iosGlassChk.onchange = () => {
+        window.Theme.set({ iosGlass: iosGlassChk.checked });
+        UI.toast(iosGlassChk.checked ? "已开启 iOS 透明键（ios27 质感）" : "已关闭 iOS 透明键");
+        reflectTheme();
+      };
+      const glassLevelInp = body.querySelector("#glassLevel");
+      let glassDeb = null;
+      if (glassLevelInp) glassLevelInp.oninput = () => {
+        clearTimeout(glassDeb);
+        glassDeb = setTimeout(() => { window.Theme.set({ glassLevel: Number(glassLevelInp.value) }); }, 250);
+      };
+      const customBlurInp = body.querySelector("#customBlur");
+      let blurDeb = null;
+      if (customBlurInp) customBlurInp.oninput = () => {
+        const v = Number(customBlurInp.value);
+        const lbl = body.querySelector("#customBlurVal"); if (lbl) lbl.textContent = v + "%";
+        clearTimeout(blurDeb);
+        blurDeb = setTimeout(() => { window.Theme.set({ customBlur: v }); }, 250);
+      };
       reflectTheme();
 
       /* ===== 使用说明书 ===== */

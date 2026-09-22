@@ -11,7 +11,12 @@
   const Theme = (function () {
     function getState() {
       const s = (window.DB && DB.state && DB.state.theme) || {};
-      return { name: s.name || "wuxia", mode: s.mode || "auto", customBg: s.customBg || "", customColor: s.customColor || "", accent: s.accent || "", emojis: s.emojis || {} };
+      return {
+        name: s.name || "wuxia", mode: s.mode || "auto", customBg: s.customBg || "", customColor: s.customColor || "",
+        accent: s.accent || "", emojis: s.emojis || {},
+        iosGlass: !!s.iosGlass, glassLevel: (typeof s.glassLevel === "number" ? s.glassLevel : 0),
+        customBlur: (typeof s.customBlur === "number" ? s.customBlur : 50)
+      };
     }
     function autoMode() {
       const now = new Date(); const t = now.getHours() * 60 + now.getMinutes();
@@ -36,6 +41,24 @@
         document.body.style.removeProperty("--custom-bg");
         document.body.style.removeProperty("--custom-color");
         document.body.classList.remove("has-bg");
+      }
+      // iOS 透明键（ios27 质感）：玻璃等级 0=毛玻璃 → 100=全透明
+      const glass = !!s.iosGlass;
+      document.body.classList.toggle("glass", glass);
+      if (glass) {
+        const lv = Math.max(0, Math.min(100, s.glassLevel));
+        document.body.style.setProperty("--glass-blur", Math.max(2, Math.round(22 * (1 - lv / 100))) + "px");
+        document.body.style.setProperty("--glass-tint", (0.34 * (1 - lv / 100) + 0.04).toFixed(2));
+      } else {
+        document.body.style.removeProperty("--glass-blur");
+        document.body.style.removeProperty("--glass-tint");
+      }
+      // 自定义背景模糊程度（0=清晰 → 100=最糊），仅自定义主题生效
+      if (s.name === "custom") {
+        const cb = Math.max(0, Math.min(100, s.customBlur));
+        document.body.style.setProperty("--custom-blur", Math.round(40 * cb / 100) + "px");
+      } else {
+        document.body.style.removeProperty("--custom-blur");
       }
       applyEmojis();
     }
@@ -77,6 +100,9 @@
       if (opts.customColor !== undefined) st.customColor = opts.customColor;
       if (opts.accent !== undefined) st.accent = opts.accent;
       if (opts.emojis !== undefined) st.emojis = opts.emojis;
+      if (opts.iosGlass !== undefined) st.iosGlass = !!opts.iosGlass;
+      if (opts.glassLevel !== undefined) st.glassLevel = Math.max(0, Math.min(100, Number(opts.glassLevel) || 0));
+      if (opts.customBlur !== undefined) st.customBlur = Math.max(0, Math.min(100, Number(opts.customBlur) || 0));
       try {
         DB.save();                                  // 本地保存（含 theme）
         if (DB.isLoggedIn && DB.isLoggedIn()) { DB.push && DB.push(); }  // 已登录则立即上传云端
@@ -810,13 +836,13 @@
     DB.load();
     loadNav();
     Theme.init();
-    // 应用用户已保存的界面字体（设置里选的）：覆盖 --font-body / --font-head，
-    // 绝大多数文本元素都引用这两个变量，故全站（含移动端）统一生效
+    // 应用用户已保存的界面字体（设置里选的）：设在 <body> 内联样式上（优先级最高，
+    // 主题 CSS 的 body 级 --font-body/--font-head 不会覆盖它），任何主题下都能生效
     try {
       const f = localStorage.getItem("kg_font");
-      if (f) {
-        document.documentElement.style.setProperty("--font-body", f);
-        document.documentElement.style.setProperty("--font-head", f);
+      if (f && document.body) {
+        document.body.style.setProperty("--font-body", f);
+        document.body.style.setProperty("--font-head", f);
       }
     } catch (e) {}
     // 启用语音转文字浮动按钮（不支持的浏览器自动跳过）
@@ -870,11 +896,10 @@
     }
     window.__refreshTop = refreshTop;
     window.refreshSocialBadge = refreshSocialBadge;
-    // 系统字号：启动时按保存的比例缩放主界面（聊天/弹窗在 #app 之外，不受影响）
+    // 系统字号：启动时按保存的比例缩放主界面（transform 方案，文字与布局同步缩放；聊天/弹窗在 #app 之外不受影响）
     try {
       const fs = parseFloat(localStorage.getItem("kg_font_size"));
-      const appEl = document.getElementById("app");
-      if (appEl && !isNaN(fs) && fs >= 0.7 && fs <= 1.6 && fs !== 1) appEl.style.zoom = String(fs);
+      if (!isNaN(fs) && fs >= 0.7 && fs <= 1.6 && window.applyKgFontSize) window.applyKgFontSize(fs);
     } catch (e) {}
     initSocial();
     window.addEventListener("hashchange", renderRoute);
