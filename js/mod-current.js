@@ -953,17 +953,18 @@
           const defName = f.name.replace(/\.(pdf|txt|md)$/i, "");
           const m = /(\d{1,2}\.\d{1,2})\s*-\s*(\d{1,2}\.\d{1,2})/.exec(defName);
           const defLabel = m ? m[1] + "-" + m[2] : "";
-          UI.modal({
-            title: "确认导入演练", width: "440px", body: UI.el(`<div>
+          const mbox = UI.el(`<div>
               <label class="kg-fld">名称<input id="drNm" value="${esc(defName)}" maxlength="60"/></label>
               <label class="kg-fld">时间标签（如 9.14-9.20）<input id="drLb" value="${esc(defLabel)}" placeholder="自动识别，可修改" maxlength="20"/></label>
               <div class="muted small">识别到 <b>${parsed.points.length}</b> 个考点、<b>${parsed.questions.length}</b> 道题（单选 ${parsed.questions.filter(q => q.t === "单选").length} / 多选 ${parsed.questions.filter(q => q.t === "多选").length}）。导入后随云端同步到所有设备。</div>
-            </div>`),
+            </div>`);
+          UI.modal({
+            title: "确认导入演练", width: "440px", body: mbox,
             actions: [
               { label: "取消", cls: "ghost", onClick: (m2, c) => { c(); stat.textContent = ""; } },
               { label: "导入", cls: "primary", onClick: (m2, c) => {
-                  const name = m2.body.querySelector("#drNm").value.trim() || defName;
-                  const label = m2.body.querySelector("#drLb").value.trim() || defName;
+                  const name = mbox.querySelector("#drNm").value.trim() || defName;
+                  const label = mbox.querySelector("#drLb").value.trim() || defName;
                   DB.state.weeklyDrills = DB.state.weeklyDrills || [];
                   DB.state.weeklyDrills.push({
                     id: "u_" + Date.now(), label: label, name: name, custom: true,
