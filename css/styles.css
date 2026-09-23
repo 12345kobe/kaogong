@@ -1386,16 +1386,40 @@ body.theme-wuxia:not(.light),body.theme-cute:not(.light){
   --panel:rgba(18,18,20,.55);
   --panel2:rgba(26,26,30,.50);
 }
-/* 深色模式叠暗罩保证白字可读；浅色模式轻量柔化即可 */
+/* 深色模式压暗背景保证白字可读；浅色模式几乎不加罩，背景原样透出 */
 body.theme-wuxia::after,body.theme-cute::after{
-  content:"";position:fixed;inset:0;z-index:-1;background:rgba(255,250,235,.12);pointer-events:none;
+  content:"";position:fixed;inset:0;z-index:-1;background:rgba(255,250,235,.06);pointer-events:none;
 }
 body.theme-wuxia:not(.light)::after,body.theme-cute:not(.light)::after{
-  background:rgba(10,10,12,.62);
+  background:rgba(10,10,12,.28);
 }
-/* 模块卡片透明化（浅色模式原被强制纯白，这里透出背景）+ 毛玻璃模糊保证文字可读 */
-body.theme-wuxia.light .card,body.theme-cute.light .card{ background:rgba(250,244,226,.55); }
-body.theme-wuxia:not(.light) .card,body.theme-cute:not(.light) .card{ background:rgba(22,22,25,.50); }
+/* 模块面板透明化（浅色模式原被强制纯白，这里透出背景）+ 毛玻璃模糊保证文字可读
+   注意：玻璃模式(iosGlass)下由 --g-alpha 接管，故此处限定 :not(.glass) */
+body.theme-wuxia:not(.glass).light .card,
+body.theme-cute:not(.glass).light .card,
+body.theme-custom.has-bg:not(.glass).light .card{ background:rgba(252,248,236,.36); }
+body.theme-wuxia:not(.glass):not(.light) .card,
+body.theme-cute:not(.glass):not(.light) .card,
+body.theme-custom.has-bg:not(.glass):not(.light) .card{ background:rgba(24,24,28,.42); }
+/* 有背景图的主题：按钮/输入/选项/图标按钮在浅色下同样别做成纯白，否则背景又被挡住 */
+body.theme-wuxia:not(.glass).light .btn,
+body.theme-cute:not(.glass).light .btn,
+body.theme-custom.has-bg:not(.glass).light .btn,
+body.theme-wuxia:not(.glass).light .opt,
+body.theme-cute:not(.glass).light .opt,
+body.theme-custom.has-bg:not(.glass).light .opt,
+body.theme-wuxia:not(.glass).light input,
+body.theme-cute:not(.glass).light input,
+body.theme-custom.has-bg:not(.glass).light input,
+body.theme-wuxia:not(.glass).light select,
+body.theme-cute:not(.glass).light select,
+body.theme-custom.has-bg:not(.glass).light select,
+body.theme-wuxia:not(.glass).light textarea,
+body.theme-cute:not(.glass).light textarea,
+body.theme-custom.has-bg:not(.glass).light textarea,
+body.theme-wuxia:not(.glass).light .icon-btn,
+body.theme-cute:not(.glass).light .icon-btn,
+body.theme-custom.has-bg:not(.glass).light .icon-btn{ background:rgba(252,248,236,.42); }
 body.theme-wuxia .card,body.theme-cute .card{
   backdrop-filter:blur(9px) saturate(1.1);-webkit-backdrop-filter:blur(9px) saturate(1.1);
   border-color:rgba(255,255,255,.28);
@@ -1537,3 +1561,22 @@ body.theme-custom.has-bg::after{ background:rgba(10,10,12,.30); }
 /* 武侠/可爱主题：玻璃模式下卡片底色跟随滑条（覆盖主题内嵌的固定半透明） */
 body.glass.theme-wuxia .card,
 body.glass.theme-cute .card{ background:rgba(255,255,255,var(--g-alpha,.22)); }
+
+/* ===== 背景图主题：面板底色变量一并半透明，让所有引用 --panel 的元素都透出背景 ===== */
+body.theme-wuxia:not(.glass),body.theme-cute:not(.glass),body.theme-custom.has-bg:not(.glass){
+  --panel:rgba(252,248,236,.40);
+  --panel2:rgba(250,245,230,.34);
+}
+body.theme-wuxia:not(.glass):not(.light),body.theme-cute:not(.glass):not(.light),body.theme-custom.has-bg:not(.glass):not(.light){
+  --panel:rgba(26,26,30,.46);
+  --panel2:rgba(32,32,38,.40);
+}
+/* 自定义背景：非玻璃模式下也不再半透明+白罩，直接清晰呈现 */
+body.theme-custom.has-bg:not(.glass)::before{ opacity:1; }
+body.theme-custom.has-bg:not(.glass)::after{ background:rgba(255,250,235,.10); }
+body.theme-custom.has-bg:not(.glass):not(.light)::after{ background:rgba(10,10,12,.26); }
+/* 自定义背景：卡片加毛玻璃，保证背景透出来的同时文字依然清晰 */
+body.theme-custom.has-bg:not(.glass) .card{
+  -webkit-backdrop-filter:blur(10px) saturate(1.15);
+  backdrop-filter:blur(10px) saturate(1.15);
+}
