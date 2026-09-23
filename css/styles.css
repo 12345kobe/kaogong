@@ -1399,9 +1399,10 @@ body.theme-custom.has-bg.light::after{ background:rgba(255,250,235,.5); }
 .page-title .nav-ico-wrap{width:30px;height:30px;flex:0 0 30px}
 .page-title img.t-ico{width:30px;height:30px;object-fit:contain;border-radius:50%;vertical-align:middle}
 
-/* ===== iOS 透明键（ios27 Liquid Glass）：滑条同时调 透明度+反光感 ===== */
-/* --glass-tint: 底色不透明度(0.04~0.40)  --glass-hi: 边缘反光/高光强度(0.28~0.62) */
-body.glass .btn, body.glass .chip{
+/* ===== iOS 透明键（ios27 Liquid Glass）：滑条调 透明度+反光感；深/浅色双套；作用于 按键+整个板块 ===== */
+/* --glass-tint: 底色不透明度(0.04~0.40)  --glass-hi: 边缘反光/高光强度(0.28~0.62)  --glass-blur: 模糊px */
+/* 深色模式：明亮玻璃（白系，深色底上清晰） */
+body.glass:not(.light) .btn, body.glass:not(.light) .chip, body.glass:not(.light) .card{
   background:linear-gradient(160deg,
     rgba(255,255,255,calc(var(--glass-tint,.22) + var(--glass-hi,.45)*.55)),
     rgba(255,255,255,var(--glass-tint,.22)) 42%,
@@ -1414,32 +1415,43 @@ body.glass .btn, body.glass .chip{
     inset 1px 0 1px rgba(255,255,255,calc(var(--glass-hi,.45)*.5)),
     inset 0 -1px 2px rgba(255,255,255,calc(var(--glass-hi,.45)*.35)),
     inset 0 -6px 12px rgba(255,255,255,calc(var(--glass-hi,.45)*.14)),
-    0 4px 14px rgba(0,0,0,.12);
+    0 4px 14px rgba(0,0,0,.18);
 }
-body.glass.light .btn, body.glass.light .chip{
+/* 浅色模式：深色磨砂玻璃（在近白米黄底上清晰可见，避免白底白边看不出） */
+body.glass.light .btn, body.glass.light .chip, body.glass.light .card{
   background:linear-gradient(160deg,
-    rgba(255,255,255,calc(var(--glass-tint,.22) + var(--glass-hi,.45)*.5)),
-    rgba(255,253,246,var(--glass-tint,.22)) 42%,
-    rgba(255,255,255,calc(var(--glass-tint,.22)*.85)));
-  -webkit-backdrop-filter:blur(var(--glass-blur,10px)) saturate(1.5);
-  backdrop-filter:blur(var(--glass-blur,10px)) saturate(1.5);
-  border:1px solid rgba(255,255,255,calc(var(--glass-hi,.45)*.9));
+    rgba(255,255,255,calc(var(--glass-hi,.45)*.6)),
+    rgba(58,64,82,calc(var(--glass-tint,.22)*.72)) 45%,
+    rgba(40,44,58,calc(var(--glass-tint,.22)*.62)));
+  -webkit-backdrop-filter:blur(var(--glass-blur,10px)) saturate(1.4);
+  backdrop-filter:blur(var(--glass-blur,10px)) saturate(1.4);
+  border:1px solid rgba(255,255,255,calc(var(--glass-hi,.45)*.85));
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,var(--glass-hi,.45)),
+    inset 0 1px 0 rgba(255,255,255,calc(var(--glass-hi,.45)*.95)),
     inset 1px 0 1px rgba(255,255,255,calc(var(--glass-hi,.45)*.5)),
-    inset 0 -1px 2px rgba(255,255,255,calc(var(--glass-hi,.45)*.4)),
-    inset 0 -6px 12px rgba(255,255,255,calc(var(--glass-hi,.45)*.16)),
-    0 4px 12px rgba(90,70,30,.10);
+    inset 0 -1px 2px rgba(255,255,255,calc(var(--glass-hi,.45)*.25)),
+    0 4px 14px rgba(40,44,70,.20);
 }
-body.glass .btn.primary{
+/* 主按钮玻璃 */
+body.glass:not(.light) .btn.primary{
   background:linear-gradient(160deg,rgba(255,255,255,calc(var(--glass-hi,.45)*.5)),rgba(255,255,255,.06) 55%),var(--cyan);
   -webkit-backdrop-filter:blur(var(--glass-blur,10px)) saturate(1.8);
   backdrop-filter:blur(var(--glass-blur,10px)) saturate(1.8);
   border-color:rgba(255,255,255,calc(var(--glass-hi,.45)*.7));
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,var(--glass-hi,.45)),
-    inset 0 -1px 2px rgba(255,255,255,calc(var(--glass-hi,.45)*.3)),
-    0 4px 14px rgba(0,0,0,.14);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,var(--glass-hi,.45)),inset 0 -1px 2px rgba(255,255,255,calc(var(--glass-hi,.45)*.3)),0 4px 14px rgba(0,0,0,.20);
 }
+body.glass.light .btn.primary{
+  background:linear-gradient(160deg,rgba(255,255,255,calc(var(--glass-hi,.45)*.6)),rgba(255,255,255,.10) 55%),var(--cyan);
+  -webkit-backdrop-filter:blur(var(--glass-blur,10px)) saturate(1.6);
+  backdrop-filter:blur(var(--glass-blur,10px)) saturate(1.6);
+  border-color:rgba(255,255,255,calc(var(--glass-hi,.45)*.8));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,calc(var(--glass-hi,.45)*.9)),0 4px 14px rgba(40,44,70,.22);
+}
+/* 设置页实时预览：彩色底上放一块玻璃卡片+按键，拖动滑条立刻看得见变化 */
+.glass-preview{padding:16px;border-radius:14px;margin-top:10px;
+  background:linear-gradient(135deg,#ff7a59,#ffd166 35%,#06d6a0 70%,#118ab2);
+  display:flex;flex-direction:column;gap:10px;align-items:flex-start}
+.glass-preview .gp-card{padding:14px 16px;border-radius:12px;color:#fff;font-weight:600;
+  text-shadow:0 1px 3px rgba(0,0,0,.35);display:flex;gap:10px;align-items:center;width:100%;box-sizing:border-box}
 /* 自定义背景模糊程度可调（0=清晰 100=最糊，默认50%） */
 body.theme-custom.has-bg::before{ filter:blur(var(--custom-blur,20px)) saturate(1.12); }

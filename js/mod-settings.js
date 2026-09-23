@@ -206,7 +206,11 @@
               <input type="range" id="glassLevel" min="0" max="100" step="5" value="50" style="flex:1;min-width:130px"/>
               <span class="muted small" style="flex:0 0 auto">⬜ 色调</span>
             </div>
-            <div class="muted small" style="margin-top:4px">往左越通透（边缘反光更明显），往右白色调更浓、对比度更高。</div>
+            <div class="muted small" style="margin-top:4px">往左越通透（边缘反光更明显），往右白色调更浓、对比度更高。下面的示例会随滑条实时变化。</div>
+            <div class="glass-preview">
+              <div class="card gp-card">示例板块 · 玻璃卡片<button class="btn">示例按键</button></div>
+              <span class="muted small" style="color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.3)">拖动滑条，这块玻璃的透明度与高光会立刻变化</span>
+            </div>
           </div>
           <div id="customThemeBox" style="display:none;margin-top:12px">
             <div class="muted small">自定义主题 = 武侠水墨基底 + 你自己的修饰：可选背景图、按钮边框色，还能给每个板块挑专属 emoji。</div>

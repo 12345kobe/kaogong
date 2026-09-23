@@ -64,13 +64,20 @@
       }
       applyEmojis();
     }
+    /* 赛博朋克主题：导航/页标题图标改为变形金刚角色（擎天柱/大黄蜂/威震天），按模块分配 */
+    const CYBER_ICON_MAP = {
+      countdown: "optimus", timer: "bumblebee", current: "megatron", verbal: "optimus",
+      data: "bumblebee", logic: "megatron", politics: "optimus", quantity: "bumblebee",
+      common: "megatron", essay: "optimus", calendar: "bumblebee", wrongbook: "megatron",
+      favorites: "optimus", stats: "bumblebee", ai: "megatron", settings: "optimus"
+    };
     /* 主题图标 + 自定义板块表情（导航/页标题图标按主题切换）：
-       cyber → 原 SVG；cute → 可爱贴纸图标；wuxia/minimal/custom → 水墨武侠图标；
+       cyber → 变形金刚角色图标；cute → 可爱贴纸图标；wuxia/minimal/custom → 水墨武侠图标；
        custom 且给某板块设了 emoji 时，用该 emoji 替换图标。 */
     function themeIconHtml(key, m) {
       const s = getState();
       const fallback = (window.ICONS && window.ICONS[m.icon]) || "";
-      if (s.name === "cyber") return fallback;
+      if (s.name === "cyber") return '<img class="t-ico" src="assets/icons/cyber/' + (CYBER_ICON_MAP[key] || "optimus") + '.png" alt="">';
       const em = (s.name === "custom" && s.emojis && s.emojis[key]) || "";
       if (em) return '<span class="t-ico-emoji">' + em + "</span>";
       const th = s.name === "cute" ? "cute" : "wuxia";
