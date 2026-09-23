@@ -202,14 +202,15 @@
           <div id="glassBox" style="display:none;margin-top:8px">
             <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap">
               <span class="muted small">玻璃质感</span>
-              <span class="muted small" style="flex:0 0 auto">💧 透明</span>
-              <input type="range" id="glassLevel" min="0" max="100" step="5" value="50" style="flex:1;min-width:130px"/>
-              <span class="muted small" style="flex:0 0 auto">⬜ 色调</span>
+              <span class="muted small" style="flex:0 0 auto">💧 超清</span>
+              <input type="range" id="glassLevel" min="0" max="100" step="1" value="50" style="flex:1;min-width:130px"/>
+              <span class="muted small" style="flex:0 0 auto">⬜ 全色调</span>
+              <span class="muted small" id="glassLevelVal" style="flex:0 0 42px;text-align:right">50%</span>
             </div>
-            <div class="muted small" style="margin-top:4px">往左越通透（边缘反光更明显），往右白色调更浓、对比度更高。下面的示例会随滑条实时变化。</div>
+            <div class="muted small" style="margin-top:4px">左端＝超清：玻璃几乎完全通透，背景清晰可见；右端＝全色调：磨砂加厚、对比度更高。深浅色与自定义背景全部生效，拖动即时预览。</div>
             <div class="glass-preview">
               <div class="card gp-card">示例板块 · 玻璃卡片<button class="btn">示例按键</button></div>
-              <span class="muted small" style="color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.3)">拖动滑条，这块玻璃的透明度与高光会立刻变化</span>
+              <span class="muted small" style="color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.35)">拖动滑条，这块玻璃透出彩底的清晰度会立刻变化</span>
             </div>
           </div>
           <div id="customThemeBox" style="display:none;margin-top:12px">
@@ -235,6 +236,7 @@
           <h3>❓ 使用说明书</h3>
           <div class="muted small">各模块的使用说明都集中在这里与顶栏「❓ 帮助」里，界面保持简洁。每次功能更新都会同步更新。</div>
           <button class="btn primary" id="openHelp" style="margin-top:10px">📖 打开使用说明书</button>
+          <button class="btn sm ghost" id="startGuide" style="margin-top:10px;margin-left:8px">🎓 新手引导（重看）</button>
         </div>`;
 
       /* ===== PDF 题库导入（合并进设置的子板块） ===== */
@@ -414,6 +416,7 @@
         if (gChk) gChk.checked = !!s.iosGlass;
         if (gBox) gBox.style.display = s.iosGlass ? "block" : "none";
         if (gLv) gLv.value = String(s.glassLevel);
+        const gLvV = body.querySelector("#glassLevelVal"); if (gLvV) gLvV.textContent = s.glassLevel + "%";
         const cBl = body.querySelector("#customBlur"), cBlV = body.querySelector("#customBlurVal");
         if (cBl) cBl.value = String(s.customBlur);
         if (cBlV) cBlV.textContent = s.customBlur + "%";
@@ -468,10 +471,13 @@
         reflectTheme();
       };
       const glassLevelInp = body.querySelector("#glassLevel");
-      let glassDeb = null;
+      const glassLbl = body.querySelector("#glassLevelVal");
       if (glassLevelInp) glassLevelInp.oninput = () => {
-        clearTimeout(glassDeb);
-        glassDeb = setTimeout(() => { window.Theme.set({ glassLevel: Number(glassLevelInp.value) }); }, 250);
+        const v = Number(glassLevelInp.value);
+        if (glassLbl) glassLbl.textContent = v + "%";
+        // 实时更新材质变量（不重渲染整页），拖动即丝滑变化
+        if (window.Theme && Theme.setGlassLevel) Theme.setGlassLevel(v);
+        else window.Theme && window.Theme.set({ glassLevel: v });
       };
       const customBlurInp = body.querySelector("#customBlur");
       let blurDeb = null;
@@ -486,6 +492,10 @@
       /* ===== 使用说明书 ===== */
       const openHelpBtn = body.querySelector("#openHelp");
       if (openHelpBtn) openHelpBtn.onclick = () => { window.KGHelp && window.KGHelp.open(); };
+      const startGuideBtn = body.querySelector("#startGuide");
+      if (startGuideBtn) startGuideBtn.onclick = () => {
+        if (window.Guide) { window.Guide.restart(); }
+      };
     }
   };
 })();

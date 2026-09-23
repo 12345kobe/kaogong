@@ -24,6 +24,36 @@
       return light ? "light" : "dark";
     }
     function resolveMode(mode) { if (mode === "auto") return autoMode(); return mode === "light" ? "light" : "dark"; }
+    /* iOS 27 Liquid Glass 材质变量：lv 0=超清（几乎完全透出背景） → 100=全色调（磨砂、对比度更高）
+       依据苹果 iOS 27「Settings > Appearance」滑条规范：左端背景几乎无遮挡，右端内容模糊成柔和色块；
+       并加入 iOS 27 的改进项——暗化边缘(darkened edges) + 更亮高光(brighter specular highlights) 做元素分离。 */
+    const GLASS_KEYS = ["--g-blur", "--g-alpha", "--g-sat", "--g-hi", "--g-edge", "--g-sh"];
+    function glassVars(lv) {
+      const t = Math.max(0, Math.min(100, Number(lv) || 0)) / 100;
+      return {
+        "--g-blur": (4 + 32 * t).toFixed(1) + "px",     // 背景模糊：4px(清) → 36px(磨砂)
+        "--g-alpha": (0.06 + 0.52 * t).toFixed(3),      // 材质浓度：0.06(透) → 0.58(实)
+        "--g-sat": (1.5 + 0.8 * t).toFixed(2),          // 饱和度
+        "--g-hi": (0.55 + 0.30 * t).toFixed(3),         // 镜面高光（iOS27 更亮）
+        "--g-edge": (0.10 + 0.24 * t).toFixed(3),       // 暗化边缘
+        "--g-sh": (0.10 + 0.16 * t).toFixed(3)          // 投影
+      };
+    }
+    function applyGlass(on, lv) {
+      const b = document.body;
+      b.classList.toggle("glass", !!on);
+      if (!on) { GLASS_KEYS.forEach(k => b.style.removeProperty(k)); return; }
+      const v = glassVars(lv);
+      GLASS_KEYS.forEach(k => b.style.setProperty(k, v[k]));
+    }
+    /* 拖动滑条时只更新材质变量（不重渲染整页），保证丝滑实时 */
+    function setGlassLevel(v) {
+      const st = (window.DB && DB.state && DB.state.theme) || (DB.state.theme = {});
+      st.glassLevel = Math.max(0, Math.min(100, Number(v) || 0));
+      st.iosGlass = true;
+      applyGlass(true, st.glassLevel);
+      try { DB.save(); } catch (e) {}
+    }
     function apply() {
       const s = getState();
       const mode = resolveMode(s.mode);
@@ -44,19 +74,8 @@
         document.body.style.removeProperty("--custom-color");
         document.body.classList.remove("has-bg");
       }
-      // iOS 透明键（ios27 Liquid Glass）：滑条左=透明 右=色调；同时驱动透明度+反光感
-      const glass = !!s.iosGlass;
-      document.body.classList.toggle("glass", glass);
-      if (glass) {
-        const lv = Math.max(0, Math.min(100, s.glassLevel)) / 100;
-        document.body.style.setProperty("--glass-blur", Math.max(3, Math.round(20 * (1 - lv))) + "px");
-        document.body.style.setProperty("--glass-tint", (0.04 + 0.36 * lv).toFixed(3));
-        document.body.style.setProperty("--glass-hi", (0.62 - 0.34 * lv).toFixed(3));
-      } else {
-        document.body.style.removeProperty("--glass-blur");
-        document.body.style.removeProperty("--glass-tint");
-        document.body.style.removeProperty("--glass-hi");
-      }
+      // iOS 27 Liquid Glass：滑条 0=超清(ultra clear，几乎完全透出背景) → 100=全色调(fully tinted，磨砂)
+      applyGlass(s.iosGlass, s.glassLevel);
       // 自定义背景模糊程度（0=清晰 → 100=最糊），仅自定义主题生效
       if (s.name === "custom") {
         const cb = Math.max(0, Math.min(100, s.customBlur));
@@ -135,7 +154,7 @@
       return document.body.classList.contains("light") ? "light" : "dark";
     }
     function current() { return document.body.classList.contains("light") ? "light" : "dark"; }
-    window.Theme = { init: init, apply: apply, set: set, toggle: toggle, current: current, getState: getState, themeIconHtml: themeIconHtml };  // 暴露给 mod-settings 等模块
+    window.Theme = { init: init, apply: apply, set: set, toggle: toggle, current: current, getState: getState, themeIconHtml: themeIconHtml, setGlassLevel: setGlassLevel };  // 暴露给 mod-settings 等模块
     return window.Theme;
   })();
 
@@ -929,6 +948,10 @@
       if (DB.isLoggedIn()) DB.startAutoSync();
       renderRoute(); refreshTop();
       if (splash) { splash.classList.add("kg-splash-hide"); setTimeout(() => { try { splash.remove(); } catch (e) {} }, 500); }
+      // 新手引导：首次使用自动启动一次；跳过或走完后写入标记，此后不再干预
+      setTimeout(() => {
+        try { if (window.Guide && !window.Guide.isDone()) window.Guide.start(); } catch (e) { console.error(e); }
+      }, 900);
     });
 
       // 每个模块的「专注计时」浮动按钮：跳到计时器并预填本模块名（默认计入计划）

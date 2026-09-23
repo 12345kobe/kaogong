@@ -1445,51 +1445,50 @@ body.theme-wuxia:not(.light) .card,body.theme-cute:not(.light) .card{ border-col
 
 /* ===== iOS 透明键（ios27 Liquid Glass）：滑条调 透明度+反光感；深/浅色双套；作用于 按键+整个板块 ===== */
 /* --glass-tint: 底色不透明度(0.04~0.40)  --glass-hi: 边缘反光/高光强度(0.28~0.62)  --glass-blur: 模糊px */
-/* 深色模式：明亮玻璃（白系，深色底上清晰） */
-body.glass:not(.light) .btn, body.glass:not(.light) .chip, body.glass:not(.light) .card{
-  background:linear-gradient(160deg,
-    rgba(255,255,255,calc(var(--glass-tint,.22) + var(--glass-hi,.45)*.55)),
-    rgba(255,255,255,var(--glass-tint,.22)) 42%,
-    rgba(255,255,255,calc(var(--glass-tint,.22)*.82)));
-  -webkit-backdrop-filter:blur(var(--glass-blur,10px)) saturate(1.8);
-  backdrop-filter:blur(var(--glass-blur,10px)) saturate(1.8);
-  border:1px solid rgba(255,255,255,calc(var(--glass-hi,.45)*.8));
+/* 玻璃材质（深浅色同一套，靠变量实时调节：透出背景 ↔ 磨砂） */
+body.glass .card,
+body.glass .btn,
+body.glass .chip,
+body.glass .opt,
+body.glass input,
+body.glass select,
+body.glass textarea,
+body.glass .modal,
+body.glass .icon-btn,
+body.glass .sync-btn,
+body.glass .checkin-btn,
+body.glass .rw-card,
+body.glass .arc-q,
+body.glass .ai-overlay,
+body.glass .clock,
+body.glass .today-date,
+body.glass .daily-quote,
+body.glass .glass-preview .gp-card{
+  background:rgba(255,255,255,var(--g-alpha,.22));
+  -webkit-backdrop-filter:blur(var(--g-blur,14px)) saturate(var(--g-sat,1.8)) brightness(1.02);
+  backdrop-filter:blur(var(--g-blur,14px)) saturate(var(--g-sat,1.8)) brightness(1.02);
+  border:1px solid rgba(255,255,255,calc(var(--g-hi,.60) * .5));
+  /* iOS 27 改进：暗化边缘 + 更亮镜面高光，让元素从背景中分离出来 */
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,var(--glass-hi,.45)),
-    inset 1px 0 1px rgba(255,255,255,calc(var(--glass-hi,.45)*.5)),
-    inset 0 -1px 2px rgba(255,255,255,calc(var(--glass-hi,.45)*.35)),
-    inset 0 -6px 12px rgba(255,255,255,calc(var(--glass-hi,.45)*.14)),
-    0 4px 14px rgba(0,0,0,.18);
+    inset 0 1px 0 rgba(255,255,255,var(--g-hi,.60)),
+    inset 0 -1px 0 rgba(0,0,0,calc(var(--g-edge,.20) * .85)),
+    0 0 0 .5px rgba(0,0,0,calc(var(--g-edge,.20) * .5)),
+    0 6px 18px rgba(0,0,0,var(--g-sh,.14));
 }
-/* 浅色模式：深色磨砂玻璃（在近白米黄底上清晰可见，避免白底白边看不出） */
-body.glass.light .btn, body.glass.light .chip, body.glass.light .card{
-  background:linear-gradient(160deg,
-    rgba(255,255,255,calc(var(--glass-hi,.45)*.6)),
-    rgba(58,64,82,calc(var(--glass-tint,.22)*.72)) 45%,
-    rgba(40,44,58,calc(var(--glass-tint,.22)*.62)));
-  -webkit-backdrop-filter:blur(var(--glass-blur,10px)) saturate(1.4);
-  backdrop-filter:blur(var(--glass-blur,10px)) saturate(1.4);
-  border:1px solid rgba(255,255,255,calc(var(--glass-hi,.45)*.85));
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,calc(var(--glass-hi,.45)*.95)),
-    inset 1px 0 1px rgba(255,255,255,calc(var(--glass-hi,.45)*.5)),
-    inset 0 -1px 2px rgba(255,255,255,calc(var(--glass-hi,.45)*.25)),
-    0 4px 14px rgba(40,44,70,.20);
+/* 导航层（侧栏/顶栏）：苹果建议玻璃用于导航层，浓度略低于内容层 */
+body.glass #sidebar,
+body.glass #topbar{
+  background:rgba(255,255,255,calc(var(--g-alpha,.22) * .5));
+  -webkit-backdrop-filter:blur(calc(var(--g-blur,14px) * 1.25)) saturate(var(--g-sat,1.8));
+  backdrop-filter:blur(calc(var(--g-blur,14px) * 1.25)) saturate(var(--g-sat,1.8));
 }
-/* 主按钮玻璃 */
-body.glass:not(.light) .btn.primary{
-  background:linear-gradient(160deg,rgba(255,255,255,calc(var(--glass-hi,.45)*.5)),rgba(255,255,255,.06) 55%),var(--cyan);
-  -webkit-backdrop-filter:blur(var(--glass-blur,10px)) saturate(1.8);
-  backdrop-filter:blur(var(--glass-blur,10px)) saturate(1.8);
-  border-color:rgba(255,255,255,calc(var(--glass-hi,.45)*.7));
-  box-shadow:inset 0 1px 0 rgba(255,255,255,var(--glass-hi,.45)),inset 0 -1px 2px rgba(255,255,255,calc(var(--glass-hi,.45)*.3)),0 4px 14px rgba(0,0,0,.20);
-}
-body.glass.light .btn.primary{
-  background:linear-gradient(160deg,rgba(255,255,255,calc(var(--glass-hi,.45)*.6)),rgba(255,255,255,.10) 55%),var(--cyan);
-  -webkit-backdrop-filter:blur(var(--glass-blur,10px)) saturate(1.6);
-  backdrop-filter:blur(var(--glass-blur,10px)) saturate(1.6);
-  border-color:rgba(255,255,255,calc(var(--glass-hi,.45)*.8));
-  box-shadow:inset 0 1px 0 rgba(255,255,255,calc(var(--glass-hi,.45)*.9)),0 4px 14px rgba(40,44,70,.22);
+/* 主按钮：保留主色但带玻璃高光与暗边 */
+body.glass .btn.primary{
+  background:linear-gradient(160deg,rgba(255,255,255,calc(var(--g-hi,.60)*.5)),rgba(255,255,255,.05) 60%),var(--cyan);
+  -webkit-backdrop-filter:blur(var(--g-blur,14px)) saturate(var(--g-sat,1.8));
+  backdrop-filter:blur(var(--g-blur,14px)) saturate(var(--g-sat,1.8));
+  border-color:rgba(255,255,255,calc(var(--g-hi,.60)*.6));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,var(--g-hi,.60)),inset 0 -1px 0 rgba(0,0,0,calc(var(--g-edge,.20)*.8)),0 4px 14px rgba(0,0,0,calc(var(--g-sh,.14)*1.2));
 }
 /* 设置页实时预览：彩色底上放一块玻璃卡片+按键，拖动滑条立刻看得见变化 */
 .glass-preview{padding:16px;border-radius:14px;margin-top:10px;
@@ -1499,3 +1498,38 @@ body.glass.light .btn.primary{
   text-shadow:0 1px 3px rgba(0,0,0,.35);display:flex;gap:10px;align-items:center;width:100%;box-sizing:border-box}
 /* 自定义背景模糊程度可调（0=清晰 100=最糊，默认50%） */
 body.theme-custom.has-bg::before{ filter:blur(var(--custom-blur,20px)) saturate(1.12); }
+
+/* ===== 玻璃模式下让背景真正透出来（减轻遮罩/白罩） ===== */
+body.glass.theme-wuxia::after,body.glass.theme-cute::after{ background:rgba(255,250,235,.08); }
+body.glass.theme-wuxia:not(.light)::after,body.glass.theme-cute:not(.light)::after{ background:rgba(10,10,12,.38); }
+body.glass.theme-custom.has-bg::after{ background:rgba(255,250,235,.14); }
+body.glass.theme-custom.has-bg:not(.light)::after{ background:rgba(10,10,12,.30); }
+body.glass.theme-custom.has-bg::before{ opacity:.92; }
+/* 自定义背景：即便不开玻璃模式，也降低遮罩让背景可见 */
+body.theme-custom.has-bg.light::after{ background:rgba(255,250,235,.32); }
+body.theme-custom.has-bg::after{ background:rgba(10,10,12,.30); }
+
+/* ===== 新手引导：高亮目标 + 气泡提示 + 其余变暗（只有目标可点） ===== */
+#kgGuide{position:fixed;inset:0;z-index:20000;pointer-events:none}
+#kgGuideMask{position:absolute;inset:0;background:transparent;pointer-events:auto}
+#kgSpot{position:absolute;border-radius:14px;pointer-events:none;
+  border:2px solid var(--cyan,#3f7a52);
+  box-shadow:0 0 0 9999px rgba(0,0,0,.72),0 0 0 4px rgba(255,255,255,.22);
+  animation:kgPulse 1.7s ease-in-out infinite}
+@keyframes kgPulse{
+  0%,100%{box-shadow:0 0 0 9999px rgba(0,0,0,.72),0 0 0 4px rgba(255,255,255,.24)}
+  50%{box-shadow:0 0 0 9999px rgba(0,0,0,.72),0 0 0 9px rgba(255,255,255,.10)}
+}
+#kgBubble{position:absolute;z-index:2;pointer-events:auto;background:var(--panel,#fff);color:var(--txt,#111);
+  border:1px solid var(--line,#ccc);border-radius:14px;padding:12px 14px;max-width:300px;
+  box-shadow:0 14px 36px rgba(0,0,0,.4)}
+.kgb-step{font-size:11px;opacity:.6;margin-bottom:4px}
+.kgb-title{font-weight:800;font-size:15px;margin-bottom:6px}
+.kgb-text{font-size:13px;line-height:1.55;opacity:.92}
+.kgb-actions{display:flex;gap:8px;margin-top:10px}
+#kgBubble.shake{animation:kgShake .34s}
+@keyframes kgShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-7px)}75%{transform:translateX(7px)}}
+
+/* 武侠/可爱主题：玻璃模式下卡片底色跟随滑条（覆盖主题内嵌的固定半透明） */
+body.glass.theme-wuxia .card,
+body.glass.theme-cute .card{ background:rgba(255,255,255,var(--g-alpha,.22)); }
