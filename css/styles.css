@@ -1331,7 +1331,6 @@ body.theme-wuxia .card{border:1px solid var(--line);box-shadow:inset 0 0 0 1px r
 body.theme-wuxia .btn{border-radius:8px;border:1px solid var(--line)}
 body.theme-wuxia .btn.primary{background:var(--cyan);border-color:var(--cyan);color:#10120f;box-shadow:none}
 body.theme-wuxia .brand-logo{background:linear-gradient(135deg,#2f2f2d,#1a1a19);border:1px solid #4a4a44;box-shadow:none;color:#efe9d8}
-body.theme-wuxia .brand-logo::after{content:"俠";display:inline-block;margin-left:4px;color:var(--red);font-size:.8em}
 /* —— 自定义（武侠基底：默认武侠元素不变，仅按钮边框色可自选；可选背景图；emoji 由 JS 注入） —— */
 body.theme-custom{
   --bg:#0b0b0c;--bg2:#111113;--panel:#171718;--panel2:#1f1f21;--line:#33342f;--txt:#efe9d8;--txt-dim:#a89f8a;

@@ -3,6 +3,14 @@
 window.CHANGELOG = {
   logs: [
     {
+      version: "20260923i",
+      date: "2026-09-23",
+      title: "武侠主题 logo 去掉「俠」字角标",
+      items: [
+        { mod: "settings", text: "修复：武侠主题侧栏「考」字 logo 右侧多出的红色小「俠」字角标，已去掉" }
+      ]
+    },
+    {
       version: "20260923h",
       date: "2026-09-23",
       title: "修复：iPhone 上页面底部大片白条（全屏恢复）",
