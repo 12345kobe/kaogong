@@ -1360,7 +1360,9 @@ body.theme-custom.has-bg::before{
 body.theme-custom.has-bg::after{ content:"";position:fixed;inset:0;z-index:-1;background:rgba(10,10,12,.34); }
 body.theme-custom.has-bg.light::after{ background:rgba(255,250,235,.5); }
 
-/* —— 主题内嵌背景（武侠/可爱）：竖屏/横屏自动切换，随设备旋转即时换图 —— */
+/* —— 主题内嵌背景（武侠/可爱）：竖屏/横屏自动切换，面板透明透出背景 —— */
+/* body 底色透明，让 ::before 背景层不被纯色盖住；最底层由 html 兜底色承接 */
+body.theme-wuxia,body.theme-cute{ background:transparent; }
 body.theme-wuxia::before,body.theme-cute::before{
   content:"";position:fixed;inset:0;z-index:-2;
   background-size:cover;background-position:center;background-repeat:no-repeat;
@@ -1371,10 +1373,30 @@ body.theme-cute::before{ background-image:url(../assets/bg/cute-p.jpg) }
   body.theme-wuxia::before{ background-image:url(../assets/bg/wuxia-l.jpg) }
   body.theme-cute::before{ background-image:url(../assets/bg/cute-l.jpg) }
 }
-/* 深色模式叠暗罩保证白字可读；浅色模式图即底色不加罩 */
-body.theme-wuxia:not(.light)::after,body.theme-cute:not(.light)::after{
-  content:"";position:fixed;inset:0;z-index:-1;background:rgba(10,10,12,.78);pointer-events:none;
+/* 面板/卡片透明化，背景透出（和自定义背景一样） */
+body.theme-wuxia,body.theme-cute{
+  --panel:rgba(250,244,226,.62);
+  --panel2:rgba(241,233,208,.55);
 }
+body.theme-wuxia:not(.light),body.theme-cute:not(.light){
+  --panel:rgba(18,18,20,.55);
+  --panel2:rgba(26,26,30,.50);
+}
+/* 深色模式叠暗罩保证白字可读；浅色模式轻量柔化即可 */
+body.theme-wuxia::after,body.theme-cute::after{
+  content:"";position:fixed;inset:0;z-index:-1;background:rgba(255,250,235,.12);pointer-events:none;
+}
+body.theme-wuxia:not(.light)::after,body.theme-cute:not(.light)::after{
+  background:rgba(10,10,12,.62);
+}
+/* 模块卡片透明化（浅色模式原被强制纯白，这里透出背景）+ 毛玻璃模糊保证文字可读 */
+body.theme-wuxia.light .card,body.theme-cute.light .card{ background:rgba(250,244,226,.55); }
+body.theme-wuxia:not(.light) .card,body.theme-cute:not(.light) .card{ background:rgba(22,22,25,.50); }
+body.theme-wuxia .card,body.theme-cute .card{
+  backdrop-filter:blur(9px) saturate(1.1);-webkit-backdrop-filter:blur(9px) saturate(1.1);
+  border-color:rgba(255,255,255,.28);
+}
+body.theme-wuxia:not(.light) .card,body.theme-cute:not(.light) .card{ border-color:rgba(255,255,255,.14); }
 
 /* 主题选择网格（设置页） */
 .theme-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:10px;margin-top:12px}
