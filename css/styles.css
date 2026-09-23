@@ -711,6 +711,10 @@ body.light .wn-btn.on{color:#0f1828}
   #sidebar{position:fixed;left:0;top:0;bottom:0;z-index:60;transform:translateX(-100%);
     transition:.25s;box-shadow:var(--shadow)}
   #sidebar.open{transform:translateX(0)}
+  /* 抽屉打开时的遮罩：点空白处即关闭侧边栏 */
+  #navScrim{display:block;position:fixed;inset:0;z-index:55;background:rgba(0,0,0,.45);
+    opacity:0;pointer-events:none;transition:opacity .25s;-webkit-tap-highlight-color:transparent}
+  #sidebar.open ~ #navScrim{opacity:1;pointer-events:auto}
   #menuToggle{display:block;width:42px;height:42px;font-size:18px}
   #topbar{padding-top:calc(env(safe-area-inset-top, 0px) + 12px);padding-left:14px;padding-right:14px}
   #content{padding:16px 14px 50px}

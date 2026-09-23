@@ -886,6 +886,9 @@
     document.getElementById("accountBtn").onclick = openProfile;
     document.getElementById("syncBtn").onclick = openAccount;
     document.getElementById("menuToggle").onclick = () => document.getElementById("sidebar").classList.toggle("open");
+    // 移动端：抽屉打开时点右侧空白遮罩即关闭
+    const scrim = document.getElementById("navScrim");
+    if (scrim) scrim.onclick = () => closeSidebar();
     document.getElementById("themeBtn").onclick = () => { const t = Theme.toggle(); UI.toast(t === "light" ? "已切换到浅色（护眼）模式" : "已切换到深色模式"); };
     const helpBtn = document.getElementById("helpBtn");
     if (helpBtn) helpBtn.onclick = () => { if (window.KGHelp) window.KGHelp.open(); };
