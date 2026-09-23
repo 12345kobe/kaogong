@@ -31,6 +31,8 @@
       cls.push("theme-" + s.name);
       if (mode === "light") cls.push("light");
       document.body.className = cls.join(" ");
+      // html 兜底背景随主题（iOS 动态视口超出 body 时底部区域不露白）
+      document.documentElement.style.background = (mode === "light") ? "#f6efdc" : "#0a0a0d";
       // 自定义背景 / 主色（通过 CSS 变量注入；无则清除）
       if (s.name === "custom") {
         if (s.customBg) { document.body.style.setProperty("--custom-bg", "url(" + JSON.stringify(s.customBg) + ")"); document.body.classList.add("has-bg"); }

@@ -20,19 +20,24 @@
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%}
+/* html 兜底背景：iOS 动态工具栏/WebView 视口比 100vh 大时，底部多出的区域不露白（JS 会按主题改此色） */
+html{background:#f6efdc}
 body{
   font-family:var(--font-body);
   background:radial-gradient(1200px 600px at 80% -10%,#1a2350 0%,var(--bg) 55%) fixed;
   color:var(--txt);
   font-size:15px;
   line-height:1.5;
+  /* 动态视口：跟随 iOS Safari/WebView 工具栏收展，避免 100vh 比可视区小导致底部留白 */
+  height:100vh;
+  height:100dvh;
 }
 /* 标题 / UI 控件统一用黑体；大标题黑体加粗；正文（body）用楷体 */
 h1,h2,h3,h4,.page-title,#pageTitle,.card>h3,.nav-item,.btn,.chip,.badge,.tag,.todo b,.eb-stat .n,.pct,.modal-title,.qd-chk,.fc-big,.countdown-num,.brand-logo span{
   font-family:var(--font-head);
 }
 h1,#pageTitle,.page-title,.fc-big,.countdown-num{ font-weight:700; }
-#app{display:flex;height:100vh;overflow:hidden}
+#app{display:flex;height:100%;overflow:hidden} /* 高度挂 body(100dvh)，iOS 动态视口下不再底部留白 */
 
 /* ===== Sidebar ===== */
 #sidebar{
@@ -1389,6 +1394,7 @@ body.theme-custom.has-bg.light::after{ background:rgba(255,250,235,.5); }
 #kgSplash{position:fixed;inset:0;z-index:99999;background:#0b0b0c center/cover no-repeat;transition:opacity .45s ease}
 #kgSplash.kg-splash-hide{opacity:0;pointer-events:none}
 #kgSplashVer{position:absolute;right:16px;bottom:calc(8px + env(safe-area-inset-bottom, 0px));font-size:10px;opacity:.85;color:#000;font-family:monospace;font-weight:700}
+#kgSplashVer.on-dark{color:#fff;text-shadow:0 0 3px rgba(0,0,0,.7)}
 
 
 /* ===== 主题化导航图标（水墨武侠 / 可爱贴纸 / 自定义emoji） ===== */
