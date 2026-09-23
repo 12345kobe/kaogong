@@ -85,7 +85,9 @@
     weeklyDrills: [], // 用户自导入每周时政演练：[{id,label,name,points,questions,createdAt}]（内置周演练在 js/drills-data.js）
     profile: { avatar: "", signature: "" }, // 头像（dataURL）/ 个性签名；随 DB.state 云端同步，跨设备一致
     hotspotsEdits: {}, // 时事热点用户修改：{ [hotspotId]: { title, body, summary } }
-    theme: { name: "wuxia", mode: "auto", customBg: "", customColor: "", emojis: {}, accent: "", iosGlass: false, glassLevel: 50, customBlur: 50 } // 主题：name/mode/customBg/customColor/accent/emojis；iosGlass=iOS透明键；glassLevel=0透明~100色调（Liquid Glass，同时控制反光感）；customBlur=自定义背景模糊%
+    theme: { name: "wuxia", mode: "auto", customBg: "", customColor: "", emojis: {}, accent: "", iosGlass: false, glassLevel: 50, customBlur: 50 }, // 主题：name/mode/customBg/customColor/accent/emojis；iosGlass=iOS透明键；glassLevel=0透明~100色调（Liquid Glass，同时控制反光感）；customBlur=自定义背景模糊%
+    examMode: "shengkao", // 考试模式："shengkao"省考（默认）/ "guokao"国考；决定各模块限时刷题配速（见 js/exam-mode.js）
+    examQuiz: null // 最近一次限时刷题：{subject, subjectShort, count, mins, mode, at}（结束时弹窗用）
   };
 
   let state = null;

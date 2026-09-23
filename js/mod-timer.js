@@ -114,7 +114,9 @@
             if (el) el.textContent = fmt(st.targetMs && st.targetMs > 0 ? Math.max(0, DB.timerRemainingMs()) : DB.timerElapsedMs());
             if (st.targetMs && st.targetMs > 0 && DB.timerElapsedMs() >= st.targetMs) {
               clearInterval(iv); iv = null;
-              doStop();
+              // 倒计时到点统一交给考试模式处理（弹窗 + 震动 + 结算），避免两处重复结算
+              if (window.KGExam && KGExam.onCountdownEnd) KGExam.onCountdownEnd();
+              else doStop();
             }
           }, 250);
         }
@@ -161,13 +163,20 @@
           if (iv) { clearInterval(iv); iv = null; }
           // 在停止前快照分段（timerSettle 内部会清空 laps）；保留给 toast 显示
           const finalLaps = (DB.timerState().laps || []).slice();
+          // 复盘（正向计时）标记：结算时额外记一笔该科目复盘时长
+          const tt0 = DB.timerState();
+          const wasReview = !!tt0.review, revSubj = tt0.subject || "";
           const r = DB.timerSettle("计时器");
+          if (wasReview && window.KGExam && KGExam.logReview) {
+            KGExam.logReview(revSubj, r.mins);
+            try { DB.timerState().review = false; DB.save(); } catch (e) {}
+          }
           let extra = "";
           if (finalLaps.length) {
             const totalMs = finalLaps.reduce((a, b) => a + b, 0);
             extra = ` · 共 ${finalLaps.length} 段（${fmt(totalMs)}）`;
           }
-          UI.toast(`已结算：专注 ${fmt(r.sec)}${extra}${r.planId ? "，已记入今日计划 ✓" : ""}`);
+          UI.toast(`${wasReview ? "复盘" : "已结算"}：专注 ${fmt(r.sec)}${extra}${r.planId ? "，已记入今日计划 ✓" : ""}`);
           render(); window.__updateTopTimer && window.__updateTopTimer();
         }
       }
