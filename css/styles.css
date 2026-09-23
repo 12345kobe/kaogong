@@ -917,15 +917,16 @@ body.light .kg-det-s:hover{ background:#f3f6fb }
 
 /* ===== AI 咨询：整屏对话（占屏 80% 以上） ===== */
 /* AI 咨询：整屏固定布局（页面不滚动，只有消息区滚动） */
-body.ai-mode #content{ padding:0; overflow:hidden }
-body.ai-mode #content > #pageBody{ height:100%; display:flex; flex-direction:column; min-height:0 }
+body.ai-mode #content{ padding:0; overflow:hidden; display:flex; flex-direction:column }
+body.ai-mode #pageTitle{ display:none } /* ai-head 已有标题，避免占位把对话区顶出屏 */
+body.ai-mode #content > #pageBody{ flex:1 1 auto; min-height:0; height:auto; display:flex; flex-direction:column; padding:0 !important }
 .ai-wrap{ display:flex; flex-direction:column; flex:1 1 auto; min-height:0 }
 .ai-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border-bottom:1px solid var(--line); flex:0 0 auto }
 .ai-head-t{ font-weight:700; font-size:16px }
 .ai-head-sub{ font-weight:400; font-size:12px; color:var(--txt-dim); margin-left:6px }
 .ai-head-r{ display:flex; gap:8px }
 .ai-msgs{ flex:1 1 auto; overflow-y:auto; padding:12px; -webkit-overflow-scrolling:touch; min-height:0 }
-.ai-dock{ flex:0 0 auto; border-top:1px solid var(--line); padding:10px 12px calc(10px + env(safe-area-inset-bottom)); background:var(--panel) }
+.ai-dock{ flex:0 0 auto; border-top:1px solid var(--line); padding:8px 12px env(safe-area-inset-bottom, 0px); background:var(--panel) }
 .ai-dock #aiInput{ width:100%; resize:none }
 .ai-dock-row{ display:flex; align-items:center; gap:8px; margin-top:8px }
 .ai-spacer{ flex:1 }
@@ -946,7 +947,7 @@ body.ai-mode #content > #pageBody{ height:100%; display:flex; flex-direction:col
 .ai-set input[type=password],.ai-set input[type=range]{ width:100% }
 .btn.sm{ padding:6px 10px; font-size:12px }
 body.ai-mode #focusFab{ display:none !important }
-body.ai-mode #pageBody{ padding:8px !important; max-width:none !important }
+body.ai-mode #pageBody{ max-width:none !important } /* 内边距已由上方 ai-mode 规则清零 */
 body.light .ai-chip{ background:#fff }
 body.light .ai-att{ background:#fff }
 
