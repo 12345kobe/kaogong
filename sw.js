@@ -3,7 +3,7 @@
  * 断网时才回退到缓存。上线新版本后用户下次打开即自动生效，无需手动刷新。
  * 注意：发新版时须同步修改下方 CACHE 版本号与 index.html 内 ?v= 版本。
  */
-const CACHE = "kaogong-v20260923a";
+const CACHE = "kaogong-v20260923b";
 
 self.addEventListener("install", function (e) {
   self.skipWaiting();

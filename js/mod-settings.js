@@ -202,10 +202,11 @@
           <div id="glassBox" style="display:none;margin-top:8px">
             <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap">
               <span class="muted small">玻璃质感</span>
-              <span class="muted small" style="flex:0 0 auto">🧊 毛玻璃</span>
-              <input type="range" id="glassLevel" min="0" max="100" step="5" value="0" style="flex:1;min-width:130px"/>
-              <span class="muted small" style="flex:0 0 auto">💎 全透明</span>
+              <span class="muted small" style="flex:0 0 auto">💧 透明</span>
+              <input type="range" id="glassLevel" min="0" max="100" step="5" value="50" style="flex:1;min-width:130px"/>
+              <span class="muted small" style="flex:0 0 auto">⬜ 色调</span>
             </div>
+            <div class="muted small" style="margin-top:4px">往左越通透（边缘反光更明显），往右白色调更浓、对比度更高。</div>
           </div>
           <div id="customThemeBox" style="display:none;margin-top:12px">
             <div class="muted small">自定义主题 = 武侠水墨基底 + 你自己的修饰：可选背景图、按钮边框色，还能给每个板块挑专属 emoji。</div>

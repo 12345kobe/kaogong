@@ -14,7 +14,7 @@
       return {
         name: s.name || "wuxia", mode: s.mode || "auto", customBg: s.customBg || "", customColor: s.customColor || "",
         accent: s.accent || "", emojis: s.emojis || {},
-        iosGlass: !!s.iosGlass, glassLevel: (typeof s.glassLevel === "number" ? s.glassLevel : 0),
+        iosGlass: !!s.iosGlass, glassLevel: (typeof s.glassLevel === "number" ? s.glassLevel : 50),
         customBlur: (typeof s.customBlur === "number" ? s.customBlur : 50)
       };
     }
@@ -42,16 +42,18 @@
         document.body.style.removeProperty("--custom-color");
         document.body.classList.remove("has-bg");
       }
-      // iOS 透明键（ios27 质感）：玻璃等级 0=毛玻璃 → 100=全透明
+      // iOS 透明键（ios27 Liquid Glass）：滑条左=透明 右=色调；同时驱动透明度+反光感
       const glass = !!s.iosGlass;
       document.body.classList.toggle("glass", glass);
       if (glass) {
-        const lv = Math.max(0, Math.min(100, s.glassLevel));
-        document.body.style.setProperty("--glass-blur", Math.max(2, Math.round(22 * (1 - lv / 100))) + "px");
-        document.body.style.setProperty("--glass-tint", (0.34 * (1 - lv / 100) + 0.04).toFixed(2));
+        const lv = Math.max(0, Math.min(100, s.glassLevel)) / 100;
+        document.body.style.setProperty("--glass-blur", Math.max(3, Math.round(20 * (1 - lv))) + "px");
+        document.body.style.setProperty("--glass-tint", (0.04 + 0.36 * lv).toFixed(3));
+        document.body.style.setProperty("--glass-hi", (0.62 - 0.34 * lv).toFixed(3));
       } else {
         document.body.style.removeProperty("--glass-blur");
         document.body.style.removeProperty("--glass-tint");
+        document.body.style.removeProperty("--glass-hi");
       }
       // 自定义背景模糊程度（0=清晰 → 100=最糊），仅自定义主题生效
       if (s.name === "custom") {
