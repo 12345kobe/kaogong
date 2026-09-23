@@ -3,6 +3,14 @@
 window.CHANGELOG = {
   logs: [
     {
+      version: "20260923f",
+      date: "2026-09-23",
+      title: "启动页版本号优化（左移+黑字+「版本号：」前缀）",
+      items: [
+        { mod: "settings", text: "启动页右下角版本号左移一点、避开 iPhone 底部小黑条，改为黑色加粗字体，格式改为「版本号：20260923e」" }
+      ]
+    },
+    {
       version: "20260923e",
       date: "2026-09-23",
       title: "AI 咨询底部大片空白修复",

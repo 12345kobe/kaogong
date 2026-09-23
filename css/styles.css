@@ -1388,7 +1388,7 @@ body.theme-custom.has-bg.light::after{ background:rgba(255,250,235,.5); }
 /* ===== 启动页（2s，主题横竖屏图，右下角小版本号） ===== */
 #kgSplash{position:fixed;inset:0;z-index:99999;background:#0b0b0c center/cover no-repeat;transition:opacity .45s ease}
 #kgSplash.kg-splash-hide{opacity:0;pointer-events:none}
-#kgSplashVer{position:absolute;right:8px;bottom:6px;font-size:9px;opacity:.55;color:#fff;text-shadow:0 0 3px rgba(0,0,0,.6);font-family:monospace}
+#kgSplashVer{position:absolute;right:16px;bottom:calc(8px + env(safe-area-inset-bottom, 0px));font-size:10px;opacity:.85;color:#000;font-family:monospace;font-weight:700}
 
 
 /* ===== 主题化导航图标（水墨武侠 / 可爱贴纸 / 自定义emoji） ===== */
