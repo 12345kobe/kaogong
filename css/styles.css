@@ -1360,6 +1360,22 @@ body.theme-custom.has-bg::before{
 body.theme-custom.has-bg::after{ content:"";position:fixed;inset:0;z-index:-1;background:rgba(10,10,12,.34); }
 body.theme-custom.has-bg.light::after{ background:rgba(255,250,235,.5); }
 
+/* —— 主题内嵌背景（武侠/可爱）：竖屏/横屏自动切换，随设备旋转即时换图 —— */
+body.theme-wuxia::before,body.theme-cute::before{
+  content:"";position:fixed;inset:0;z-index:-2;
+  background-size:cover;background-position:center;background-repeat:no-repeat;
+}
+body.theme-wuxia::before{ background-image:url(../assets/bg/wuxia-p.jpg) }
+body.theme-cute::before{ background-image:url(../assets/bg/cute-p.jpg) }
+@media (orientation:landscape){
+  body.theme-wuxia::before{ background-image:url(../assets/bg/wuxia-l.jpg) }
+  body.theme-cute::before{ background-image:url(../assets/bg/cute-l.jpg) }
+}
+/* 深色模式叠暗罩保证白字可读；浅色模式图即底色不加罩 */
+body.theme-wuxia:not(.light)::after,body.theme-cute:not(.light)::after{
+  content:"";position:fixed;inset:0;z-index:-1;background:rgba(10,10,12,.78);pointer-events:none;
+}
+
 /* 主题选择网格（设置页） */
 .theme-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:10px;margin-top:12px}
 .theme-opt{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 8px;border:2px solid var(--line);border-radius:14px;background:var(--panel2);color:var(--txt);cursor:pointer;font-weight:700;font-size:13px;-webkit-tap-highlight-color:transparent}
