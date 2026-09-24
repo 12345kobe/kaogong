@@ -239,21 +239,21 @@ label.fld{display:block;font-size:12px;color:var(--txt-dim);margin:8px 0 4px}
 .essay-toolbar .et-sw{width:24px;height:24px;border-radius:50%;border:2px solid rgba(255,255,255,.4);cursor:pointer;display:inline-block}
 .essay-toolbar .et-sw.active{border-color:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.28)}
 .essay-toolbar .et-close{opacity:.75;cursor:pointer;font-size:17px;padding:0 6px;min-height:34px;display:inline-flex;align-items:center}
-body.light .essay-toolbar{background:#fff;color:#111;border:1px solid #d6dce6;box-shadow:0 8px 24px rgba(0,0,0,.16)}
-body.light .essay-toolbar .et-btn:hover{background:#f2f4f8}
-body.light .essay-toolbar .et-btn.active{background:#eaf1ff;border-color:#9b6cff}
-body.light .essay-toolbar .et-btn.danger{color:#c0392b}
-body.light .essay-toolbar .et-sep{background:#d6dce6}
-body.light .essay-toolbar .et-sw{border-color:rgba(0,0,0,.25)}
-body.light .essay-toolbar .et-sw.active{border-color:#111}
+body.light:not(.glass) .essay-toolbar{background:#fff;color:#111;border:1px solid #d6dce6;box-shadow:0 8px 24px rgba(0,0,0,.16)}
+body.light:not(.glass) .essay-toolbar .et-btn:hover{background:#f2f4f8}
+body.light:not(.glass) .essay-toolbar .et-btn.active{background:#eaf1ff;border-color:#9b6cff}
+body.light:not(.glass) .essay-toolbar .et-btn.danger{color:#c0392b}
+body.light:not(.glass) .essay-toolbar .et-sep{background:#d6dce6}
+body.light:not(.glass) .essay-toolbar .et-sw{border-color:rgba(0,0,0,.25)}
+body.light:not(.glass) .essay-toolbar .et-sw.active{border-color:#111}
 /* 用户标记可点：给个手型和轻微底纹，提示可再编辑 */
 .essay-body [data-mark-id]{cursor:pointer}
 /* 工具条小三角（视觉上指向选区） */
 .essay-toolbar::after{content:"";position:absolute;border:7px solid transparent;left:22px}
 .essay-toolbar.tb-below::after{top:-14px;border-bottom-color:#1d2336}
 .essay-toolbar.tb-above::after{bottom:-14px;border-top-color:#1d2336}
-body.light .essay-toolbar.tb-below::after{border-bottom-color:#fff}
-body.light .essay-toolbar.tb-above::after{border-top-color:#fff}
+body.light:not(.glass) .essay-toolbar.tb-below::after{border-bottom-color:#fff}
+body.light:not(.glass) .essay-toolbar.tb-above::after{border-top-color:#fff}
 
 /* ===== 好词好句编辑 ===== */
 .gw-list li{display:flex;align-items:flex-start;gap:6px}
@@ -278,8 +278,8 @@ body.light .essay-toolbar.tb-above::after{border-top-color:#fff}
 .al-p:last-child{margin-bottom:0}
 .gw-tools{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;align-items:center}
 .gw-tools .small{font-size:12px}
-body.light .gw-edit-input{background:#fff;border-color:#9b6cff}
-body.light .gw-add-row textarea{background:#fff}
+body.light:not(.glass) .gw-edit-input{background:#fff;border-color:#9b6cff}
+body.light:not(.glass) .gw-add-row textarea{background:#fff}
 
 .good-words{margin-top:18px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
 .good-words h3{font-family:var(--font-head);font-size:16px;margin:0 0 10px}
@@ -291,11 +291,11 @@ body.light .gw-add-row textarea{background:#fff}
 .lg-u{text-decoration:underline;text-decoration-color:#e23b54;text-decoration-thickness:2.5px;text-underline-offset:3px;font-weight:700}
 .essay-nav{justify-content:center;gap:10px;margin-top:16px;flex-wrap:wrap}
 /* 浅色模式：范文标题/标记在纯白背景下更清晰 */
-body.light .essay-title{color:#0f1828}
-body.light .essay-body{color:#1c2433}
-body.light .essay-body mark{background:#d6e8ff;color:#0b3d91;text-decoration:underline;text-decoration-color:#1763c0;text-decoration-thickness:2px;text-underline-offset:3px}
-body.light .essay-body .essay-red{color:#d11a2a}
-body.light .good-words{background:#f4f7fc}
+body.light:not(.glass) .essay-title{color:#0f1828}
+body.light:not(.glass) .essay-body{color:#1c2433}
+body.light:not(.glass) .essay-body mark{background:#d6e8ff;color:#0b3d91;text-decoration:underline;text-decoration-color:#1763c0;text-decoration-thickness:2px;text-underline-offset:3px}
+body.light:not(.glass) .essay-body .essay-red{color:#d11a2a}
+body.light:not(.glass) .good-words{background:#f4f7fc}
 
 /* ===== Todo ===== */
 .todo{display:flex;align-items:center;gap:10px;padding:9px 11px;background:var(--bg2);
@@ -408,16 +408,16 @@ body.light .good-words{background:#f4f7fc}
 
 /* ===== 全屏手写标注画板 ===== */
 .hw-overlay{position:fixed;inset:0;z-index:10000;background:rgba(10,14,30,.55);touch-action:none;-webkit-user-select:none;user-select:none}
-body.light .hw-overlay{background:rgba(244,247,252,.72)}
+body.light:not(.glass) .hw-overlay{background:rgba(244,247,252,.72)}
 .hw-layer{position:absolute;top:56px;left:0;right:0;bottom:0;width:100%;height:calc(100% - 56px);display:block;touch-action:none;cursor:crosshair;background:transparent}
 .hw-tools{position:fixed;top:0;left:0;right:0;z-index:10001;display:flex;gap:6px;align-items:center;justify-content:center;padding:8px 10px;padding-top:calc(env(safe-area-inset-top,0px) + 8px);height:56px;background:rgba(20,29,59,.97);border-bottom:1px solid var(--line);-webkit-overflow-scrolling:touch}
-body.light .hw-tools{background:rgba(255,255,255,.98);border-bottom-color:#d6dce6}
+body.light:not(.glass) .hw-tools{background:rgba(255,255,255,.98);border-bottom-color:#d6dce6}
 .hw-tool{border:1px solid var(--line);background:var(--panel2);color:var(--txt);border-radius:10px;min-width:40px;height:40px;padding:0 11px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:18px;font-weight:800;-webkit-tap-highlight-color:transparent;flex:0 0 auto}
 .hw-tool:hover{border-color:var(--cyan)}
 .hw-tool.active{background:rgba(52,231,228,.22);border-color:var(--cyan);color:var(--cyan)}
 .hw-tool.close{font-size:16px}
 .hw-palette{position:fixed;top:56px;left:50%;transform:translateX(-50%);z-index:10002;background:rgba(20,29,59,.98);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:10px;min-width:260px;box-shadow:0 12px 34px rgba(0,0,0,.45)}
-body.light .hw-palette{background:rgba(255,255,255,.98);border-color:#d6dce6}
+body.light:not(.glass) .hw-palette{background:rgba(255,255,255,.98);border-color:#d6dce6}
 .hw-palette-colors{display:flex;gap:8px;justify-content:center}
 .hw-palette-colors span{width:28px;height:28px;border-radius:50%;cursor:pointer;box-shadow:0 0 0 2px transparent}
 .hw-palette-colors span.active{box-shadow:0 0 0 3px var(--cyan)}
@@ -603,13 +603,13 @@ body.light .hw-palette{background:rgba(255,255,255,.98);border-color:#d6dce6}
 .kg-anno-fab:active{transform:scale(.94)}
 .kg-anno-fab.has{border-color:var(--yellow);color:var(--yellow)}
 .kg-anno-fab .kg-anno-dot{position:absolute;top:-4px;right:-2px;font-size:14px;color:var(--yellow);text-shadow:0 0 4px rgba(0,0,0,.6)}
-body.light .kg-anno-fab{background:rgba(255,255,255,.95);border-color:var(--cyan)}
-body.light .kg-anno-fab.has{border-color:#d9a400;color:#d9a400}
+body.light:not(.glass) .kg-anno-fab{background:rgba(255,255,255,.95);border-color:var(--cyan)}
+body.light:not(.glass) .kg-anno-fab.has{border-color:#d9a400;color:#d9a400}
 
 /* ===== 上岸计时器 · 分段记录（仿 iPhone 秒表） ===== */
 .lap-btn{min-width:96px;font-weight:800;background:linear-gradient(135deg,#9b6cff,#34e7e4);color:#0f1430;border:none}
 .lap-btn:disabled{opacity:.4;cursor:not-allowed;background:var(--panel2);color:var(--txt-dim);border:1px solid var(--line)}
-body.light .lap-btn:disabled{background:#fafbfc;color:#5a6b86;border-color:#e3e8f0}
+body.light:not(.glass) .lap-btn:disabled{background:#fafbfc;color:#5a6b86;border-color:#e3e8f0}
 .lap-list{display:flex;flex-direction:column;gap:6px;max-height:280px;overflow:auto;padding-right:4px}
 .lap-row{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-radius:8px;
   background:var(--panel2);border:1px solid var(--line);font-variant-numeric:tabular-nums}
@@ -622,31 +622,31 @@ body.light .lap-btn:disabled{background:#fafbfc;color:#5a6b86;border-color:#e3e8
 .lap-row.lap-fast .lap-label{color:#34e7e4;font-weight:800}
 .lap-row.lap-fast .lap-time{color:#34e7e4}
 .lap-row.lap-latest.lap-fast{background:linear-gradient(90deg,rgba(255,92,240,.10),rgba(52,231,228,.12))}
-body.light .lap-row{background:#fafbfc;border-color:#e3e8f0}
-body.light .lap-row .lap-label{color:#5a6b86}
-body.light .lap-row .lap-time{color:#0f1828}
-body.light .lap-row.lap-latest{background:rgba(226,59,84,.10);border-color:rgba(226,59,84,.45)}
-body.light .lap-row.lap-latest .lap-label{color:#c01f38}
-body.light .lap-row.lap-latest .lap-time{color:#c01f38}
-body.light .lap-row.lap-fast{background:rgba(31,158,107,.12);border-color:rgba(31,158,107,.5)}
-body.light .lap-row.lap-fast .lap-label{color:#1f9e6b}
-body.light .lap-row.lap-fast .lap-time{color:#1f9e6b}
+body.light:not(.glass) .lap-row{background:#fafbfc;border-color:#e3e8f0}
+body.light:not(.glass) .lap-row .lap-label{color:#5a6b86}
+body.light:not(.glass) .lap-row .lap-time{color:#0f1828}
+body.light:not(.glass) .lap-row.lap-latest{background:rgba(226,59,84,.10);border-color:rgba(226,59,84,.45)}
+body.light:not(.glass) .lap-row.lap-latest .lap-label{color:#c01f38}
+body.light:not(.glass) .lap-row.lap-latest .lap-time{color:#c01f38}
+body.light:not(.glass) .lap-row.lap-fast{background:rgba(31,158,107,.12);border-color:rgba(31,158,107,.5)}
+body.light:not(.glass) .lap-row.lap-fast .lap-label{color:#1f9e6b}
+body.light:not(.glass) .lap-row.lap-fast .lap-time{color:#1f9e6b}
 
 /* ===== 申论 · 每日名言积累（浅色模式黑字） ===== */
 .qd-text{font-size:15px;margin-top:4px;line-height:1.7}
 .qd-text.qd-undone{color:#e7ecff}                      /* 深色模式：未读仍用淡蓝白 */
 .qd-text.qd-done{color:var(--txt-dim);text-decoration:line-through;opacity:.85}
 .qd-author{font-size:13px;color:var(--txt-dim);margin-top:2px}
-body.light .qd-text.qd-undone{color:#0f1828}            /* 浅色模式：未读直接黑字 */
-body.light .qd-text.qd-done{color:#5a6b86;text-decoration:line-through;opacity:.85}
-body.light .qd-author{color:#1c2433}                   /* 浅色模式：作者深色加深 */
+body.light:not(.glass) .qd-text.qd-undone{color:#0f1828}            /* 浅色模式：未读直接黑字 */
+body.light:not(.glass) .qd-text.qd-done{color:#5a6b86;text-decoration:line-through;opacity:.85}
+body.light:not(.glass) .qd-author{color:#1c2433}                   /* 浅色模式：作者深色加深 */
 
 /* ===== Mobile ===== */
 /* ===== 白噪音按钮（顶栏） ===== */
 .wn-btn{font-size:12px;padding:6px 9px;white-space:nowrap}
 .wn-btn.on{background:linear-gradient(90deg,#34e7e4,#9b6cff);color:#0f1430;border-color:transparent;
   box-shadow:0 0 0 1px rgba(52,231,228,.4),0 4px 14px rgba(52,231,228,.35)}
-body.light .wn-btn.on{color:#0f1828}
+body.light:not(.glass) .wn-btn.on{color:#0f1828}
 @media(max-width:760px){.wn-btn{font-size:11px;padding:5px 7px}}
 
 /* 头像裁剪 */
@@ -771,54 +771,54 @@ body.light{ background:#f6efdc; }
 body{ transition: background .35s ease, color .35s ease; }
 
 /* —— 浅色模式：所有可见背景纯白 + 黑色文字，去掉深色渐变 —— */
-body.light #sidebar{ background:#ffffff; background-image:none; border-right:1px solid var(--line); }
-body.light .brand{ background:#ffffff; border-bottom-color:var(--line); }
-body.light .nav-item{ color:var(--txt); }
-body.light .nav-item:hover{ background:var(--panel2); }
-body.light .nav-item.active{
+body.light:not(.glass) #sidebar{ background:#ffffff; background-image:none; border-right:1px solid var(--line); }
+body.light:not(.glass) .brand{ background:#ffffff; border-bottom-color:var(--line); }
+body.light:not(.glass) .nav-item{ color:var(--txt); }
+body.light:not(.glass) .nav-item:hover{ background:var(--panel2); }
+body.light:not(.glass) .nav-item.active{
   background:#eef9f9;                    /* 极淡青底标识选中 */
   color:#0f1828;                         /* 黑字，保证可读 */
   border-color:rgba(15,179,176,.35);
   box-shadow:none;
 }
-body.light .sync-btn{ background:#ffffff; }
+body.light:not(.glass) .sync-btn{ background:#ffffff; }
 
-body.light #topbar{ background:#ffffff; border-bottom:1px solid var(--line); }
-body.light .icon-btn{ background:#fafbfc; }
+body.light:not(.glass) #topbar{ background:#ffffff; border-bottom:1px solid var(--line); }
+body.light:not(.glass) .icon-btn{ background:#fafbfc; }
 
-body.light .card{ background:#ffffff; }
-body.light .btn{ background:#ffffff; }
-body.light .opt{ background:#ffffff; }
-body.light input, body.light select, body.light textarea{ background:#ffffff; }
-body.light .modal{ background:#ffffff; }
-body.light .arc-item{ background:#ffffff; }
-body.light .arc-item-head:hover{ background:#fafbfc; }
-body.light .arc-q{ background:#fafbfc; }
-body.light .cal-cell{ background:#ffffff; }
-body.light .kp-item{ background:#ffffff; }
-body.light .kp-orig, body.light .kp-jiexi, body.light .kp-zhu, body.light .opt-exp{ background:#fafbfc; }
-body.light .eb-stat, body.light .plan-item{ background:#fafbfc; }
-body.light .fc-card{ background:#ffffff; }
-body.light .pen-btn{ background:#ffffff; }
-body.light .hw-modal{ background:#ffffff; }
+body.light:not(.glass) .card{ background:#ffffff; }
+body.light:not(.glass) .btn{ background:#ffffff; }
+body.light:not(.glass) .opt{ background:#ffffff; }
+body.light:not(.glass) input, body.light:not(.glass) select, body.light:not(.glass) textarea{ background:#ffffff; }
+body.light:not(.glass) .modal{ background:#ffffff; }
+body.light:not(.glass) .arc-item{ background:#ffffff; }
+body.light:not(.glass) .arc-item-head:hover{ background:#fafbfc; }
+body.light:not(.glass) .arc-q{ background:#fafbfc; }
+body.light:not(.glass) .cal-cell{ background:#ffffff; }
+body.light:not(.glass) .kp-item{ background:#ffffff; }
+body.light:not(.glass) .kp-orig, body.light:not(.glass) .kp-jiexi, body.light:not(.glass) .kp-zhu, body.light:not(.glass) .opt-exp{ background:#fafbfc; }
+body.light:not(.glass) .eb-stat, body.light:not(.glass) .plan-item{ background:#fafbfc; }
+body.light:not(.glass) .fc-card{ background:#ffffff; }
+body.light:not(.glass) .pen-btn{ background:#ffffff; }
+body.light:not(.glass) .hw-modal{ background:#ffffff; }
 
-body.light .modal-mask{ background: rgba(20,32,60,.45); }
-body.light .brand-logo{ color:#fff; }
-body.light .fc-big{ color:var(--cyan); }
-body.light .opt.correct{ color:#0f7a4d; }
-body.light .opt.wrong{ color:#c01f38; }
-body.light .daily-quote{ color:var(--txt-dim); }
+body.light:not(.glass) .modal-mask{ background: rgba(20,32,60,.45); }
+body.light:not(.glass) .brand-logo{ color:#fff; }
+body.light:not(.glass) .fc-big{ color:var(--cyan); }
+body.light:not(.glass) .opt.correct{ color:#0f7a4d; }
+body.light:not(.glass) .opt.wrong{ color:#c01f38; }
+body.light:not(.glass) .daily-quote{ color:var(--txt-dim); }
 /* 翻书阅读：浅色下页面纸感（刻意保留暖色纸面） */
-body.light .book-page{ background:#fffdf7; color:#1c2433; border-color:#e3dcc6; }
-body.light .book-toc-item{ background:#fff; border-color:var(--line); }
+body.light:not(.glass) .book-page{ background:#fffdf7; color:#1c2433; border-color:#e3dcc6; }
+body.light:not(.glass) .book-toc-item{ background:#fff; border-color:var(--line); }
 
 /* ===== 练题模式：选项标记 + 底部展示答案条 ===== */
 .opt.selected{ border-color:var(--cyan); box-shadow:0 0 0 2px rgba(52,231,228,.35) inset; background:rgba(52,231,228,.10) }
-body.light .opt.selected{ background:rgba(15,179,176,.12) }
+body.light:not(.glass) .opt.selected{ background:rgba(15,179,176,.12) }
 .quiz-reveal-bar{ position:sticky; bottom:0; display:flex; align-items:center; justify-content:space-between; gap:12px;
   margin-top:12px; padding:12px 16px; background:var(--panel2); border:1px solid var(--cyan); border-radius:14px;
   box-shadow:0 6px 24px rgba(0,0,0,.25); z-index:10 }
-body.light .quiz-reveal-bar{ box-shadow:0 6px 24px rgba(30,50,90,.18) }
+body.light:not(.glass) .quiz-reveal-bar{ box-shadow:0 6px 24px rgba(30,50,90,.18) }
 
 /* ===== 翻书式浏览（言语·按组别） ===== */
 .book-dir-item{
@@ -868,8 +868,8 @@ body.light .quiz-reveal-bar{ box-shadow:0 6px 24px rgba(30,50,90,.18) }
   -webkit-tap-highlight-color:transparent;
 }
 @keyframes pulse{ 0%{transform:scale(1)} 50%{transform:scale(1.08)} 100%{transform:scale(1)} }
-body.light #kgVoiceInline .kg-voice-mic{ color:#06121f }
-body.light #kgVoiceInline .kg-voice-lang{ background:#fff; color:#0f1828 }
+body.light:not(.glass) #kgVoiceInline .kg-voice-mic{ color:#06121f }
+body.light:not(.glass) #kgVoiceInline .kg-voice-lang{ background:#fff; color:#0f1828 }
 
 
 
@@ -879,7 +879,7 @@ body.light #kgVoiceInline .kg-voice-lang{ background:#fff; color:#0f1828 }
 .pdf-q input.pdf-o{ background:var(--panel); color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:7px 9px; font-size:14px }
 .pdf-q .row{ align-items:center }
 #pdfRaw{ background:var(--panel); color:var(--txt); border:1px solid var(--line); border-radius:10px; padding:10px; font-family:var(--font-body); font-size:13px; line-height:1.6 }
-body.light .pdf-q{ background:#fff }
+body.light:not(.glass) .pdf-q{ background:#fff }
 
 /* ===== AI 咨询 ===== */
 .ai-msg{ border-radius:12px; padding:10px 12px; max-width:92%; line-height:1.7; font-size:14px; white-space:normal }
@@ -906,8 +906,8 @@ body.light .pdf-q{ background:#fff }
 .ai-text pre code{ background:none; padding:0; font-size:13px; line-height:1.6; white-space:pre }
 .ai-text hr{ border:none; border-top:1px solid var(--line); margin:10px 0 }
 #aiInput{ background:var(--panel); color:var(--txt); border:1px solid var(--line); border-radius:10px; padding:9px 10px; font-family:var(--font-body); font-size:14px; resize:vertical }
-body.light .ai-msg.user{ background:#e6fbfa; border-color:#9fe7e4 }
-body.light .ai-msg.bot{ background:#f6f8fc }
+body.light:not(.glass) .ai-msg.user{ background:#e6fbfa; border-color:#9fe7e4 }
+body.light:not(.glass) .ai-msg.bot{ background:#f6f8fc }
 
 /* ===== 可折叠小板块（模块内子版块） ===== */
 .kg-det{ border:1px solid var(--line); border-radius:12px; margin-top:8px; overflow:hidden; background:var(--panel2) }
@@ -920,8 +920,8 @@ body.light .ai-msg.bot{ background:#f6f8fc }
 .kg-det-s:hover{ background:var(--panel) }
 .kg-det-b{ padding:0 12px 12px }
 .kg-det-b > .card{ margin-top:0 }
-body.light .kg-det{ background:#fff }
-body.light .kg-det-s:hover{ background:#f3f6fb }
+body.light:not(.glass) .kg-det{ background:#fff }
+body.light:not(.glass) .kg-det-s:hover{ background:#f3f6fb }
 .kg-sep{border:none;border-top:1px solid var(--line);opacity:.6}
 
 /* ===== AI 咨询：整屏对话（占屏 80% 以上） ===== */
@@ -957,8 +957,8 @@ body.ai-mode #content > #pageBody{ flex:1 1 auto; min-height:0; height:auto; dis
 .btn.sm{ padding:6px 10px; font-size:12px }
 body.ai-mode #focusFab{ display:none !important }
 body.ai-mode #pageBody{ max-width:none !important } /* 内边距已由上方 ai-mode 规则清零 */
-body.light .ai-chip{ background:#fff }
-body.light .ai-att{ background:#fff }
+body.light:not(.glass) .ai-chip{ background:#fff }
+body.light:not(.glass) .ai-att{ background:#fff }
 
 /* ===== 答题：模式切换 + 交卷（左下角固定） + 询问AI ===== */
 .quiz-modebar{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 2px }
@@ -971,8 +971,8 @@ body.light .ai-att{ background:#fff }
 .qz-flash{ animation:qzflash 1.8s ease }
 @keyframes qzflash{ 0%,100%{ box-shadow:none } 25%,60%{ box-shadow:0 0 0 3px rgba(255,92,240,.6) } }
 .qz-ask{ margin-top:10px }
-body.light .qm-chip{ background:#fff }
-body.light .quiz-submit{ background:#fff }
+body.light:not(.glass) .qm-chip{ background:#fff }
+body.light:not(.glass) .quiz-submit{ background:#fff }
 
 /* ===== 导入题册：题目清单（含考点） ===== */
 .pdb-qlist{ display:flex; flex-direction:column; gap:6px; max-height:320px; overflow:auto }
@@ -982,8 +982,8 @@ body.light .quiz-submit{ background:#fff }
 .pdb-kp{ flex:0 0 auto; font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid var(--line); color:var(--txt-dim) }
 .pdb-theory p,.pdb-theory .al-p{ margin:0 0 10px; text-indent:2em; line-height:1.85 }
 .pdb-theory .al-sub{ font-weight:700; margin:12px 0 6px }
-body.light .pdb-qitem{ background:#fff }
-body.light .pdb-kp{ background:#fff }
+body.light:not(.glass) .pdb-qitem{ background:#fff }
+body.light:not(.glass) .pdb-kp{ background:#fff }
 
 /* ===== 页内笔迹覆盖层 ===== */
 .kg-inline-ov{position:absolute;left:0;top:0;width:100%;z-index:5;pointer-events:none}
@@ -1271,7 +1271,7 @@ mark.kw{background:rgba(255,206,0,.38);color:inherit;padding:0 2px;border-radius
 
 /* ============================================================
    多主题覆盖：赛博朋克(默认, 见 :root) / 简约 / 可爱 / 武侠 / 自定义背景
-   每个主题覆盖核心变量；.light 仅作用在"浅色"变体上（主题 light 规则写在 body.light 之后，优先级更高）。
+   每个主题覆盖核心变量；.light 仅作用在"浅色"变体上（主题 light 规则写在 body.light:not(.glass) 之后，优先级更高）。
    ============================================================ */
 
 /* —— 简约（黑底白字 / 米黄底黑字，中性无装饰） —— */
@@ -1353,78 +1353,48 @@ body.theme-custom h3{border-left:4px solid var(--cyan);padding-left:10px}
 body.theme-custom .btn{border:1.5px solid var(--cyan);border-radius:8px}
 body.theme-custom .btn.primary{background:var(--cyan);border-color:var(--cyan);color:#10120f;box-shadow:none}
 body.theme-custom .brand-logo{background:linear-gradient(135deg,#2f2f2d,#1a1a19);border:1px solid #4a4a44;box-shadow:none;color:#efe9d8}
-/* 可选背景图（沿用原自定义背景能力，不选则纯武侠水墨底） */
+/* ============================================================
+   背景图（武侠/可爱内嵌、自定义可选）：仅在 iOS27 玻璃模式(body.glass)下显示。
+   不开 iOS27 → 所有主题都是正常不透明，看不到任何背景图。
+   滑条控制背景可见度：0=超清(背景清晰可见) → 100=全实(面板+全屏罩变不透明，背景彻底看不见)。
+   ============================================================ */
+/* 自定义主题不开玻璃时的不透明底色（与武侠同基底） */
 body.theme-custom{background:radial-gradient(1200px 500px at 85% -10%,rgba(120,120,110,.10),transparent 60%),var(--bg)}
 body.theme-custom.light{background:radial-gradient(1200px 500px at 85% -10%,rgba(120,100,50,.07),transparent 60%),var(--bg)}
-body.theme-custom.has-bg::before{
-  content:"";position:fixed;inset:-40px;z-index:-2;
-  background-image:var(--custom-bg);background-size:cover;background-position:center;
-  filter:blur(26px) saturate(1.12);opacity:.6;
-}
-body.theme-custom.has-bg::after{ content:"";position:fixed;inset:0;z-index:-1;background:rgba(10,10,12,.34); }
-body.theme-custom.has-bg.light::after{ background:rgba(255,250,235,.5); }
 
-/* —— 主题内嵌背景（武侠/可爱）：竖屏/横屏自动切换，面板透明透出背景 —— */
-/* body 底色透明，让 ::before 背景层不被纯色盖住；最底层由 html 兜底色承接 */
-body.theme-wuxia,body.theme-cute{ background:transparent; }
-body.theme-wuxia::before,body.theme-cute::before{
+/* —— 玻璃模式：背景主题 body 透明，露出 ::before 背景层 —— */
+body.glass.theme-wuxia,
+body.glass.theme-cute,
+body.glass.theme-custom.has-bg{ background:transparent; }
+
+/* 背景图（仅玻璃模式渲染；opacity 由 --g-photo 接管：1=清晰可见 → 0.02=看不见） */
+body.glass.theme-wuxia::before,
+body.glass.theme-cute::before{
   content:"";position:fixed;inset:0;z-index:-2;
   background-size:cover;background-position:center;background-repeat:no-repeat;
+  opacity:var(--g-photo,1);
 }
-body.theme-wuxia::before{ background-image:url(../assets/bg/wuxia-p.jpg) }
-body.theme-cute::before{ background-image:url(../assets/bg/cute-p.jpg) }
+body.glass.theme-wuxia::before{ background-image:url(../assets/bg/wuxia-p.jpg) }
+body.glass.theme-cute::before{ background-image:url(../assets/bg/cute-p.jpg) }
 @media (orientation:landscape){
-  body.theme-wuxia::before{ background-image:url(../assets/bg/wuxia-l.jpg) }
-  body.theme-cute::before{ background-image:url(../assets/bg/cute-l.jpg) }
+  body.glass.theme-wuxia::before{ background-image:url(../assets/bg/wuxia-l.jpg) }
+  body.glass.theme-cute::before{ background-image:url(../assets/bg/cute-l.jpg) }
 }
-/* 面板/卡片透明化，背景透出（和自定义背景一样） */
-body.theme-wuxia,body.theme-cute{
-  --panel:rgba(250,244,226,.62);
-  --panel2:rgba(241,233,208,.55);
+/* 自定义背景图（玻璃模式；保留用户设置的模糊 --custom-blur；opacity 由 --g-photo 接管） */
+body.glass.theme-custom.has-bg::before{
+  content:"";position:fixed;inset:-40px;z-index:-2;
+  background-image:var(--custom-bg);background-size:cover;background-position:center;
+  filter:blur(var(--custom-blur,20px)) saturate(1.12);
+  opacity:var(--g-photo,1);
 }
-body.theme-wuxia:not(.light),body.theme-cute:not(.light){
-  --panel:rgba(18,18,20,.55);
-  --panel2:rgba(26,26,30,.50);
+
+/* 全屏色调罩：坐在背景图之上、内容之下，由 --g-overlay 接管。
+   0=透明(背景清晰) → ~0.95(背景被罩住=看不见)，与滑条同步 */
+body.glass::after{
+  content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:rgba(255,250,235,var(--g-overlay,0));
 }
-/* 深色模式压暗背景保证白字可读；浅色模式几乎不加罩，背景原样透出 */
-body.theme-wuxia::after,body.theme-cute::after{
-  content:"";position:fixed;inset:0;z-index:-1;background:rgba(255,250,235,.06);pointer-events:none;
-}
-body.theme-wuxia:not(.light)::after,body.theme-cute:not(.light)::after{
-  background:rgba(10,10,12,.28);
-}
-/* 模块面板透明化（浅色模式原被强制纯白，这里透出背景）+ 毛玻璃模糊保证文字可读
-   注意：玻璃模式(iosGlass)下由 --g-alpha 接管，故此处限定 :not(.glass) */
-body.theme-wuxia:not(.glass).light .card,
-body.theme-cute:not(.glass).light .card,
-body.theme-custom.has-bg:not(.glass).light .card{ background:rgba(252,248,236,.36); }
-body.theme-wuxia:not(.glass):not(.light) .card,
-body.theme-cute:not(.glass):not(.light) .card,
-body.theme-custom.has-bg:not(.glass):not(.light) .card{ background:rgba(24,24,28,.42); }
-/* 有背景图的主题：按钮/输入/选项/图标按钮在浅色下同样别做成纯白，否则背景又被挡住 */
-body.theme-wuxia:not(.glass).light .btn,
-body.theme-cute:not(.glass).light .btn,
-body.theme-custom.has-bg:not(.glass).light .btn,
-body.theme-wuxia:not(.glass).light .opt,
-body.theme-cute:not(.glass).light .opt,
-body.theme-custom.has-bg:not(.glass).light .opt,
-body.theme-wuxia:not(.glass).light input,
-body.theme-cute:not(.glass).light input,
-body.theme-custom.has-bg:not(.glass).light input,
-body.theme-wuxia:not(.glass).light select,
-body.theme-cute:not(.glass).light select,
-body.theme-custom.has-bg:not(.glass).light select,
-body.theme-wuxia:not(.glass).light textarea,
-body.theme-cute:not(.glass).light textarea,
-body.theme-custom.has-bg:not(.glass).light textarea,
-body.theme-wuxia:not(.glass).light .icon-btn,
-body.theme-cute:not(.glass).light .icon-btn,
-body.theme-custom.has-bg:not(.glass).light .icon-btn{ background:rgba(252,248,236,.42); }
-body.theme-wuxia .card,body.theme-cute .card{
-  backdrop-filter:blur(9px) saturate(1.1);-webkit-backdrop-filter:blur(9px) saturate(1.1);
-  border-color:rgba(255,255,255,.28);
-}
-body.theme-wuxia:not(.light) .card,body.theme-cute:not(.light) .card{ border-color:rgba(255,255,255,.14); }
+body.glass:not(.light)::after{ background:rgba(10,10,12,var(--g-overlay,0)); }
 
 /* 主题选择网格（设置页） */
 .theme-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:10px;margin-top:12px}
@@ -1503,6 +1473,31 @@ body.glass .glass-preview .gp-card{
     0 0 0 .5px rgba(0,0,0,calc(var(--g-edge,.20) * .5)),
     0 6px 18px rgba(0,0,0,var(--g-sh,.14));
 }
+/* 玻璃模式下：按钮/图标按钮/选项必须清晰可点（比卡片更实），深浅色分别保证文字对比。
+   卡片可保持通透以透出背景，但交互元素需要明确的可视边界与足够底色。 */
+body.glass .btn:not(.ghost):not(.primary):not(.magenta),
+body.glass .icon-btn,
+body.glass .sync-btn,
+body.glass .checkin-btn,
+body.glass .chip,
+body.glass .opt{
+  background:rgba(255,255,255, calc(var(--g-alpha,.22) + .32));
+  border:1px solid rgba(255,255,255, calc(var(--g-hi,.60) * .65));
+}
+body.glass:not(.light) .btn:not(.ghost):not(.primary):not(.magenta),
+body.glass:not(.light) .icon-btn,
+body.glass:not(.light) .sync-btn,
+body.glass:not(.light) .checkin-btn,
+body.glass:not(.light) .chip,
+body.glass:not(.light) .opt{
+  background:rgba(22,24,32, calc(var(--g-alpha,.22) + .46));
+  border-color:rgba(255,255,255,.22);
+}
+/* 玻璃模式下：答题正确/错误选项的彩色仍需清晰显示（不被半透明白底盖掉） */
+body.glass .opt.correct{ border-color:var(--green); background:rgba(61,220,151,.32); color:var(--green); }
+body.glass .opt.wrong{ border-color:var(--red); background:rgba(255,107,129,.30); color:var(--red); }
+body.glass:not(.light) .opt.correct{ background:rgba(31,138,76,.42); color:#7ef0ad; }
+body.glass:not(.light) .opt.wrong{ background:rgba(226,59,84,.42); color:#ff9aa9; }
 /* 导航层（侧栏/顶栏）：苹果建议玻璃用于导航层，浓度略低于内容层 */
 body.glass #sidebar,
 body.glass #topbar{
@@ -1527,15 +1522,7 @@ body.glass .btn.primary{
 /* 自定义背景模糊程度可调（0=清晰 100=最糊，默认50%） */
 body.theme-custom.has-bg::before{ filter:blur(var(--custom-blur,20px)) saturate(1.12); }
 
-/* ===== 玻璃模式下让背景真正透出来（减轻遮罩/白罩） ===== */
-body.glass.theme-wuxia::after,body.glass.theme-cute::after{ background:rgba(255,250,235,.08); }
-body.glass.theme-wuxia:not(.light)::after,body.glass.theme-cute:not(.light)::after{ background:rgba(10,10,12,.38); }
-body.glass.theme-custom.has-bg::after{ background:rgba(255,250,235,.14); }
-body.glass.theme-custom.has-bg:not(.light)::after{ background:rgba(10,10,12,.30); }
-body.glass.theme-custom.has-bg::before{ opacity:.92; }
-/* 自定义背景：即便不开玻璃模式，也降低遮罩让背景可见 */
-body.theme-custom.has-bg.light::after{ background:rgba(255,250,235,.32); }
-body.theme-custom.has-bg::after{ background:rgba(10,10,12,.30); }
+/* 玻璃模式下背景的可见度（透明度/全屏罩）统一由滑条变量 --g-photo / --g-overlay 驱动，见上方主题段 */
 
 /* ===== 新手引导：高亮目标 + 气泡提示 + 其余变暗（只有目标可点） ===== */
 #kgGuide{position:fixed;inset:0;z-index:20000;pointer-events:none}
@@ -1558,25 +1545,4 @@ body.theme-custom.has-bg::after{ background:rgba(10,10,12,.30); }
 #kgBubble.shake{animation:kgShake .34s}
 @keyframes kgShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-7px)}75%{transform:translateX(7px)}}
 
-/* 武侠/可爱主题：玻璃模式下卡片底色跟随滑条（覆盖主题内嵌的固定半透明） */
-body.glass.theme-wuxia .card,
-body.glass.theme-cute .card{ background:rgba(255,255,255,var(--g-alpha,.22)); }
-
-/* ===== 背景图主题：面板底色变量一并半透明，让所有引用 --panel 的元素都透出背景 ===== */
-body.theme-wuxia:not(.glass),body.theme-cute:not(.glass),body.theme-custom.has-bg:not(.glass){
-  --panel:rgba(252,248,236,.40);
-  --panel2:rgba(250,245,230,.34);
-}
-body.theme-wuxia:not(.glass):not(.light),body.theme-cute:not(.glass):not(.light),body.theme-custom.has-bg:not(.glass):not(.light){
-  --panel:rgba(26,26,30,.46);
-  --panel2:rgba(32,32,38,.40);
-}
-/* 自定义背景：非玻璃模式下也不再半透明+白罩，直接清晰呈现 */
-body.theme-custom.has-bg:not(.glass)::before{ opacity:1; }
-body.theme-custom.has-bg:not(.glass)::after{ background:rgba(255,250,235,.10); }
-body.theme-custom.has-bg:not(.glass):not(.light)::after{ background:rgba(10,10,12,.26); }
-/* 自定义背景：卡片加毛玻璃，保证背景透出来的同时文字依然清晰 */
-body.theme-custom.has-bg:not(.glass) .card{
-  -webkit-backdrop-filter:blur(10px) saturate(1.15);
-  backdrop-filter:blur(10px) saturate(1.15);
-}
+/* 玻璃模式下的卡片底色由 body.glass .card 统一用 --g-alpha 驱动，无需主题单独覆盖 */

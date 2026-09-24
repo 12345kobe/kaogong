@@ -27,16 +27,18 @@
     /* iOS 27 Liquid Glass 材质变量：lv 0=超清（几乎完全透出背景） → 100=全色调（磨砂、对比度更高）
        依据苹果 iOS 27「Settings > Appearance」滑条规范：左端背景几乎无遮挡，右端内容模糊成柔和色块；
        并加入 iOS 27 的改进项——暗化边缘(darkened edges) + 更亮高光(brighter specular highlights) 做元素分离。 */
-    const GLASS_KEYS = ["--g-blur", "--g-alpha", "--g-sat", "--g-hi", "--g-edge", "--g-sh"];
+    const GLASS_KEYS = ["--g-blur", "--g-alpha", "--g-photo", "--g-overlay", "--g-sat", "--g-hi", "--g-edge", "--g-sh"];
     function glassVars(lv) {
       const t = Math.max(0, Math.min(100, Number(lv) || 0)) / 100;
       return {
-        "--g-blur": (4 + 32 * t).toFixed(1) + "px",     // 背景模糊：4px(清) → 36px(磨砂)
-        "--g-alpha": (0.06 + 0.52 * t).toFixed(3),      // 材质浓度：0.06(透) → 0.58(实)
-        "--g-sat": (1.5 + 0.8 * t).toFixed(2),          // 饱和度
-        "--g-hi": (0.55 + 0.30 * t).toFixed(3),         // 镜面高光（iOS27 更亮）
-        "--g-edge": (0.10 + 0.24 * t).toFixed(3),       // 暗化边缘
-        "--g-sh": (0.10 + 0.16 * t).toFixed(3)          // 投影
+        "--g-blur": (2 + 28 * t).toFixed(1) + "px",      // 面板毛玻璃：2px(清) → 30px(重磨砂)
+        "--g-alpha": (0.10 + 0.86 * t).toFixed(3),       // 面板材质浓度：0.10(透) → 0.96(几乎全实)
+        "--g-photo": (1 - 0.98 * t).toFixed(3),          // 背景图透明度：1(清晰可见) → 0.02(看不见)
+        "--g-overlay": (0 + 0.95 * t).toFixed(3),        // 全屏色调罩：0(透出背景) → 0.95(盖住背景=看不见)
+        "--g-sat": (1.4 + 1.0 * t).toFixed(2),           // 饱和度
+        "--g-hi": (0.50 + 0.35 * t).toFixed(3),          // 镜面高光（iOS27 更亮）
+        "--g-edge": (0.10 + 0.24 * t).toFixed(3),        // 暗化边缘
+        "--g-sh": (0.10 + 0.16 * t).toFixed(3)           // 投影
       };
     }
     function applyGlass(on, lv) {
@@ -61,6 +63,8 @@
       cls.push("theme-" + s.name);
       if (mode === "light") cls.push("light");
       document.body.className = cls.join(" ");
+      // 玻璃标记：只在 iOS27 玻璃模式下标记 bg-theme（CSS 据此关闭浅色强制纯白，改由玻璃材质接管）
+      document.body.classList.toggle("bg-theme", !!s.iosGlass);
       // html 兜底背景随主题（iOS 动态视口超出 body 时底部区域不露白）
       document.documentElement.style.background = (mode === "light") ? "#f6efdc" : "#0a0a0d";
       // 自定义背景 / 主色（通过 CSS 变量注入；无则清除）

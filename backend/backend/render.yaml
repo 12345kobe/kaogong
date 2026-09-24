@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: kaogong-sync
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: SYNC_SECRET
+        generateValue: true
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_API_URL
+        sync: false
+      - key: LLM_MODEL
+        sync: false

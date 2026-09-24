@@ -202,12 +202,12 @@
           <div id="glassBox" style="display:none;margin-top:8px">
             <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap">
               <span class="muted small">玻璃质感</span>
-              <span class="muted small" style="flex:0 0 auto">💧 超清</span>
+              <span class="muted small" style="flex:0 0 auto">🌿 清晰背景</span>
               <input type="range" id="glassLevel" min="0" max="100" step="1" value="50" style="flex:1;min-width:130px"/>
-              <span class="muted small" style="flex:0 0 auto">⬜ 全色调</span>
+              <span class="muted small" style="flex:0 0 auto">🧊 全实磨砂</span>
               <span class="muted small" id="glassLevelVal" style="flex:0 0 42px;text-align:right">50%</span>
             </div>
-            <div class="muted small" style="margin-top:4px">左端＝超清：玻璃几乎完全通透，背景清晰可见；右端＝全色调：磨砂加厚、对比度更高。深浅色与自定义背景全部生效，拖动即时预览。</div>
+            <div class="muted small" style="margin-top:4px">开启 iOS27 玻璃后才会显示背景图（武侠/可爱内嵌图、自定义背景图）。左端＝清晰背景（背景清楚可见）；右端＝全实磨砂（面板和全屏罩变不透明，背景彻底看不见）。拖动即时预览。</div>
             <div class="glass-preview">
               <div class="card gp-card">示例板块 · 玻璃卡片<button class="btn">示例按键</button></div>
               <span class="muted small" style="color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.35)">拖动滑条，这块玻璃透出彩底的清晰度会立刻变化</span>
