@@ -155,10 +155,26 @@ for rel, full in files:
         print("   ❌ 创建 blob 失败：", rel, st_b, blob.get("message") if isinstance(blob, dict) else blob); sys.exit(1)
     tree_entries.append({"path": rel, "mode": "100644", "type": "blob", "sha": blob["sha"]})
 
+# ⚠️ 关键：GitHub tree 接口传 base_tree 时，「未列出的文件」不会自动删除，
+# 必须显式传 {"sha": null} 才会真正删掉。否则仓库里的历史垃圾（如早年误拷进去的
+# backend/backend + node_modules）会永久残留，越堆越多，甚至把 tree 请求撑爆返回 422。
+local_paths = {rel for rel, _ in files}
+st_rt, rtree = api("GET", f"/repos/{login}/{REPO}/git/trees/{base_sha}?recursive=1")
+if st_rt == 200 and isinstance(rtree, dict):
+    remote_blobs = {t["path"] for t in (rtree.get("tree") or []) if t.get("type") == "blob"}
+    to_delete = sorted(remote_blobs - local_paths)
+    if to_delete:
+        print(f"   🧹 仓库中已不存在于 site/ 的文件 {len(to_delete)} 个，本次一并删除"
+              + (f"：{to_delete[0]} 等" if len(to_delete) > 1 else f"：{to_delete[0]}"))
+        for p in to_delete:
+            tree_entries.append({"path": p, "mode": "100644", "type": "blob", "sha": None})
+else:
+    print(f"   ⚠️ 读取远端 tree 失败（{st_rt}），本次不做删除清理")
+
 # 创建 tree + commit + 更新引用；遇到 422 非快进（并发部署竞态）则重新拉取基准并重试一次
 commit = None
 for attempt in range(2):
-    # 创建 tree（基于旧 tree，未列出的文件会被删除，保证与 site/ 完全一致）
+    # 创建 tree：新增/修改 + 显式删除，保证仓库与 site/ 完全一致
     st_t, tree = api("POST", f"/repos/{login}/{REPO}/git/trees",
                      {"base_tree": base_sha, "tree": tree_entries})
     if st_t != 201 or not isinstance(tree, dict) or "sha" not in tree:
