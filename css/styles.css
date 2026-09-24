@@ -1498,13 +1498,47 @@ body.glass .opt.correct{ border-color:var(--green); background:rgba(61,220,151,.
 body.glass .opt.wrong{ border-color:var(--red); background:rgba(255,107,129,.30); color:var(--red); }
 body.glass:not(.light) .opt.correct{ background:rgba(31,138,76,.42); color:#7ef0ad; }
 body.glass:not(.light) .opt.wrong{ background:rgba(226,59,84,.42); color:#ff9aa9; }
-/* 导航层（侧栏/顶栏）：苹果建议玻璃用于导航层，浓度略低于内容层 */
-body.glass #sidebar,
-body.glass #topbar{
-  background:rgba(255,255,255,calc(var(--g-alpha,.22) * .5));
-  -webkit-backdrop-filter:blur(calc(var(--g-blur,14px) * 1.25)) saturate(var(--g-sat,1.8));
-  backdrop-filter:blur(calc(var(--g-blur,14px) * 1.25)) saturate(var(--g-sat,1.8));
+/* 导航层（侧栏/顶栏）：苹果建议玻璃用于导航层。
+   侧栏固定重度磨砂（不随滑条变透）：背景完全糊开但透出背景色，高级感；
+   浓度只随滑条轻微变化（有一点呼吸感，但永远不透底，文字任何档位都清晰）。 */
+body.glass #sidebar{
+  background:rgba(252,248,236,calc(.62 + var(--g-alpha,.22)*.20));
+  -webkit-backdrop-filter:blur(30px) saturate(1.7);
+  backdrop-filter:blur(30px) saturate(1.7);
 }
+body.glass:not(.light) #sidebar{
+  background:rgba(13,15,22,calc(.55 + var(--g-alpha,.22)*.20));
+}
+body.glass #topbar{
+  background:rgba(255,255,255,calc(.30 + var(--g-alpha,.22)*.5));
+  -webkit-backdrop-filter:blur(calc(var(--g-blur,14px) * 1.5)) saturate(var(--g-sat,1.8));
+  backdrop-filter:blur(calc(var(--g-blur,14px) * 1.5)) saturate(var(--g-sat,1.8));
+}
+body.glass:not(.light) #topbar{
+  background:rgba(16,18,26,calc(.30 + var(--g-alpha,.22)*.5));
+}
+/* 侧栏导航项「羽化亮底」：文字下垫一层柔和亮斑（羽化边缘），
+   滑条拉到最清透的档位时文字依然被自然托出，不刻意、不挡背景。 */
+body.glass .nav-item:not(:hover):not(.active){
+  background:radial-gradient(130% 95% at 22% 50%, rgba(255,255,255,.38), rgba(255,255,255,.12) 58%, transparent 85%);
+}
+body.glass:not(.light) .nav-item:not(:hover):not(.active){
+  background:radial-gradient(130% 95% at 22% 50%, rgba(255,255,255,.12), rgba(255,255,255,.05) 58%, transparent 85%);
+}
+/* 玻璃按钮「流动高光」：边框上有一道镜面反光，随页面滚动而流动（模拟真实玻璃的
+   反光随视角变化）。--kj-shine 由 app.js 的滚动监听驱动，@property 注册后可平滑插值。 */
+@property --kj-shine{ syntax:"<angle>"; inherits:true; initial-value:0deg; }
+body.glass .btn{ position:relative; }
+body.glass .btn::after{
+  content:""; position:absolute; inset:-1px; border-radius:inherit; padding:1.2px;
+  background:conic-gradient(from var(--kj-shine,0deg),
+    rgba(255,255,255,0) 0deg, rgba(255,255,255,0) 248deg,
+    rgba(255,255,255,.85) 292deg, rgba(255,255,255,.18) 318deg, rgba(255,255,255,0) 342deg);
+  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor; mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite:exclude;
+  pointer-events:none;
+}
+body.glass:not(.light) .btn::after{ opacity:.75; }
 /* 主按钮：保留主色但带玻璃高光与暗边 */
 body.glass .btn.primary{
   background:linear-gradient(160deg,rgba(255,255,255,calc(var(--g-hi,.60)*.5)),rgba(255,255,255,.05) 60%),var(--cyan);

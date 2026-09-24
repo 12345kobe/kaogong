@@ -956,7 +956,7 @@
           const mbox = UI.el(`<div>
               <label class="kg-fld">名称<input id="drNm" value="${esc(defName)}" maxlength="60"/></label>
               <label class="kg-fld">时间标签（如 9.14-9.20）<input id="drLb" value="${esc(defLabel)}" placeholder="自动识别，可修改" maxlength="20"/></label>
-              <div class="muted small">识别到 <b>${parsed.points.length}</b> 个考点、<b>${parsed.questions.length}</b> 道题（单选 ${parsed.questions.filter(q => q.t === "单选").length} / 多选 ${parsed.questions.filter(q => q.t === "多选").length}）。导入后随云端同步到所有设备。</div>
+              <div class="muted small">识别到 <b>${parsed.points.length}</b> 个考点、<b>${parsed.questions.length}</b> 道题（单选 ${parsed.questions.filter(q => q.t === "单选").length} / 多选 ${parsed.questions.filter(q => q.t === "多选").length}）。导入后随云端同步到所有设备；PDF 里的<b>标粗重点</b>会保留突出显示（旧版导入的演练若没有标粗，删除后重新导入一次即可）。</div>
             </div>`);
           UI.modal({
             title: "确认导入演练", width: "440px", body: mbox,
@@ -1015,13 +1015,18 @@
             if (/^答案|^参考答案/.test(mm[1])) { mode = "answer"; if (curq) { questions.push(curq); curq = null; } continue; }
           }
           if (mode === "point") {
-            const im = ITEM.exec(l);
+            /* 考点区保留 PDF 原有的 **标粗**（渲染时由 drBold 转粗体）：
+               标题先在含标粗的原文行上匹配，剥掉首尾星号；正文整行原样累积。
+               仅当原文行匹配失败（如 **12.** 开头）才退回去星后的行。 */
+            const imR = ITEM.exec(raw), imL = ITEM.exec(l);
+            const im = imR || imL;
             if (im && !OPT.test(l)) {
               if (cur) points.push(cur);
-              cur = { n: +im[1], title: "**" + im[2].replace(/^\*\*|\*\*$/g, "").trim() + "**", body: "" };
+              const seg = (imR ? imR[2] : imL[2]).replace(/^\*\*+|\*\*+$/g, "").trim();
+              cur = { n: +im[1], title: seg.includes("**") ? seg : "**" + seg + "**", body: "" };
               continue;
             }
-            if (cur) { cur.body += l; }
+            if (cur) { cur.body += raw; }
           } else if (mode === "quiz") {
             const qm = QM.exec(l);
             if (qm) { if (curq) questions.push(curq); curq = { t: qm[2], n: +qm[1], q: qm[3], options: [] }; continue; }

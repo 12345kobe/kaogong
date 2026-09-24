@@ -95,12 +95,23 @@ print("=== 3. 通过 GitHub Git Data API 推送（无需 git 协议，适配受�
 import base64
 
 def walk_files(root):
+    """收集待推送文件。
+    排除项（很重要）：node_modules / __pycache__ / .git 等不应该进仓库的目录——
+    Railway 构建时自己会 npm install（Dockerfile 里有），node_modules 进仓库只会
+    把文件数从 ~280 撑到 ~900，拖慢推送并触发 GitHub tree 接口 422 / 读超时。"""
+    EXCLUDE_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", ".idea", ".vscode"}
     out = []
     for dp, dns, fns in os.walk(root):
-        dns[:] = [d for d in dns if d != ".git"]
+        dns[:] = [d for d in dns if d not in EXCLUDE_DIRS and not d.endswith(".egg-info")]
         for fn in fns:
+            if fn.endswith((".pyc", ".pyo", ".log", ".tmp")):
+                continue
             full = os.path.join(dp, fn)
             rel = os.path.relpath(full, root).replace(os.sep, "/")
+            # 早年的错误 cp 在 site/backend/ 下嵌了一整份 backend 副本（含 node_modules），
+            # 属于垃圾目录，不再推到仓库（未列出的路径会随 tree 全量覆盖而从仓库移除）
+            if rel.startswith("backend/backend/"):
+                continue
             out.append((rel, full))
     return out
 

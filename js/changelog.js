@@ -43,8 +43,10 @@
   /* 弹窗：点 × 或空白处关闭 */
   function showModal(log) {
     const UI = window.UI;
-    const mask = UI.el(`<div class="modal-mask cg-mask">
-      <div class="modal cg-modal" style="max-width:520px;max-height:84vh;overflow:auto">
+    /* 遮罩本身不吃点击（pointer-events:none），只有弹窗面板吃：
+       这样即使更新日志还没关，底下的按钮（如「人工校对」）照样能点，不会整个页面像卡死。 */
+    const mask = UI.el(`<div class="modal-mask cg-mask" style="pointer-events:none">
+      <div class="modal cg-modal" style="pointer-events:auto;max-width:520px;max-height:84vh;overflow:auto">
         <div class="spread" style="align-items:center">
           <h3 style="margin:0">🎉 更新日志 · <span class="muted small">${UI.esc(log.version)} · ${UI.esc(log.date || "")}</span></h3>
           <button class="del cg-x" title="关闭" style="border:none;background:none;font-size:18px;color:var(--txt-dim)">✕</button>
@@ -56,6 +58,9 @@
               ${it.mod ? `<button class="btn ghost sm cg-go">前往 →</button>` : ""}
             </div>`).join("")}
         </div>
+        <div class="spread" style="margin-top:12px;gap:10px">
+          <button class="btn primary cg-x2">知道了，继续使用</button>
+        </div>
         <div class="muted small" style="margin-top:10px">关闭后可从左侧导航的气泡提示进入对应模块。</div>
       </div></div>`);
     document.body.appendChild(mask);
@@ -65,6 +70,7 @@
       renderBubbles();
     }
     mask.querySelector(".cg-x").onclick = close;
+    const x2 = mask.querySelector(".cg-x2"); if (x2) x2.onclick = close;
     mask.onclick = e => { if (e.target === mask) close(); };
     mask.querySelectorAll(".cg-item").forEach(item => {
       const mod = item.dataset.mod;

@@ -232,6 +232,31 @@
   }
   window.renderRoute = renderRoute;  // 供同路由强制重渲染（如 AI 出题后停留在 AI 页时刷新板块）
 
+  /* ===== 玻璃模式：按钮边框「流动高光」随滚动变化 =====
+     捕获阶段监听所有滚动容器（滚动事件不冒泡，但捕获可收到），按滚动位移推动
+     --kj-shine 角度，按钮边框上的镜面反光随之流动，模拟真实玻璃的反光变化。 */
+  (function () {
+    const lastPos = new WeakMap();
+    let angle = 0, raf = 0;
+    function apply() {
+      raf = 0;
+      const a = ((angle % 360) + 360) % 360;
+      document.documentElement.style.setProperty("--kj-shine", a.toFixed(1) + "deg");
+    }
+    window.addEventListener("scroll", function (e) {
+      const t = e.target;
+      if (!t || t.nodeType !== 1) return;
+      const pos = (t.scrollTop || 0) + (t.scrollLeft || 0);
+      const prev = lastPos.get(t);
+      lastPos.set(t, pos);
+      if (prev == null) return;
+      const delta = pos - prev;
+      if (!delta) return;
+      angle += delta * 0.25;           // 每滚动 4px 高光走 1°，动得明显但不晕
+      if (!raf) raf = requestAnimationFrame(apply);
+    }, { capture: true, passive: true });
+  })();
+
   /* ===== PDF 导入的题册：挂到对应模块的「自行刷题」入口 =====
      题册由 js/mod-pdfimport.js 解析并存入 DB.state.pdfBooks，通过 window.KGPdfBooks 读取。
      展示方式：按章节折叠 → 有理论的提供「📖 学考点」→ 题目走 Quiz 引擎（记录每题用时与正确率）。 */
@@ -298,7 +323,16 @@
           const label = qs.length ? (nm + "（" + qs.length + " 题）") : ("📖 " + nm + "（考点讲解）");
           const inner = UI.section(label);
           const ic = UI.el(`<div class="card"></div>`);
-          const needChk = qs.filter(q => q.needCheck || q.a == null || q.a < 0).length;
+          // 待校对判定：兼容字母串答案（多选 "ABD"），只有明显非法才计数
+          const badAns = q => {
+            if (q.needCheck) return true;
+            if (Array.isArray(q.a)) return q.a.length === 0;
+            if (typeof q.a === "string") return !/^[A-Ea-e]{1,6}$/.test(q.a) || !q.a.toUpperCase().split("").every(c => {
+              const i = c.charCodeAt(0) - 65; return i >= 0 && i < q.options.length;
+            });
+            return !(q.a >= 0 && q.a < q.options.length);
+          };
+          const needChk = qs.filter(badAns).length;
           // 用单根 div 包装状态条和按钮，避免 UI.el 只返回 firstElementChild 截断按钮
           const statHtml = qs.length ? "共 " + qs.length + " 题" : "本部分为纯知识点，无题目";
           const warnHtml = needChk ? " · ⚠️ " + needChk + " 题答案待校对" : "";

@@ -456,6 +456,12 @@
     if (cur) paras.push(cur);
     return paras;
   }
+  /* 把 Markdown 式 **加粗** 转成 <b>；必须在 esc() 之后调用（防 XSS 不破功） */
+  function boldMd(s) {
+    return String(s || "")
+      .replace(/\*\*([^*\n]{1,200}?)\*\*/g, "<b>$1</b>")
+      .replace(/<b>([^<]*)<\/b>/g, (m, t) => "<b>" + t.replace(/^[\s\u3000]+|[\s\u3000]+$/g, "") + "</b>");
+  }
   /* 理论文本 → <p class="al-p"> 段落 + <div class="al-sub"> 小标题 */
   function theoryToHtml(raw) {
     try {
@@ -473,12 +479,12 @@
       });
       flush();
       const html = blocks.map(b => b.t === "h"
-        ? `<div class="al-sub">🔹 ${esc(b.x)}</div>`
-        : groupParagraphs(splitSentences(b.x)).map(p => `<p class="al-p">${esc(p)}</p>`).join("")
+        ? `<div class="al-sub">🔹 ${boldMd(esc(b.x))}</div>`
+        : groupParagraphs(splitSentences(b.x)).map(p => `<p class="al-p">${boldMd(esc(p))}</p>`).join("")
       ).join("");
       return html || "";
     } catch (e) {
-      return `<p class="al-p">${esc(String(raw || "").slice(0, 4000))}</p>`;
+      return `<p class="al-p">${boldMd(esc(String(raw || "").slice(0, 4000)))}</p>`;
     }
   }
   /* 已经是 HTML 就直接用（章节 theory 入库时就存 HTML） */
@@ -584,7 +590,17 @@
           return;
         }
         flush();
-        cur = { num: num, q: rest, options: [], a: -1, e: "", aSet: false, kp: kp || "" };
+        /* 题干开头的题型标记：「1．（多选）…」「2. 单选题 …」→ 识别为单选/多选，并从题干里去掉 */
+        let rest0 = rest;
+        let qTypeMark = "";
+        const TYPE_W = "单项选择题|多项选择题|不定项选择题|单选题|多选题|不定项|单项选择|多项选择|多选|单选";
+        const tRe = new RegExp("^(?:\\d{1,4}\\s*[．.、，,）)]\\s*)*[\\s\\u3000]*[（(【\\[]?\\s*(?:" + TYPE_W + ")\\s*[）)】\\]]?\\s*[：:．.、,，\\-—~～]?\\s*");
+        const tMark = tRe.exec(rest0);
+        if (tMark) {
+          qTypeMark = /多选|不定项|多项/.test(tMark[1]) ? "multi" : "single";
+          rest0 = String(rest0).slice(tMark[0].length);
+        }
+        cur = { num: num, q: rest0, options: [], a: -1, e: "", aSet: false, kp: kp || "", qType: qTypeMark };
         inOpts = false;
         const onlyLetters = /^([A-Ea-e]{1,6})[\s．.。]*$/.exec(rest);
         if (onlyLetters) { setAns(onlyLetters[1]); return; }   // 「1.A」式答案速查
@@ -639,18 +655,44 @@
     return out;
   }
 
-  /* 入库前最后一道校验：options ≥2；a 必须是合法下标，否则 a=-1 并标记需人工校对 */
+  /* 答案归一：单选＝数字下标；多选＝字母串（"ABD"）。返回 {a, multi, needCheck} */
+  function normAnswer(rawA, multi, opts) {
+    let letters = "";
+    const m = (typeof multi === "string" && multi) ? multi
+            : (Array.isArray(multi) && multi.length ? multi.join("") : "");
+    if (m) letters = String(m).toUpperCase().replace(/[^A-E]/g, "");
+    if (!letters && rawA != null && typeof rawA === "string" && /^[A-Ea-e]{1,6}$/.test(rawA.trim())) letters = rawA.trim().toUpperCase();
+    const set = Array.from(new Set(letters.split(""))).filter(Boolean);
+    if (set.length > 1) {
+      const idxs = set.map(c => c.charCodeAt(0) - 65);
+      if (idxs.every(i => i >= 0 && i < opts.length)) return { a: set.join(""), multi: set.join(""), needCheck: false };
+    }
+    let a = (typeof rawA === "number" && isFinite(rawA)) ? Math.trunc(rawA)
+          : (typeof rawA === "string" && /^\d+$/.test(rawA.trim()) ? parseInt(rawA.trim(), 10) : -1);
+    if (!(a >= 0 && a < opts.length)) return { a: -1, multi: set.join(""), needCheck: true };
+    return { a: a, multi: (set.length === 1 ? set[0] : ""), needCheck: false };
+  }
+  /* 入库前最后一道校验：options ≥2；a 必须是合法下标或合法字母串，否则 a=-1 并标记需人工校对 */
   function normQuestion(q) {
     if (!q) return null;
     const opts = (q.options || []).map(o => sanitizeText(o).replace(/\s+/g, " ").trim()).filter(o => o !== "");
     if (opts.length < 2) return null;
-    const stem = sanitizeText(q.q).replace(/\s+/g, " ").trim();
+    let stem = sanitizeText(q.q).replace(/\s+/g, " ").trim();
+    let stemType = "";
     if (!stem) return null;
-    let a = (typeof q.a === "number" && isFinite(q.a)) ? Math.trunc(q.a) : -1;
-    let needCheck = false;
-    if (!(a >= 0 && a < opts.length)) { a = -1; needCheck = true; }
+    // 题干里的题型标记（「（多选）」「单选题：」）在入库时统一去掉，只留题型字段
+    /* 题型词要兼容简写：「多选」「单选」，以及「（多选）」「单选题：」各种括号与冒号 */
+    const TYPE_WORDS = "单项选择题|多项选择题|不定项选择题|单选题|多选题|不定项|单项选择|多项选择|多选|单选";
+    const tM = new RegExp("^(?:\\d{1,4}\\s*[．.、，,）)]\\s*)*[\\s\\u3000]*[（(【\\[]?\\s*(?:" + TYPE_WORDS + ")\\s*[）)】\\]]?\\s*[：:．.、,，\\-—~～]?\\s*").exec(stem);
+    if (tM) {
+      stem = stem.slice(tM[0].length);
+      if (/多选|不定项|多项/.test(tM[1])) stemType = "multi";   // 「单选」「单项」不会命中，安全
+    }
+    const na = normAnswer(q.a, q.multi, opts);
+    let a = na.a, needCheck = na.needCheck;
+    let multi = na.multi || "";
     let e = sanitizeText(q.e);
-    if (q.multi) e = "【答案】" + q.multi + "（多选/双空）" + (e ? "　" + e : "");
+    if (multi.length > 1) e = "【答案】" + multi + "（多选）" + (e ? "　" + e : "");
     // 文本型答案（填空题）：尝试 fuzzy 匹配选项；若命中则 a 修正，否则当解析展示
     if (q.textAns && !e.includes("【答案】")) {
       const idx = fuzzyMatchOption(opts, q.textAns);
@@ -668,7 +710,9 @@
     };
     if (q.num != null) o.num = q.num;
     if (needCheck) o.needCheck = true;
-    if (q.multi) o.multi = q.multi;
+    if (multi.length > 1) { o.multi = multi; o.type = "multi"; }        // 多选：答案存字母串 "ABD"
+    else if (a >= 0 && (q.qType === "multi" || stemType === "multi" || q.type === "multi")) { o.type = "multi"; } // 题干标了「多选」只识别出 1 个字母：留待人工确认
+    else o.type = "single";
     return o;
   }
   /* 文本答案（如填空题）fuzzy 匹配到选项：统计答案关键词在选项中出现的覆盖率 */
@@ -1139,6 +1183,17 @@
       if (q.a >= 0 && q.a < q.options.length) return;
       const hit = ansMap[q.num];
       if (!hit) return;
+      // 多选答案（字母串，如 ABC）：直接写回字母串，不能再压成单下标
+      const mLetters = String(hit.multi || "").toUpperCase().replace(/[^A-E]/g, "");
+      if (mLetters.length > 1 && mLetters.split("").every(c => q.options[c.charCodeAt(0) - 65] != null)) {
+        const idxs = Array.from(new Set(mLetters.split(""))).map(c => c.charCodeAt(0) - 65);
+        if (idxs.every(i => i >= 0 && i < q.options.length)) {
+          q.a = mLetters; q.multi = mLetters; q.type = "multi"; delete q.needCheck;
+          q.e = String(q.e || "").replace(/^⚠️\s*答案未能自动识别，需人工校对。\s*/, "");
+          if (q.e && !q.e.includes("【答案】")) q.e = "【答案】" + mLetters + "　" + q.e;
+          return;
+        }
+      }
       if (hit.a >= 0 && hit.a < q.options.length) {
         q.a = hit.a; delete q.needCheck;
         q.e = String(q.e || "").replace(/^⚠️\s*答案未能自动识别，需人工校对。\s*/, "");
@@ -1359,6 +1414,7 @@
   window.__pdfBuildSections = buildSections;
   window.__buildAnswerBook = buildAnswerBook;
   window.__parseAnswersOrdered = parseAnswersOrdered;
+  window.__pdfParseQuestions = parseQuestions;   // 调试/自测用：文字识别题的解析器
 
   /* ================= 八、界面 ================= */
 
@@ -1618,12 +1674,20 @@
       // 题目 -> 题库标准格式（a 为 0 基索引，needCheck 标记待校对）
       function toBookQuestions(qs) {
         return (qs || []).filter(q => q && q.q && (q.options || []).length >= 2).map((q) => {
-          const a = (typeof q.a === "number") ? q.a : -1;
-          return {
-            q: q.q, options: (q.options || []).slice(0, 6), a: a, e: q.e || "",
-            kp: q.kp || "通用", num: (q.num || 0),
-            needCheck: !(a >= 0 && a < (q.options || []).length)
+          const opts = (q.options || []).slice(0, 6);
+          const isMulti = q.type === "multi" || (Array.isArray(q.a) ? q.a.length > 1 : false);
+          // 多选答案：保留字母串（不再压成单下标，否则练题必错）
+          let a = q.a, needCheck;
+          if (typeof a === "string" && /^[A-Ea-e]{1,6}$/.test(a)) { if (isMulti) a = a.toUpperCase(); }
+          else if (Array.isArray(a) && a.length) a = a.join("").toUpperCase();
+          else a = (typeof a === "number") ? a : -1;
+          needCheck = typeof a === "string" ? !a.length : !(a >= 0 && a < opts.length);
+          const o = {
+            q: q.q, options: opts, a: a, e: q.e || "",
+            kp: q.kp || "通用", num: (q.num || 0), needCheck: needCheck
           };
+          if (isMulti && typeof a === "string" && a.length > 1) { o.multi = a; o.type = "multi"; }
+          return o;
         });
       }
 
@@ -1837,7 +1901,7 @@
         const key = window.KGAI.getKey(provId);
         if (!key && !prov.noKey && !window.KGAI.hasCustom()) throw new Error("未配置 AI 令牌，请到「设置 → AI 令牌」填写，或选「共享 AI」");
         const dataUrl = await fileToDataUrl(file);
-        const sys = "你是公考题库录入助手。用户会发一张题目图片。请严格只输出一个 JSON 数组（不要任何解释、不要 markdown 代码块、不要 ```），数组每个元素是 {\"q\":\"题干\",\"options\":[\"A选项\",\"B选项\",\"C选项\",\"D选项\"],\"a\":\"A\"或\"B\"或\"C\"或\"D\"（不确定填 null），\"e\":\"解析，可空\"}。选项必须 2-4 个，顺序与图片一致；若一题含多选，a 用数组。若图片里不是公考题目，只返回 []。";
+        const sys = "你是公考题库录入助手。用户会发一张题目图片。请严格只输出一个 JSON 数组（不要任何解释、不要 markdown 代码块、不要 ```），数组每个元素是 {\"q\":\"题干\",\"type\":\"single\"或\"multi\",\"options\":[\"A选项\",\"B选项\",\"C选项\",\"D选项\"],\"a\":\"A\"或\"B\"或\"C\"或\"D\"（不确定填 null），\"e\":\"解析，可空\"}。规则：① 先判断题型，单选题 type 填 \"single\"、多选题 type 填 \"multi\"；② 单选题 a 填单个字母，多选题 a 必须填多个字母拼成的串（如 \"ABD\"）；③ 选项必须 2-6 个，顺序与图片一致，必须对应图片里的 A/B/C… 字母。若图片里不是公考题目，只返回 []。";
         const user = "请识别这张公考题目图片，按要求只输出 JSON 数组。";
         const content = [
           { type: "text", text: user },
@@ -1868,7 +1932,7 @@
           const txt = sanitizeText(pages[pi] || "").replace(/\s+/g, " ").trim();
           if (onPage) onPage(pi + 1, total);
           if (!txt) continue;
-          const sys = "你是公考题库录入助手。下面是一页公考题目的纯文字（已按版式抽取）。请严格只输出一个 JSON 数组（不要任何解释、不要 markdown 代码块、不要 ```），数组每个元素是 {\"q\":\"题干\",\"options\":[\"A选项\",\"B选项\",\"C选项\",\"D选项\"],\"a\":\"A\"或\"B\"或\"C\"或\"D\"（不确定填 null），\"e\":\"解析，可空\"}。选项必须 2-4 个，顺序与文字一致；若一题含多选，a 用数组。忽略页眉页脚、页码、非题目文字。";
+          const sys = "你是公考题库录入助手。下面是一页公考题目的纯文字（已按版式抽取）。请严格只输出一个 JSON 数组（不要任何解释、不要 markdown 代码块、不要 ```），数组每个元素是 {\"q\":\"题干\",\"type\":\"single\"或\"multi\",\"options\":[\"A选项\",\"B选项\",\"C选项\",\"D选项\"],\"a\":\"A\"或\"B\"或\"C\"或\"D\"（不确定填 null），\"e\":\"解析，可空\"}。规则：① 先判断题型，单选题 type 填 \"single\"、多选题 type 填 \"multi\"；② 单选题 a 填单个字母，多选题 a 必须填多个字母拼成的串（如 \"ABD\"）；③ 选项必须 2-6 个，顺序与文字一致，必须标注对应 A/B/C… 字母。忽略页眉页脚、页码、非题目文字。";
           const user = "请识别这一页公考题目，按要求只输出 JSON 数组：\n" + txt.slice(0, 6000);
           let text;
           try {
@@ -1919,19 +1983,33 @@
           if (!opts.length && x.options && typeof x.options === "object") {
             ["A", "B", "C", "D", "E"].forEach(k => { if (x.options[k]) opts.push(sanitizeText(x.options[k]).trim()); });
           }
-          let a = -1;
+          /* 答案：单选 "A"；多选 "ABD" 或 ["A","B","D"] 或 type:"multi" —— 都要能识别，不能再丢 */
+          let a = -1, multi = "";
           if (x.a != null) {
-            if (Array.isArray(x.a)) { a = -1; }
-            else {
-              const letter = String(x.a).trim().toUpperCase();
-              const li = "ABCDE".indexOf(letter);
+            const rawA = Array.isArray(x.a) ? x.a.map(String).join("") : String(x.a);
+            const uniq = Array.from(new Set(rawA.toUpperCase().replace(/\s+/g, "").replace(/[^A-E]/g, "").split(""))).filter(Boolean);
+            if (uniq.length > 1) multi = uniq.join("");
+            const first = uniq[0];
+            if (first) {
+              const li = "ABCDE".indexOf(first);
               if (li >= 0 && li < opts.length) a = li;
-              else if (/^\d+$/.test(String(x.a).trim())) { const n = +x.a - 1; if (n >= 0 && n < opts.length) a = n; }
-            }
+            } else if (/^\d+$/.test(String(x.a).trim())) { const n = +x.a - 1; if (n >= 0 && n < opts.length) a = n; }
+          }
+          // 题型：优先听 AI 明确标注的 type，其次按答案字母个数推断
+          let type = "";
+          if (typeof x.type === "string" && x.type) type = /多选|不定项|多项/.test(x.type) ? "multi" : (/判断/.test(x.type) ? "judge" : "single");
+          else if (typeof x.qtype === "string" && x.qtype) type = /多选|不定项|多项/.test(x.qtype) ? "multi" : "single";
+          if (multi) type = "multi";
+          if (type === "multi") {
+            const okAll = multi.split("").every(c => { const i = "ABCDE".indexOf(c); return i >= 0 && i < opts.length; });
+            a = okAll ? multi : -1;
           }
           const e = sanitizeText(x.e || "").trim();
-          const needCheck = !(a >= 0 && a < opts.length);
-          return { q, options: opts, a, e, kp: "", num: idx + 1, needCheck: needCheck };
+          const needCheck = typeof a === "string" ? !a.length : !(a >= 0 && a < opts.length);
+          const out = { q, options: opts, a, e, kp: "", num: idx + 1, needCheck: needCheck };
+          if (type) out.type = type;
+          if (multi) out.multi = multi;
+          return out;
         }).filter(x => x.q && x.options.length >= 2);
       }
 
@@ -1944,7 +2022,8 @@
         renderDraft();
       }
 
-      /* 人工校对：编辑单题（题干/选项/答案/解析），可从识别原文复制；校验入库 */
+      /* 人工校对：编辑单题（题干/选项/题型/答案/解析），可自行决定单选还是多选、改答案；校验入库 */
+      const PF_LETTERS = "ABCDEF";
       function openProofread(book, si, qi, isDraft) {
         let q, persist;
         if (isDraft) {
@@ -1957,49 +2036,157 @@
           persist = () => { db().save(); renderBooks(); };
         }
         if (!q) return;
-        const letters = ["A", "B", "C", "D"];
-        const optSlots = [];
-        for (let i = 0; i < 4; i++) optSlots.push((q.options && q.options[i]) || "");
-        const ansOpts = letters.map((L, i) => `<option value="${i}" ${q.a === i ? "selected" : ""}>${L}</option>`).join("")
-          + `<option value="-1" ${!(q.a >= 0) ? "selected" : ""}>未定（待校对）</option>`;
+        /* 选项行：本地数组，保存时整体写回 q.options，故可自由增删 */
+        let opts = (q.options || []).map(o => String(o == null ? "" : o)).filter((o, i, arr) => o !== "" || i < 2);
+        while (opts.length < 2) opts.push("");
+        let qType = (q.type === "multi" || (q.multi && String(q.multi).length > 1) || (typeof q.a === "string" && q.a.length > 1))
+          ? "multi" : "single";
+        const curLetters = () => {
+          if (typeof q.a === "string" && q.a.length) return q.a.toUpperCase().split("").filter(c => PF_LETTERS.includes(c));
+          if (typeof q.a === "number" && q.a >= 0) return [PF_LETTERS[q.a] || "A"];
+          return [];
+        };
+        let picked = curLetters();
+        const validLetters = () => opts.map((o, i) => (String(o).trim() ? PF_LETTERS[i] : "")).filter(Boolean);
+
         const rawText = (isDraft && draft && draft.raw) ? draft.raw : "";
         const body = UI.el(`<div>
-          <label class="fld">题干</label>
-          <textarea id="pfQ" class="full" rows="3" style="width:100%">${esc(q.q || "")}</textarea>
-          <label class="fld" style="margin-top:8px">选项（至少填 2 个，留空自动跳过）</label>
-          <div style="display:flex;flex-direction:column;gap:6px;align-items:stretch">
-            ${optSlots.map((o, i) => `<div style="display:flex;gap:8px;align-items:center"><b style="width:18px">${letters[i]}</b><input id="pfO${i}" class="full" style="flex:1" value="${esc(o)}"/></div>`).join("")}
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <label class="fld" style="margin:0">题型</label>
+            <select id="pfT" style="padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--bg-soft,var(--card));color:var(--text)">
+              <option value="single" ${qType === "single" ? "selected" : ""}>单项选择题</option>
+              <option value="multi" ${qType === "multi" ? "selected" : ""}>多项选择题</option>
+            </select>
+            <span class="muted small" id="pfHint"></span>
           </div>
-          <div style="display:flex;gap:10px;margin-top:10px;align-items:center">
-            <label class="fld" style="margin:0">正确答案</label>
-            <select id="pfA">${ansOpts}</select>
+          <label class="fld" style="margin-top:8px">题干</label>
+          <textarea id="pfQ" class="full" rows="3" style="width:100%">${esc(q.q || "")}</textarea>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+            <label class="fld" style="margin:0;flex:1">选项（至少填 2 个，留空自动跳过）</label>
+            <button class="btn sm ghost" id="pfAddOpt">＋ 加选项</button>
+          </div>
+          <div id="pfOpts" style="display:flex;flex-direction:column;gap:6px;align-items:stretch"></div>
+          <div style="margin-top:10px">
+            <label class="fld" style="margin:0 0 6px">正确答案</label>
+            <div id="pfAnsSingle" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"></div>
+            <div id="pfAnsMulti" style="display:none;flex-wrap:wrap;gap:8px"></div>
           </div>
           <label class="fld" style="margin-top:10px">解析（可空）</label>
           <textarea id="pfE" class="full" rows="2" style="width:100%">${esc(q.e || "")}</textarea>
           ${rawText ? `<details style="margin-top:10px"><summary class="muted small" style="cursor:pointer">📋 识别原文（可复制）</summary><div class="muted small" style="white-space:pre-wrap;max-height:160px;overflow:auto;border:1px solid var(--line);padding:8px;margin-top:6px">${esc(rawText)}</div></details>` : ""}
           <div id="pfMsg" class="muted small" style="margin-top:8px"></div>
         </div>`);
+
+        /* ---- 选项行渲染 ---- */
+        const optsBox = body.querySelector("#pfOpts");
+        function renderOpts() {
+          optsBox.innerHTML = opts.map((o, i) => `<div style="display:flex;gap:8px;align-items:center">
+            <b style="width:18px">${PF_LETTERS[i] || (i + 1)}</b>
+            <input class="full" data-opt="${i}" style="flex:1" value="${esc(o)}" placeholder="选项内容"/>
+            <button class="icon-btn" data-delopt="${i}" title="删除该选项" ${opts.length <= 2 ? "disabled" : ""}>✕</button>
+          </div>`).join("");
+        }
+        optsBox.oninput = e => {
+          const t = e.target.closest("[data-opt]"); if (!t) return;
+          opts[+t.dataset.opt] = t.value;
+        };
+        optsBox.onclick = e => {
+          const del = e.target.closest("[data-delopt]");
+          if (del && opts.length > 2) { opts.splice(+del.dataset.delopt, 1); clampPicked(); renderOpts(); renderAns(); }
+        };
+        body.querySelector("#pfAddOpt").onclick = () => {
+          if (opts.length >= PF_LETTERS.length) { UI.toast("最多 " + PF_LETTERS.length + " 个选项"); return; }
+          opts.push(""); renderOpts(); renderAns();
+          const last = optsBox.querySelector(`[data-opt="${opts.length - 1}"]`); if (last) last.focus();
+        };
+
+        /* ---- 答案区渲染 ---- */
+        const singleBox = body.querySelector("#pfAnsSingle");
+        const multiBox = body.querySelector("#pfAnsMulti");
+        const typeSel = body.querySelector("#pfT");
+        const hintEl = body.querySelector("#pfHint");
+        function clampPicked() {
+          const ok = new Set(validLetters());
+          picked = picked.filter(c => ok.has(c));
+          if (qType === "single" && picked.length > 1) picked = [picked[0]];
+        }
+        function renderAns() {
+          clampPicked();
+          const isMulti = typeSel.value === "multi";
+          singleBox.style.display = isMulti ? "none" : "";
+          multiBox.style.display = isMulti ? "" : "none";
+          hintEl.textContent = isMulti ? "多选题：勾选所有正确选项" : "单选题：选唯一正确答案";
+          const avail = validLetters();
+          if (!isMulti) {
+            singleBox.innerHTML = `<select id="pfA">`
+              + avail.map(L => `<option value="${L}" ${picked[0] === L ? "selected" : ""}>${L}</option>`).join("")
+              + `<option value="" ${!picked.length ? "selected" : ""}>未定（待校对）</option></select>`;
+          } else {
+            multiBox.innerHTML = avail.map(L => `<label style="display:inline-flex;gap:6px;align-items:center;padding:5px 10px;border:1px solid var(--line);border-radius:8px;cursor:pointer">
+              <input type="checkbox" class="pf-mc" value="${L}" ${picked.includes(L) ? "checked" : ""}/><b>${L}</b></label>`).join("")
+              + (avail.length ? "" : `<span class="muted small">（先在上方填写选项）</span>`);
+          }
+        }
+        typeSel.onchange = () => {
+          qType = typeSel.value;
+          if (qType === "single" && picked.length > 1) picked = [picked[0]];
+          renderAns();
+        };
+        multiBox.onchange = e => {
+          if (!e.target.classList.contains("pf-mc")) return;
+          picked = Array.from(multiBox.querySelectorAll(".pf-mc:checked")).map(x => x.value);
+          picked.sort();
+        };
+        // 首次渲染（此前 UI.modal 尚未把 body 挂进文档，可先渲染离屏）
+        renderOpts(); renderAns();
         UI.modal({
-          title: "✏️ 人工校对 · " + (q.q ? q.q.slice(0, 18) : ("第" + (qi + 1) + "题")),
+          title: "✏️ 人工校对 · " + (typeSel.value === "multi" ? "（多选）" : "（单选）")
+            + (q.q ? q.q.slice(0, 16) : ("第" + (qi + 1) + "题")),
           body: body, width: "560px",
           actions: [
             { label: "取消", cls: "ghost", onClick: (m, c) => c() },
             {
               label: "保存校对", cls: "primary", onClick: (m, c) => {
                 const nq = body.querySelector("#pfQ").value.trim();
-                const nopts = letters.map((L, i) => body.querySelector("#pfO" + i).value.trim()).filter(Boolean);
-                const na = parseInt(body.querySelector("#pfA").value, 10);
+                const nopts = opts.map(o => String(o).trim()).filter(Boolean);
                 const ne = body.querySelector("#pfE").value.trim();
                 const msg = body.querySelector("#pfMsg");
                 if (!nq) { msg.innerHTML = '<span style="color:var(--red)">题干不能为空</span>'; return; }
                 if (nopts.length < 2) { msg.innerHTML = '<span style="color:var(--red)">至少需要 2 个选项</span>'; return; }
-                if (na >= 0 && na >= nopts.length) { msg.innerHTML = '<span style="color:var(--red)">答案超出了选项数量</span>'; return; }
-                q.q = nq; q.options = nopts; q.a = na; q.e = ne;
-                q.needCheck = !(na >= 0 && na < nopts.length);
-                if (q.needCheck) q.e = "⚠️ 答案未能自动识别，需人工校对。" + (ne ? "　" + ne : "");
+                const multi = typeSel.value === "multi";
+                let na, needCheck;
+                if (multi) {
+                  picked = Array.from(multiBox.querySelectorAll(".pf-mc:checked")).map(x => x.value).sort();
+                  // 过滤掉超出选项数量的字母，防止答案指到不存在的选项
+                  const avail = new Set(nopts.map((o, i) => PF_LETTERS[i]));
+                  picked = picked.filter(L => avail.has(L));
+                  if (!picked.length) { msg.innerHTML = '<span style="color:var(--red)">多选题请勾选至少一个答案</span>'; return; }
+                  na = picked.join(""); needCheck = false;
+                } else {
+                  const sel = body.querySelector("#pfA");
+                  const v = sel ? sel.value : "";
+                  if (!v) { na = -1; needCheck = true; }
+                  else {
+                    const idx = PF_LETTERS.indexOf(v);
+                    if (idx < 0 || idx >= nopts.length) {
+                      msg.innerHTML = '<span style="color:var(--red)">答案超出了选项数量</span>'; return;
+                    }
+                    na = idx; needCheck = false;
+                  }
+                }
+                q.q = nq; q.options = nopts; q.e = ne; q.needCheck = needCheck;
+                if (multi && picked.length === 1) {
+                  // 多选模式下只勾了一个：按单选存（数字下标），避免答案形态两可
+                  q.a = picked[0].charCodeAt(0) - 65; q.type = "single"; delete q.multi;
+                } else {
+                  q.a = na; q.type = multi ? "multi" : "single";
+                  if (multi) q.multi = na; else delete q.multi;
+                }
+                if (needCheck) q.e = "⚠️ 答案未能自动识别，需人工校对。" + (ne ? "　" + ne : "");
                 else q.e = String(q.e).replace(/^⚠️\s*答案未能自动识别，需人工校对。\s*/, "");
+                if (q.e && !q.e.includes("【答案】") && multi && picked.length > 1) q.e = "【答案】" + na + "（多选）" + q.e;
                 persist();
-                c(); UI.toast(q.needCheck ? "已保存（仍待校对）" : "✓ 校对完成");
+                c(); UI.toast(needCheck ? "已保存（仍待校对）" : (multi ? "✓ 已存为多选题（" + na + "）" : "✓ 校对完成"));
               }
             }
           ]
@@ -2010,7 +2197,10 @@
         let q = 0, bad = 0;
         ((d && d.sections) || []).forEach(s => (s.questions || []).forEach(x => {
           q++;
-          if (!(x.a >= 0 && x.a < x.options.length)) bad++;
+          const opts = x.options || [];
+          if (typeof x.a === "string" && /^[A-Ea-e]{1,6}$/.test(x.a)) {
+            if (!x.a.toUpperCase().split("").every(c => { const i = c.charCodeAt(0) - 65; return i >= 0 && i < opts.length; })) bad++;
+          } else if (!(x.a >= 0 && x.a < opts.length)) bad++;
         }));
         return { q: q, bad: bad };
       }
@@ -2147,9 +2337,13 @@
           const listHtml = slice.map((q, i) => {
             const n = st.page * st.size + i + 1;
             const opts = (q.options || []).map((o, oi) => `<div class="muted small" style="margin-left:14px">${A(oi)}. ${esc(o)}</div>`).join("");
-            const need = !(q.a >= 0 && q.a < q.options.length);
+            /* 答案显示：兼容多选字母串（"ABD"）与单选下标 */
+            const lettersOf = x => (typeof x === "string" && /^[A-Ea-e]{1,6}$/.test(x))
+              ? x.toUpperCase().split("") : ((x >= 0 && x < q.options.length) ? [A(x)] : []);
+            const ansLet = lettersOf(q.a);
+            const need = !ansLet.length;
             const ans = !need
-              ? `<b style="color:var(--green)">${A(q.a)}</b>`
+              ? `<b style="color:var(--green)">${ansLet.join(" ")}${(ansLet.length > 1 && q.type === "multi") ? "（多选）" : ""}</b>`
               : `<b style="color:var(--red)">待校对</b>`;
             return `<div class="pdf-q" data-pf="${si}:${n - 1}" style="margin-bottom:8px;padding:8px;border:1px solid ${need ? 'var(--red)' : 'var(--line)'};border-radius:8px">
               <div><b>${n}.</b> ${esc(q.q)}${q.kp ? `<span class="tag" style="margin-left:6px">${esc(q.kp)}</span>` : ""}${need ? ` <span class="tag" style="background:var(--red);color:#fff;margin-left:6px">⚠️ 待校对</span>` : ""}</div>
@@ -2201,11 +2395,21 @@
           if (!window.Quiz) { UI.toast("答题引擎未就绪"); return; }
           const src = (list || []).filter(q => q && q.q && q.options && q.options.length >= 2);
           if (!src.length) { UI.toast("没有可练习的题目"); return; }
-          const qs = src.map(q => ({
-            q: q.q, options: (q.options || []).slice(),
-            a: (q.a >= 0 && q.a < q.options.length) ? q.a : -1,
-            e: q.e || "", tag: (book && book.name) || "文件导入"
-          }));
+          const qs = src.map(q => {
+            const m = {
+              q: q.q, options: (q.options || []).slice(),
+              a: (q.a >= 0 && q.a < q.options.length) ? q.a : -1,
+              e: q.e || "", tag: (book && book.name) || "文件导入"
+            };
+            // 多选答案：保留字母串（quiz.js 靠 a 为字母串判定多选），否则练题必判错
+            if (typeof q.a === "string" && /^[A-Ea-e]{1,6}$/.test(q.a)) {
+              m.a = q.a.toUpperCase();
+              if (q.multi) m.multi = q.multi;
+              if (q.type) m.type = q.type;
+            }
+            if (q.img) m.img = q.img;
+            return m;
+          });
           const host = UI.el(`<div style="max-height:64vh;overflow:auto;padding-top:8px"></div>`);
           UI.modal({
             title: "🎯 " + label, body: host, width: "760px",
@@ -2450,7 +2654,9 @@
               if (s.theory && String(s.theory).trim()) html += `<div class="sec"><b>【考点】</b>${esc(String(s.theory))}</div>`;
               (s.questions || []).forEach((q, qi) => {
                 const opts = (q.options || []).map((o, oi) => `${String.fromCharCode(65 + oi)}. ${esc(o)}`).join("　");
-                const ans = (q.a != null && q.a >= 0) ? String.fromCharCode(65 + q.a) : "（待校对）";
+                const aLet = (typeof q.a === "string" && /^[A-Ea-e]{1,6}$/.test(q.a))
+                  ? q.a.toUpperCase() : ((q.a >= 0 && q.a < q.options.length) ? String.fromCharCode(65 + q.a) : "");
+                const ans = aLet || "（待校对）";
                 html += `<div class="q"><b>${qi + 1}. ${esc(q.q || "")}</b><br>${opts}`;
                 if (q.e) html += `<br><span class="e">解析：${esc(q.e)}</span>`;
                 html += `<br><span class="ans">答案：${ans}</span></div>`;

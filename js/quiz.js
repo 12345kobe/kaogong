@@ -83,7 +83,7 @@
       if (Quiz._timer) { try { clearInterval(Quiz._timer); } catch (e) {} Quiz._timer = null; }
       Quiz._answered = 0;
       // 进入新一组训练：清空上一组会话级手写笔迹（不落盘，避免跨模块残留）
-      try { UI.Handwriting.clearSession(); } catch (e) {}
+      try { UI.Handwriting.clearSession(true); } catch (e) {}
 
       // ===== 模式选择条：练题 / 背题（默认练题） =====
       const modeBar = UI.el(`<div class="quiz-modebar">
@@ -416,8 +416,9 @@
         if (Quiz._handler) { try { document.removeEventListener("keydown", Quiz._handler); } catch (e) {} Quiz._handler = null; }
         // 交卷：恢复此前隐藏的悬浮手写按钮
         try { if (Quiz._restoreFabs) Quiz._restoreFabs(); } catch (e) {}
-        // 训练结束：丢弃本次会话的题面手写笔迹（符合「结束训练/切模块不再保存笔迹」）
-        try { UI.Handwriting.clearSession(); } catch (e) {}
+        // 训练结束：丢弃本次会话的题面手写笔迹，并摘掉题面上残留的笔迹覆盖层
+        // （笔迹只留在写它的那一题里，退出训练不落到笔记、也不粘到别的卡片上）
+        try { UI.Handwriting.clearSession(true); } catch (e) {}
         const correct = results.filter(r => r && r.right).length;
         const totalSec = Math.floor((Date.now() - quizStart) / 1000);
         const pct = questions.length ? Math.round(correct / questions.length * 100) : 0;

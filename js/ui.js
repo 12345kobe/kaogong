@@ -357,6 +357,7 @@
             : (saved ? JSON.parse(JSON.stringify(saved)) : { vw: 0, vh: 0, strokes: [] });
         }
         if (!notes.strokes) notes.strokes = [];
+        let keepNotes = !!(saved && saved.strokes && saved.strokes.length); // 已有永久笔记时默认「保留」
         let dirty = false, redo = [];
         let tool = "pen";                 // pen | erase
         let cur = null, drawing = false;  // cur.points 为屏幕像素坐标，含压感 p
@@ -374,6 +375,7 @@
             <button class="hw-tool undo" title="撤回上一笔">↶</button>
             <button class="hw-tool redo" title="重做上一笔">↷</button>
             <button class="hw-tool clear" title="清空全部">🗑</button>
+            <button class="hw-tool persist" title="存入笔记（跨会话永久保留）" style="display:none">💾</button>
           </div>
           <div class="hw-palette" style="display:none">
             <div class="hw-palette-colors">
@@ -557,15 +559,12 @@
         function saveAndClose() {
           if (dirty) {
             if (session) {
-              // 会话模式：写内存缓存（供本次训练内联显示）+ 永久落库（笔记永久保存，可在笔记导出中看到）
+              /* 会话模式：笔迹只留在「当前这一题/这份文档」里，默认不落盘。
+                 用户点 💾 显式存入后才永久保存，避免退出训练后笔记被带到别处。 */
               const k = _hwKey(subject, id);
-              if (notes.strokes.length) {
-                _hwSession[k] = JSON.parse(JSON.stringify(notes));
-                notesRoot[subject][id] = JSON.parse(JSON.stringify(notes));
-              } else {
-                delete _hwSession[k];
-                if (notesRoot[subject][id]) delete notesRoot[subject][id];
-              }
+              if (notes.strokes.length) _hwSession[k] = JSON.parse(JSON.stringify(notes));
+              else delete _hwSession[k];
+              if (keepNotes) notesRoot[subject][id] = JSON.parse(JSON.stringify(notes));
               DB.save(); if (onChange) onChange();
             } else {
               if (notes.strokes.length) notesRoot[subject][id] = notes; else if (saved) delete notesRoot[subject][id];
@@ -589,6 +588,21 @@
           notes.strokes.push(redo.pop()); dirty = true;
           renderToOffscreen(); blit();
         };
+        /* 显式存入笔记：只在用户主动点 💾 时才永久落盘 */
+        const persistBtn = overlay.querySelector(".hw-tool.persist");
+        const syncPersistBtn = () => {
+          persistBtn.style.display = session ? "" : "none";
+          persistBtn.classList.toggle("active", keepNotes);
+          persistBtn.title = keepNotes ? "已在笔记中保存（点击取消保存）" : "存入笔记（跨会话永久保留）";
+        };
+        if (persistBtn) {
+          persistBtn.onclick = () => {
+            keepNotes = !keepNotes;
+            syncPersistBtn();
+            if (keepNotes && notes.strokes.length) { notesRoot[subject][id] = JSON.parse(JSON.stringify(notes)); DB.save(); UI.toast("已存入笔记"); }
+            if (onChange) onChange();
+          };
+        }
         overlay.querySelector(".hw-tool.clear").onclick = () => {
           if (!notes.strokes.length) return;
           // 一键删除全部笔迹：需二次确认，防止误删
@@ -621,6 +635,7 @@
           widthPctLabel.textContent = widthPct + "%";
         };
 
+        if (syncPersistBtn) syncPersistBtn();
         sizeCanvas();
         window.addEventListener("resize", sizeCanvas);
         if (window.visualViewport) window.visualViewport.addEventListener("resize", sizeCanvas);
@@ -631,7 +646,20 @@
         const n = _hwSession[_hwKey(subject, id)];
         return !!(n && n.strokes && n.strokes.length);
       },
-      clearSession() { _hwSession = {}; },
+      /* 清空会话笔迹：默认只清内存；purgeDom=true 时连题面上残留的覆盖层一起摘掉，
+         避免退出训练后笔迹「跟着带出来」贴在别的卡片上。 */
+      clearSession(purgeDom) {
+        _hwSession = {};
+        if (purgeDom !== false) {
+          try {
+            document.querySelectorAll(".kg-hw-session-ov").forEach(n => n.remove());
+          } catch (e) {}
+        }
+      },
+      /* 摘掉某个容器（题目卡片）上的会话笔迹覆盖层 */
+      clearInline(container) {
+        try { if (container) container.querySelectorAll(".kg-hw-session-ov").forEach(n => n.remove()); } catch (e) {}
+      },
       /* 在题目卡片上直接显示本次会话的笔迹覆盖层：关闭面板后仍能看到写过的痕迹，精准对齐题目 */
       renderInline(container, subject, id) {
         const card = container;
