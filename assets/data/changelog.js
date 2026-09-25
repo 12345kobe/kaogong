@@ -3,6 +3,16 @@
 window.CHANGELOG = {
   logs: [
     {
+      version: "20260925h",
+      date: "2026-09-25",
+      title: "手机端修复：红叉可点清空 + PDF 保存面板",
+      items: [
+        { mod: "全局", text: "修复手机上「点红叉没反应」：iOS 的 touchstart 里 preventDefault 会把 click 一起吞掉，改为在 touchend 触发清空（并保留桌面 click，带防重复）" },
+        { mod: "pdfimport", text: "修复手机上「只提示正在导出、没有文件」：iOS/主屏 PWA 的 pdf.save() 下载会静默失败。改为弹出保存面板——「📤 分享/存储到文件」「📄 打开 PDF」「⬇️ 尝试直接下载」；桌面与安卓仍直接下载" },
+        { mod: "全局", text: "PDF 生成加 120 秒超时保护，超时自动回退打印页，不再卡在「正在生成」" }
+      ]
+    },
+    {
       version: "20260925g",
       date: "2026-09-25",
       title: "真·PDF文件导出 + 红色清空按钮",

@@ -90,6 +90,64 @@
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
   }
 
+  /* 交付 PDF：桌面/安卓直接下载；iOS 与主屏 PWA 下载会静默失败，
+     改为弹出可见面板：分享（可存到「文件」）/ 打开 PDF / 尝试下载 */
+  function deliverPdf(pdf, name, pages) {
+    const blob = pdf.output("blob");
+    const url = URL.createObjectURL(blob);
+    const file = (window.File ? new File([blob], name, { type: "application/pdf" }) : null);
+    const isIOS = /iP(hone|od|ad)/.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const standalone = window.navigator.standalone === true ||
+      (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
+    const a0 = document.createElement("a");
+    const canDownload = ("download" in a0);
+    const tryDownload = function () {
+      try {
+        const a = document.createElement("a");
+        a.href = url; a.download = name; a.rel = "noopener"; a.style.display = "none";
+        document.body.appendChild(a); a.click();
+        setTimeout(() => { try { a.remove(); } catch (e) {} }, 1500);
+        return true;
+      } catch (e) { return false; }
+    };
+    if (canDownload && !isIOS && !standalone) {
+      tryDownload();
+      return { pages: pages, filename: name, mode: "download" };
+    }
+    const ov = document.createElement("div");
+    ov.style.cssText = "position:fixed;inset:0;z-index:10040;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px";
+    ov.innerHTML = `<div style="background:#fff;color:#111;border-radius:14px;width:min(420px,100%);padding:18px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.45)">
+      <div style="font-size:38px">📄</div>
+      <div style="font-weight:800;font-size:16px;margin:6px 0">PDF 已生成（${pages} 页）</div>
+      <div style="color:#666;font-size:13px;margin-bottom:14px;word-break:break-all">${name}</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button id="kgPdfShare" style="padding:12px;border:none;border-radius:10px;background:#1f8a4c;color:#fff;font-weight:800;font-size:15px">📤 分享 / 存储到「文件」</button>
+        <button id="kgPdfOpen" style="padding:12px;border:none;border-radius:10px;background:#9b6cff;color:#fff;font-weight:800;font-size:15px">📄 打开 PDF</button>
+        <button id="kgPdfDl" style="padding:12px;border:1px solid #ccc;border-radius:10px;background:#f6f6f6;color:#333;font-weight:700;font-size:15px">⬇️ 尝试直接下载</button>
+        <button id="kgPdfClose" style="padding:10px;border:none;background:transparent;color:#888;font-size:14px">关闭</button>
+      </div></div>`;
+    document.body.appendChild(ov);
+    const close = function () {
+      try { ov.remove(); } catch (e) {}
+      setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 120000);
+    };
+    ov.querySelector("#kgPdfClose").onclick = close;
+    ov.querySelector("#kgPdfDl").onclick = function () { if (!tryDownload() && window.UI) UI.toast("该浏览器不支持直接下载，请用上方「分享」或「打开 PDF」"); };
+    ov.querySelector("#kgPdfOpen").onclick = function () {
+      try { const w = window.open(url, "_blank"); if (!w) location.href = url; }
+      catch (e) { try { location.href = url; } catch (e2) {} }
+    };
+    const shareBtn = ov.querySelector("#kgPdfShare");
+    const canShare = !!(file && navigator.canShare && navigator.canShare({ files: [file] }));
+    if (!canShare) shareBtn.style.display = "none";
+    else shareBtn.onclick = function () {
+      navigator.share({ files: [file], title: name }).then(close).catch(() => {});
+    };
+    if (window.UI && UI.toast) UI.toast("PDF 已生成，请在弹出面板中保存");
+    return { pages: pages, filename: name, mode: "panel" };
+  }
+
   /* 生成一个真正的 PDF 文件并下载（A4，图片排版，中文零乱码） */
   async function htmlToPdf(title, bodyHtml, opts) {
     opts = opts || {};
@@ -135,16 +193,19 @@
     host.remove();
     pdf.setProperties({ title: title });
     const name = (opts.filename || title).replace(/[\\/:*?"<>|]/g, "_").slice(0, 60) + ".pdf";
-    pdf.save(name);
-    return { pages: total, filename: name };
+    return deliverPdf(pdf, name, total);
   }
 
   /* 优先生成真 PDF；失败自动回退到打印页（旧行为，桌面可用） */
   async function exportPdfOrPrint(title, bodyHtml, opts) {
     try {
       if (window.UI && UI.toast) UI.toast("正在生成 PDF，请稍候…");
-      const r = await htmlToPdf(title, bodyHtml, opts);
-      if (window.UI && UI.toast) UI.toast(`已导出 PDF（${r.pages} 页）：${r.filename}`);
+      // 超时保护：手机渲染慢/卡住时不至于永远停在「正在生成」
+      const r = await Promise.race([
+        htmlToPdf(title, bodyHtml, opts),
+        new Promise((_, rej) => setTimeout(() => rej(new Error("生成超时")), 120000))
+      ]);
+      if (window.UI && UI.toast && r.mode !== "panel") UI.toast(`已导出 PDF（${r.pages} 页）：${r.filename}`);
     } catch (e) {
       console.warn("PDF 生成失败，回退打印：", e);
       if (window.UI && UI.toast) UI.toast("PDF 生成失败，已改用打印窗口");

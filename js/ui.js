@@ -937,18 +937,23 @@
         btn.style.cssText = "position:fixed;display:none;align-items:center;justify-content:center;" +
           "width:26px;height:26px;border-radius:50%;border:1.5px solid #fff;background:#e23b54;color:#fff;" +
           "font-size:15px;font-weight:700;line-height:1;padding:0;cursor:pointer;z-index:10030;box-shadow:0 1px 6px rgba(0,0,0,.35)";
-        btn.addEventListener("mousedown", function (e) { e.preventDefault(); });
-        btn.addEventListener("touchstart", function (e) { e.preventDefault(); }, { passive: false });
-        btn.addEventListener("click", function (e) {
-          e.preventDefault(); e.stopPropagation();
+        let lastClear = 0;
+        const doClear = function () {
+          const now = Date.now();
+          if (now - lastClear < 400) return;   // 防重复触发（touchend + click）
+          lastClear = now;
           inp.value = "";
           try {
             inp.dispatchEvent(new Event("input", { bubbles: true }));
             inp.dispatchEvent(new Event("change", { bubbles: true }));
           } catch (err) {}
           try { inp.focus(); } catch (err) {}
-          btn.style.display = "none";
-        });
+          place(rec);
+        };
+        btn.addEventListener("mousedown", function (e) { e.preventDefault(); }); // 桌面：避免点按钮时输入框失焦
+        btn.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); doClear(); });
+        // iOS：touchend 里清（touchstart 若 preventDefault 会把 click 一起吞掉，导致点了没反应）
+        btn.addEventListener("touchend", function (e) { e.preventDefault(); e.stopPropagation(); doClear(); });
         document.body.appendChild(btn);
         const rec = { inp: inp, btn: btn };
         recs.push(rec);
