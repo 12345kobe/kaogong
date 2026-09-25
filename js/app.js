@@ -999,6 +999,8 @@
     } catch (e) {}
     initSocial();
     window.addEventListener("hashchange", renderRoute);
+    // 全局：给所有文字输入框加「清空」按钮（含后续动态生成的，由 MutationObserver 覆盖）
+    if (UI.initClearButtons) UI.initClearButtons();
     if (!location.hash) location.hash = "#/countdown";
     // 更新日志：新版本首次打开自动弹出（点×/空白关闭），关闭后导航上标气泡
     try { window.Changelog && Changelog.maybeShow(); } catch (e) { console.error(e); }

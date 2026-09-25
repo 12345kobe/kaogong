@@ -880,6 +880,72 @@
     hideAnnoFab() {
       const btn = this._ensureAnnoFab();
       btn.style.display = "none";
+    },
+
+    /* ===== 全局：给所有文字输入框加「清空」按钮，点击即清空整框 =====
+       覆盖 input[type=text/search/email/url/tel]、无 type（默认 text）、textarea；
+       排除 number/date/range/color/file/checkbox/radio/button/submit/hidden/image 等，
+       以及 readonly/disabled 或带 data-kg-no-clear 的框。
+       用 MutationObserver 监听 DOM 变化，自动给路由切换 / 弹窗 / 异步模块里
+       动态生成的输入框也补上清除按钮。 */
+    initClearButtons() {
+      if (this._clearReady) return;
+      this._clearReady = true;
+      const SEL = 'input[type="text"],input[type="search"],input[type="email"],input[type="url"],input[type="tel"],input:not([type]),textarea';
+      const EXCLUDE_TYPE = { number: 1, date: 1, "datetime-local": 1, month: 1, week: 1, time: 1, range: 1, color: 1, file: 1, checkbox: 1, radio: 1, button: 1, submit: 1, reset: 1, hidden: 1, image: 1 };
+      const SKIP = function (inp) {
+        if (!inp || inp.dataset.kgNoClear === "1") return true;
+        if (inp.readOnly || inp.disabled) return true;
+        const t = (inp.getAttribute("type") || "").toLowerCase();
+        if (EXCLUDE_TYPE[t]) return true;
+        return false;
+      };
+      const updateClear = function (btn, inp) {
+        const show = !!inp.value && inp.value.length > 0 && (inp.matches(":focus") || inp.matches(":hover") || btn.matches(":hover"));
+        btn.style.display = show ? "flex" : "none";
+      };
+      const addTo = function (inp) {
+        if (inp.dataset.kgClear === "1" || SKIP(inp)) return;
+        inp.dataset.kgClear = "1";
+        const ta = inp.tagName === "TEXTAREA";
+        inp.classList.add(ta ? "kg-has-clear-ta" : "kg-has-clear");
+        const parent = inp.parentNode;
+        if (parent && getComputedStyle(parent).position === "static") parent.style.position = "relative";
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "kg-clear-btn" + (ta ? " ta" : "");
+        btn.setAttribute("aria-label", "清空");
+        btn.textContent = "✕";
+        btn.addEventListener("mousedown", function (e) { e.preventDefault(); }); // 避免点击时输入框失焦
+        btn.addEventListener("click", function (e) {
+          e.preventDefault();
+          inp.value = "";
+          inp.dispatchEvent(new Event("input", { bubbles: true }));
+          inp.dispatchEvent(new Event("change", { bubbles: true }));
+          inp.focus();
+        });
+        const refresh = function () { updateClear(btn, inp); };
+        inp.addEventListener("input", refresh);
+        inp.addEventListener("focus", refresh);
+        inp.addEventListener("blur", function () { setTimeout(refresh, 120); });
+        inp.addEventListener("mouseenter", refresh);
+        inp.addEventListener("mouseleave", refresh);
+        btn.addEventListener("mouseenter", refresh);
+        btn.addEventListener("mouseleave", refresh);
+        if (parent) parent.appendChild(btn);
+        refresh();
+      };
+      const scan = function () {
+        try {
+          document.querySelectorAll(SEL).forEach(function (inp) { if (inp.dataset.kgClear !== "1") addTo(inp); });
+        } catch (e) {}
+      };
+      scan();
+      // 后续动态生成的输入框（路由切换 / 弹窗 / 异步模块）补加清除按钮
+      let pending = false;
+      const sched = function () { if (pending) return; pending = true; setTimeout(function () { pending = false; scan(); }, 80); };
+      const obs = new MutationObserver(sched);
+      obs.observe(document.body, { childList: true, subtree: true });
     }
   };
 

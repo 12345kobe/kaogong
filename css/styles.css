@@ -143,6 +143,12 @@ input,select,textarea{
   border-radius:10px;padding:9px 11px;font-size:14px;font-family:inherit;width:100%;
 }
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--cyan)}
+/* ===== 输入框一键清空按钮（全局，由 UI.initClearButtons 注入） ===== */
+.kg-clear-btn{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:22px;height:22px;display:none;align-items:center;justify-content:center;border:none;border-radius:50%;background:rgba(128,128,128,.22);color:var(--txt);font-size:14px;line-height:1;cursor:pointer;padding:0;z-index:6}
+.kg-clear-btn:hover{background:rgba(128,128,128,.42)}
+.kg-clear-btn.ta{top:auto;bottom:8px;transform:none}
+input.kg-has-clear{padding-right:30px}
+textarea.kg-has-clear-ta{padding-right:32px;padding-bottom:28px}
 label.fld{display:block;font-size:12px;color:var(--txt-dim);margin:8px 0 4px}
 
 /* ===== Timer disc ===== */

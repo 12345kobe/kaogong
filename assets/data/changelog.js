@@ -3,6 +3,14 @@
 window.CHANGELOG = {
   logs: [
     {
+      version: "20260925e",
+      date: "2026-09-25",
+      title: "全局输入框一键清空按钮",
+      items: [
+        { mod: "全局", text: "所有文字输入框（text/search/email/url/tel、无 type、textarea，含弹窗与动态生成的）右上角出现 ✕ 按钮：聚焦或悬停且有内容时显示，点击即清空整个框内容并触发输入事件" }
+      ]
+    },
+    {
       version: "20260925d",
       date: "2026-09-25",
       title: "PDF录入题目：各模块常驻入口 + 一键展开全部板块",
