@@ -900,38 +900,62 @@
         if (EXCLUDE_TYPE[t]) return true;
         return false;
       };
-      const updateClear = function (btn, inp) {
-        // 只要有内容就显示（手机没有 hover，聚焦要求会让按钮"看起来不存在"）
-        const show = !!inp.value && inp.value.length > 0;
-        btn.style.display = show ? "flex" : "none";
+      const SIZE = 26;
+      const recs = [];
+      /* 关键：按钮挂 body 上用 fixed 定位——不依赖父容器 position/overflow/z-index，
+         任何布局（flex、折叠区、弹窗、全屏页）都能稳定显示在输入框内右侧。 */
+      const place = function (rec) {
+        const inp = rec.inp, btn = rec.btn;
+        if (!inp.isConnected) { try { btn.remove(); } catch (e) {} return false; }
+        const has = !!(inp.value && inp.value.length);
+        if (!has) { btn.style.display = "none"; return true; }
+        const r = inp.getBoundingClientRect();
+        const vw = window.innerWidth || document.documentElement.clientWidth;
+        const vh = window.innerHeight || document.documentElement.clientHeight;
+        if (r.width < 56 || r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw) { btn.style.display = "none"; return true; }
+        btn.style.display = "flex";
+        btn.style.left = Math.max(2, Math.min(r.right - SIZE - 6, vw - SIZE - 2)) + "px";
+        btn.style.top = (inp.tagName === "TEXTAREA"
+          ? Math.max(2, Math.min(r.bottom - SIZE - 6, vh - SIZE - 2))
+          : r.top + Math.max(2, (r.height - SIZE) / 2)) + "px";
+        return true;
+      };
+      const placeAll = function () {
+        for (let i = recs.length - 1; i >= 0; i--) { if (!place(recs[i])) recs.splice(i, 1); }
       };
       const addTo = function (inp) {
         if (inp.dataset.kgClear === "1" || SKIP(inp)) return;
         inp.dataset.kgClear = "1";
         const ta = inp.tagName === "TEXTAREA";
         inp.classList.add(ta ? "kg-has-clear-ta" : "kg-has-clear");
-        const parent = inp.parentNode;
-        if (parent && getComputedStyle(parent).position === "static") parent.style.position = "relative";
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = "kg-clear-btn" + (ta ? " ta" : "");
         btn.setAttribute("aria-label", "清空");
+        btn.title = "清空";
         btn.textContent = "✕";
-        btn.addEventListener("mousedown", function (e) { e.preventDefault(); }); // 避免点击时输入框失焦
-        btn.addEventListener("touchstart", function (e) { e.preventDefault(); }, { passive: false }); // iOS 触屏同理
+        btn.style.cssText = "position:fixed;display:none;align-items:center;justify-content:center;" +
+          "width:26px;height:26px;border-radius:50%;border:1.5px solid #fff;background:#e23b54;color:#fff;" +
+          "font-size:15px;font-weight:700;line-height:1;padding:0;cursor:pointer;z-index:10030;box-shadow:0 1px 6px rgba(0,0,0,.35)";
+        btn.addEventListener("mousedown", function (e) { e.preventDefault(); });
+        btn.addEventListener("touchstart", function (e) { e.preventDefault(); }, { passive: false });
         btn.addEventListener("click", function (e) {
-          e.preventDefault();
+          e.preventDefault(); e.stopPropagation();
           inp.value = "";
-          inp.dispatchEvent(new Event("input", { bubbles: true }));
-          inp.dispatchEvent(new Event("change", { bubbles: true }));
-          inp.focus();
+          try {
+            inp.dispatchEvent(new Event("input", { bubbles: true }));
+            inp.dispatchEvent(new Event("change", { bubbles: true }));
+          } catch (err) {}
+          try { inp.focus(); } catch (err) {}
+          btn.style.display = "none";
         });
-        const refresh = function () { updateClear(btn, inp); };
-        inp.addEventListener("input", refresh);
-        inp.addEventListener("focus", refresh);
-        inp.addEventListener("blur", function () { setTimeout(refresh, 120); });
-        if (parent) parent.appendChild(btn);
-        refresh();
+        document.body.appendChild(btn);
+        const rec = { inp: inp, btn: btn };
+        recs.push(rec);
+        ["input", "focus", "keyup", "change", "paste"].forEach(function (ev) {
+          inp.addEventListener(ev, function () { place(rec); });
+        });
+        place(rec);
       };
       const scan = function () {
         try {
@@ -939,9 +963,13 @@
         } catch (e) {}
       };
       scan();
-      // 后续动态生成的输入框（路由切换 / 弹窗 / 异步模块）补加清除按钮
+      // 输入/滚动/缩放/布局变化时重新定位；另有低频轮询兜底（含动态生成的弹窗与模块）
+      document.addEventListener("scroll", placeAll, true);
+      window.addEventListener("resize", placeAll);
+      window.addEventListener("orientationchange", placeAll);
+      setInterval(placeAll, 400);
       let pending = false;
-      const sched = function () { if (pending) return; pending = true; setTimeout(function () { pending = false; scan(); }, 80); };
+      const sched = function () { if (pending) return; pending = true; setTimeout(function () { pending = false; scan(); placeAll(); }, 80); };
       const obs = new MutationObserver(sched);
       obs.observe(document.body, { childList: true, subtree: true });
     }

@@ -23,6 +23,135 @@
 </div>`;
   }
 
+  /* ===== 真·PDF 生成：html2canvas 渲染 + jsPDF 合成 → 直接下载 .pdf 文件 =====
+     手机上 window.print() 弹不出打印窗口、也拿不到文件，故改用本地内置库生成 PDF。
+     库文件在 assets/vendor/（离线可用），加载失败才回退到打印页。 */
+  const VENDOR_BASE = (function () {
+    try {
+      const u = new URL(document.baseURI || location.href);
+      return u.origin + u.pathname.replace(/[^/]*$/, "");
+    } catch (e) { return ""; }
+  })();
+
+  function loadScript(src) {
+    return new Promise((res, rej) => {
+      const s = document.createElement("script");
+      s.src = src; s.async = false;
+      s.onload = () => res();
+      s.onerror = () => rej(new Error("加载失败：" + src));
+      document.head.appendChild(s);
+    });
+  }
+
+  async function ensurePdfLibs() {
+    if (window.html2canvas && window.jspdf && window.jspdf.jsPDF) return true;
+    if (!window.html2canvas) await loadScript(VENDOR_BASE + "assets/vendor/html2canvas.min.js");
+    if (!(window.jspdf && window.jspdf.jsPDF)) await loadScript(VENDOR_BASE + "assets/vendor/jspdf.umd.min.js");
+    return !!(window.html2canvas && window.jspdf && window.jspdf.jsPDF);
+  }
+
+  const PDF_CSS = `
+#kgPdfHost{color:#111;background:#fff;line-height:1.7;padding:28px;box-sizing:border-box}
+#kgPdfHost h1{font-size:20px;border-bottom:3px solid #34e7e4;padding-bottom:8px;margin:0 0 6px}
+#kgPdfHost h2{font-size:17px;margin:18px 0 8px}
+#kgPdfHost h3{font-size:15px;margin:12px 0 4px}
+#kgPdfHost .meta{color:#666;font-size:12px;margin-bottom:8px}
+#kgPdfHost .sec{font-size:17px;font-weight:800;margin:22px 0 10px;border-bottom:2px solid #9b6cff;padding-bottom:4px}
+#kgPdfHost .subhead{font-weight:800;font-size:15px;background:#f0f6ff;padding:6px 10px;border-left:4px solid #9b6cff;margin:14px 0 8px}
+#kgPdfHost .item{border:1px solid #ddd;border-radius:8px;padding:10px 12px;margin-bottom:10px}
+#kgPdfHost .aitem{border:1px dashed #c9b6ff;border-radius:8px;padding:8px 12px;margin-bottom:8px}
+#kgPdfHost table{width:100%;border-collapse:collapse;margin:6px 0 16px;font-size:13px}
+#kgPdfHost th,#kgPdfHost td{border:1px solid #b9b9b9;padding:6px 9px;text-align:left;vertical-align:top;line-height:1.6}
+#kgPdfHost thead th{background:#eaf1ff;font-weight:800}
+#kgPdfHost td.idx{width:44px;text-align:center;color:#666}
+#kgPdfHost td.term{font-weight:800;color:#0f7a4c}
+#kgPdfHost .q{font-weight:700;margin-bottom:6px}
+#kgPdfHost .qnum{color:#9b6cff;font-weight:800;margin-right:4px}
+#kgPdfHost .kw{color:#c0392b;font-weight:800}
+#kgPdfHost .opt{margin:2px 0}
+#kgPdfHost .anum{display:inline-block;color:#1f8a4c;font-weight:800;margin-right:6px}
+#kgPdfHost .ans{color:#1f8a4c;font-weight:700;font-size:14px;margin-bottom:4px}
+#kgPdfHost .exp{background:#fafafa;border-left:3px solid #9b6cff;padding:6px 10px;margin-top:4px;font-size:13px}
+#kgPdfHost .note{color:#555;font-size:13px;margin-top:4px}
+#kgPdfHost .note.your{color:#c0392b}
+#kgPdfHost .date{float:right;color:#999;font-size:12px}
+#kgPdfHost .empty{color:#888;padding:20px;text-align:center}
+#kgPdfHost img{max-width:240px;max-height:240px;border:1px solid #ccc;border-radius:6px;margin-top:6px}
+#kgPdfHost .foot{margin-top:24px;color:#999;font-size:12px;text-align:center}
+#kgPdfHost .essay-p-i{text-indent:2em;margin:0 0 10px;line-height:1.9}
+#kgPdfHost .essay-hl-i{background:#ffe680;padding:0 2px;border-radius:2px}
+#kgPdfHost .essay-blue-i{color:#0b3d91;font-weight:700}
+#kgPdfHost .essay-red-i{color:#e23b54;font-weight:700}
+#kgPdfHost .user-hl-i{font-weight:700}`;
+
+  function stampNow() {
+    const d = new Date();
+    const p = n => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+
+  /* 生成一个真正的 PDF 文件并下载（A4，图片排版，中文零乱码） */
+  async function htmlToPdf(title, bodyHtml, opts) {
+    opts = opts || {};
+    const ok = await ensurePdfLibs();
+    if (!ok) throw new Error("PDF 库未加载");
+    const jsPDF = window.jspdf.jsPDF;
+
+    const A4W = 794, A4H = 1123;              // A4 @96dpi
+    const font = opts.font || '"Microsoft YaHei","PingFang SC","Heiti SC",sans-serif';
+    const host = document.createElement("div");
+    host.style.cssText = "position:fixed;left:-12000px;top:0;width:" + A4W + "px;background:#fff;z-index:1;pointer-events:none;overflow:hidden";
+    host.id = "kgPdfHostWrap";
+    const wrap = document.createElement("div");   // 每页可视窗口（裁切用）
+    wrap.style.cssText = "position:relative;width:" + A4W + "px;height:" + A4H + "px;overflow:hidden;background:#fff";
+    const inner = document.createElement("div");
+    inner.id = "kgPdfHost";
+    inner.style.cssText = "position:absolute;left:0;top:0;width:" + A4W + "px;background:#fff";
+    inner.innerHTML = `<style>${PDF_CSS.replace("#kgPdfHost{color:#111", "#kgPdfHost{font-family:" + font + ";color:#111")}</style>
+      <h1>${title}</h1>
+      <div class="meta">导出来源：考公工作台 · 生成时间：${stampNow()}${opts.fontLabel ? " · 字体：" + opts.fontLabel : ""}</div>
+      ${bodyHtml}
+      <div class="foot">考公工作台 · 个人备考助手</div>`;
+    wrap.appendChild(inner);
+    host.appendChild(wrap);
+    document.body.appendChild(host);
+    await new Promise(r => setTimeout(r, 120));
+
+    const total = Math.max(1, Math.ceil(inner.scrollHeight / A4H));
+    const pdf = new jsPDF({ unit: "pt", format: "a4", orientation: "portrait" });
+    const pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight();
+    for (let i = 0; i < total; i++) {
+      inner.style.top = (-i * A4H) + "px";
+      if (window.UI && UI.toast && i > 0 && i % 5 === 0) UI.toast(`正在生成 PDF… ${i + 1}/${total} 页`);
+      const canvas = await window.html2canvas(wrap, {
+        backgroundColor: "#fff", scale: 2, width: A4W, height: A4H,
+        windowWidth: A4W, windowHeight: A4H, useCORS: true, logging: false
+      });
+      const img = canvas.toDataURL("image/jpeg", 0.92);
+      if (i > 0) pdf.addPage();
+      const h = A4H / A4W * pw;
+      pdf.addImage(img, "JPEG", 0, 0, pw, Math.min(ph, h));
+    }
+    host.remove();
+    pdf.setProperties({ title: title });
+    const name = (opts.filename || title).replace(/[\\/:*?"<>|]/g, "_").slice(0, 60) + ".pdf";
+    pdf.save(name);
+    return { pages: total, filename: name };
+  }
+
+  /* 优先生成真 PDF；失败自动回退到打印页（旧行为，桌面可用） */
+  async function exportPdfOrPrint(title, bodyHtml, opts) {
+    try {
+      if (window.UI && UI.toast) UI.toast("正在生成 PDF，请稍候…");
+      const r = await htmlToPdf(title, bodyHtml, opts);
+      if (window.UI && UI.toast) UI.toast(`已导出 PDF（${r.pages} 页）：${r.filename}`);
+    } catch (e) {
+      console.warn("PDF 生成失败，回退打印：", e);
+      if (window.UI && UI.toast) UI.toast("PDF 生成失败，已改用打印窗口");
+      printHtml(title, bodyHtml, opts);
+    }
+  }
+
   function printHtml(title, bodyHtml, opts) {
     const w = window.open("", "_blank");
     if (!w) { alert("浏览器拦截了弹窗，请允许弹窗后重试"); return; }
@@ -148,30 +277,32 @@ ${aHtml}`;
 
   const PDF = {
     printHtml,
+    htmlToPdf,
+    exportPdf: exportPdfOrPrint,
     exportWrong(subject) {
       const items = (DB.state.wrongbook[subject] || []).slice();
-      printHtml(`${subject} · 错题本（${items.length}题）`, wrongBody(subject, items));
+      exportPdfOrPrint(`${subject} · 错题本（${items.length}题）`, wrongBody(subject, items));
     },
     exportAllWrong() {
       const wb = DB.state.wrongbook;
       const blocks = SUBJECT_ORDER.filter(s => wb[s] && wb[s].length).map(s => ({ subject: s, items: wb[s].slice() }));
-      if (!blocks.length) { printHtml("全部科目 · 错题本", `<div class="empty">暂无错题</div>`); return; }
+      if (!blocks.length) { exportPdfOrPrint("全部科目 · 错题本", `<div class="empty">暂无错题</div>`); return; }
       const { qHtml, aHtml, total } = buildExport(blocks);
-      printHtml(`全部科目 · 错题本（${total}题）`, `<h2 class="sec">一、题目（共 ${total} 题，请先作答，答案见下方）</h2>
+      exportPdfOrPrint(`全部科目 · 错题本（${total}题）`, `<h2 class="sec">一、题目（共 ${total} 题，请先作答，答案见下方）</h2>
 ${qHtml}
 <h2 class="sec">二、答案与解析</h2>
 ${aHtml}`);
     },
     /* 导出任意一组错题（用于按日期范围 / 自定义筛选后导出） */
     exportWrongList(title, items) {
-      if (!items || !items.length) { printHtml(title, `<div class="empty">该范围内暂无错题</div>`); return; }
+      if (!items || !items.length) { exportPdfOrPrint(title, `<div class="empty">该范围内暂无错题</div>`); return; }
       const { qHtml, aHtml, total } = buildExport([{ subject: title, items }]);
-      printHtml(`${title}（${total}题）`, `<h2 class="sec">一、题目（共 ${total} 题，请先作答，答案见下方）</h2>
+      exportPdfOrPrint(`${title}（${total}题）`, `<h2 class="sec">一、题目（共 ${total} 题，请先作答，答案见下方）</h2>
 ${qHtml}
 <h2 class="sec">二、答案与解析</h2>
 ${aHtml}`);
     },
-    exportHtml(title, bodyHtml, opts) { printHtml(title, bodyHtml, opts); }
+    exportHtml(title, bodyHtml, opts) { exportPdfOrPrint(title, bodyHtml, opts); }
   };
 
   window.PDF = PDF;

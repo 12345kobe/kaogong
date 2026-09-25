@@ -2651,26 +2651,11 @@
       // 批量导出 PDF：把选中题册 / 时政材料渲染成可打印 HTML（浏览器「另存为 PDF」）
       function exportItemsPdf(items) {
         if (!items.length) { UI.toast("请先勾选要导出的项"); return; }
-        let html = `<!doctype html><html><head><meta charset="utf-8"><title>考公工作台 · 导出台账</title>
-<style>
- body{font-family:"Kaiti SC","STKaiti","KaiTi",serif;color:#111;background:#fff;padding:24px;line-height:1.7}
- h1{font-size:22px;text-align:center;border-bottom:2px solid #333;padding-bottom:8px}
- h2{font-size:17px;margin:18px 0 8px;border-left:4px solid #333;padding-left:8px}
- h3{font-size:15px;margin:12px 0 4px}
- .meta{color:#666;font-size:12px;text-align:center;margin-bottom:14px}
- .q{margin:10px 0;padding:8px 10px;border:1px solid #ddd;border-radius:8px}
- .q .ans{color:#1a7a3a;font-weight:700}
- .q .e{color:#555;font-size:13px}
- .sec{background:#f6f6f6;border-radius:8px;padding:8px 10px;margin:8px 0}
- .aff{margin:14px 0}
- .pgbreak{page-break-after:always}
-</style></head><body>
-<h1>考公工作台 · 导出台账</h1>
-<div class="meta">导出时间：${new Date().toLocaleString("zh-CN")} ｜ 共 ${items.length} 项</div>`;
+        let html = `<div class="meta">共 ${items.length} 项</div>`;
         items.forEach((it, idx) => {
           if (it.type === "book") {
             const b = it.ref;
-            html += `<h2>📚 ${esc(b.name || "题册")}（${subjectLabel(b.subject) || b.subject}）</h2>`;
+            html += `<div class="subhead">📚 ${esc(b.name || "题册")}（${subjectLabel(b.subject) || b.subject}）</div>`;
             (b.sections || []).forEach(s => {
               if (s.theory && String(s.theory).trim()) html += `<div class="sec"><b>【考点】</b>${esc(String(s.theory))}</div>`;
               (s.questions || []).forEach((q, qi) => {
@@ -2678,14 +2663,14 @@
                 const aLet = (typeof q.a === "string" && /^[A-Ea-e]{1,6}$/.test(q.a))
                   ? q.a.toUpperCase() : ((q.a >= 0 && q.a < q.options.length) ? String.fromCharCode(65 + q.a) : "");
                 const ans = aLet || "（待校对）";
-                html += `<div class="q"><b>${qi + 1}. ${esc(q.q || "")}</b><br>${opts}`;
-                if (q.e) html += `<br><span class="e">解析：${esc(q.e)}</span>`;
-                html += `<br><span class="ans">答案：${ans}</span></div>`;
+                html += `<div class="item"><div class="q">${qi + 1}. ${esc(q.q || "")}</div><div class="opt">${opts}</div>`;
+                if (q.e) html += `<div class="exp">解析：${esc(q.e)}</div>`;
+                html += `<div class="ans">答案：${ans}</div></div>`;
               });
             });
           } else {
             const a = it.ref; const d = a.data || {};
-            html += `<h2>📰 ${esc(a.title || a.date || "时政材料")}</h2>`;
+            html += `<div class="subhead">📰 ${esc(a.title || a.date || "时政材料")}</div>`;
             if (d.news) html += `<div class="aff"><h3>时政新闻</h3>${esc(d.news)}</div>`;
             if (d.essay) html += `<div class="aff"><h3>申论时评 / 金句</h3>${esc(d.essay)}</div>`;
             if (d.words) html += `<div class="aff"><h3>词语释义</h3>${esc(d.words)}</div>`;
@@ -2700,41 +2685,22 @@
               html += `</div>`;
             }
           }
-          if (idx < items.length - 1) html += `<div class="pgbreak"></div>`;
         });
-        html += `</body></html>`;
-        // 手机上隐藏 iframe + print() 弹不出打印窗口，改为：Blob → 新窗口优先，失败用内置预览弹窗兜底
-        const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        let opened = null;
-        try { opened = window.open(url, "_blank"); } catch (e) { opened = null; }
-        if (opened) {
-          setTimeout(() => { try { opened.focus(); opened.print(); } catch (e) {} }, 600);
-          UI.toast("已在新窗口打开导出内容，选「打印」→「另存为 PDF」即可导出");
-          setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 120000);
-          return;
-        }
-        // 新窗口被拦截（如主屏 PWA）→ 内置预览弹窗：打印 / 下载 HTML 兜底
-        const ov = document.createElement("div");
-        ov.style.cssText = "position:fixed;inset:0;z-index:10020;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:14px";
-        ov.innerHTML = `<div style="background:var(--bg,#fff);color:var(--txt,#111);border-radius:14px;width:min(720px,100%);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.35)">
-          <div style="display:flex;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid rgba(128,128,128,.25);flex-wrap:wrap">
-            <b style="flex:1;min-width:120px">导出预览（${items.length} 项）</b>
-            <button class="btn sm primary" id="kgExpPrint">🖨️ 打印 / 另存为PDF</button>
-            <a class="btn sm" id="kgExpDl" download="考公导出${Date.now()}.html" href="${url}">⬇️ 下载HTML</a>
-            <button class="btn sm" id="kgExpClose">✕ 关闭</button>
-          </div>
-          <iframe id="kgExpFrame" title="导出预览" style="flex:1;width:100%;border:0;background:#fff"></iframe>
-        </div>`;
-        document.body.appendChild(ov);
-        const fr = ov.querySelector("#kgExpFrame");
-        fr.srcdoc = html;
-        ov.querySelector("#kgExpPrint").onclick = () => {
-          try { fr.contentWindow.focus(); fr.contentWindow.print(); }
-          catch (e) { try { window.open(url, "_blank"); } catch (e2) { UI.toast("打印失败，请用「下载HTML」后自行转 PDF"); } }
+        // 真·PDF：本地 html2canvas + jsPDF 直接生成 .pdf 文件下载（手机可用）；失败才回退打印
+        const doFallback = () => {
+          const blob = new Blob([`<!doctype html><html><head><meta charset="utf-8"><title>考公工作台 · 导出台账</title>
+<style>body{font-family:"Kaiti SC","STKaiti","KaiTi",serif;color:#111;background:#fff;padding:24px;line-height:1.7}
+h1{font-size:22px;text-align:center;border-bottom:2px solid #333;padding-bottom:8px}</style></head><body>
+<h1>考公工作台 · 导出台账</h1>${html}</body></html>`], { type: "text/html;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const w = window.open(url, "_blank");
+          if (!w) UI.toast("浏览器拦截了新窗口，请允许弹窗后重试");
+          else setTimeout(() => { try { w.focus(); w.print(); } catch (e) {} }, 600);
         };
-        ov.querySelector("#kgExpClose").onclick = () => { ov.remove(); try { URL.revokeObjectURL(url); } catch (e) {} };
-        UI.toast("已打开导出预览：可打印 / 另存为 PDF，或下载 HTML");
+        if (window.PDF && PDF.exportPdf) {
+          PDF.exportPdf("考公工作台 · 导出台账", html, { font: '"Kaiti SC","STKaiti","KaiTi",serif' })
+            .catch(() => doFallback());
+        } else doFallback();
       }
 
       // 多选工具条：切换 / 批量移动 / 批量删除 / 导出 PDF
