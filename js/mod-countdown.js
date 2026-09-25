@@ -2,7 +2,7 @@
 (function () {
   window.MODULES = window.MODULES || {};
   window.MODULES.countdown = {
-    title: "倒计时", icon: "countdown",
+    title: "倒计时", icon: "countdown", noCollapse: true,
     render(body) {
       const DB = window.DB, UI = window.UI;
       function daysLeft(dateStr) {
@@ -62,7 +62,30 @@
           <div class="muted small" style="margin-top:6px">复盘为正序计时，不设时限；停止后时长同样计入该科目今日专注时长。</div>
         </div>`;
 
-        let html = examCard + `<div class="card"><h3>📅 考试倒计时</h3>
+        // ===== 综合刷题（多模块合并限时） =====
+        const comboCard = `<div class="card" style="border-left:5px solid #9b6cff">
+          <div class="spread" style="align-items:center;gap:10px">
+            <h3 style="margin:0">🧩 综合刷题（多模块合并）</h3>
+          </div>
+          <div class="muted small" style="margin-top:6px">勾选多个模块、分别填题数，系统给出每科建议时间与总时限，合并成一个倒计时一起刷；超时未停会自动转正向并记「已延迟」。</div>
+          <div id="comboList" style="margin-top:10px">
+            ${subs.map(s => `<div class="combo-item" data-subj="${UI.esc(s)}" style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+              <input type="checkbox" class="combo-chk" data-subj="${UI.esc(s)}" style="width:auto"/>
+              <b style="min-width:84px">${UI.esc(s)}</b>
+              <input type="number" min="0" class="combo-count" data-subj="${UI.esc(s)}" placeholder="题数" style="max-width:80px"/>
+              <span class="combo-sug muted small" data-subj="${UI.esc(s)}" style="color:var(--cyan)"></span>
+            </div>`).join("")}
+          </div>
+          <div class="row" style="margin-top:8px;gap:8px;align-items:center">
+            <span id="comboTotal" class="muted small" style="font-weight:700;color:var(--cyan)">勾选并填题数后显示总时限</span>
+          </div>
+          <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap;align-items:center">
+            <input id="comboMin" type="number" min="1" step="1" placeholder="总时限(分)可改" style="max-width:150px"/>
+            <button class="btn primary" id="comboStart">▶ 开始综合刷题倒计时</button>
+          </div>
+        </div>`;
+
+        let html = examCard + comboCard + `<div class="card"><h3>📅 考试倒计时</h3>
           <div class="muted small">设置各考试日期，自动计算剩余天数。可自由增删。</div></div>
           ${banner}
           <div class="grid g3">`;
@@ -124,21 +147,57 @@
         const qStart = body.querySelector("#qStart");
         if (qStart && EM) qStart.onclick = () => {
           const n = parseInt(qCount.value, 10);
+          if (!n || n <= 0) { UI.toast("请先填写题目数量"); return; }
           const ov = parseInt(qMin && qMin.value, 10);
-          const r = EM.startQuiz(qSubj.value, n, (ov && ov > 0) ? ov : 0);
-          if (!r) return;
-          UI.toast("已开始 · " + r.task);
+          const mins = (ov && ov > 0) ? ov : Math.max(1, Math.round(EM.suggestMin(qSubj.value, n)));
+          // 直接进入全屏刷题模式（带倒计时配置），不再弹回小屏
+          window.__shuatiLaunch = { mode: "quiz", subject: qSubj.value, count: n, mins: mins };
           window.__updateTopTimer && window.__updateTopTimer();
-          location.hash = "#/timer";
+          location.hash = "#/shuati";
         };
         const rStart = body.querySelector("#rStart");
         if (rStart && EM) rStart.onclick = () => {
           const noteEl = body.querySelector("#rNote");
-          const r = EM.startReview(qSubj.value, (noteEl && noteEl.value || "").trim());
-          if (!r) return;
-          UI.toast("复盘开始（正向计时）：" + r.task);
-          window.__updateTopTimer && window.__updateTopTimer();
-          location.hash = "#/timer";
+          window.__shuatiLaunch = { mode: "review", subject: qSubj.value, note: (noteEl && noteEl.value || "").trim() };
+          location.hash = "#/shuati";
+        };
+        /* ===== 综合刷题：勾选多模块 + 每科题数 → 建议时间 → 合并倒计时 ===== */
+        function updCombo() {
+          if (!EM) return;
+          let total = 0, any = false;
+          body.querySelectorAll(".combo-item").forEach(it => {
+            const subj = it.dataset.subj;
+            const chk = it.querySelector(".combo-chk");
+            const cnt = parseInt(it.querySelector(".combo-count").value, 10);
+            const sug = it.querySelector(".combo-sug");
+            if (chk.checked && cnt > 0) {
+              const m = Math.max(1, Math.round(EM.suggestMin(subj, cnt)));
+              sug.textContent = cnt + " 题 ≈ " + m + " 分";
+              total += m; any = true;
+            } else { sug.textContent = ""; }
+          });
+          const tot = body.querySelector("#comboTotal");
+          if (tot) tot.textContent = any ? ("总建议时限 ≈ " + total + " 分钟（可手动改总时限）") : "勾选并填题数后显示总时限";
+        }
+        body.querySelectorAll(".combo-chk, .combo-count").forEach(el => { el.onchange = updCombo; el.oninput = updCombo; });
+        updCombo();
+        const comboStart = body.querySelector("#comboStart");
+        if (comboStart && EM) comboStart.onclick = () => {
+          const items = [];
+          body.querySelectorAll(".combo-item").forEach(it => {
+            const subj = it.dataset.subj;
+            const chk = it.querySelector(".combo-chk");
+            const cnt = parseInt(it.querySelector(".combo-count").value, 10);
+            if (chk.checked && cnt > 0) items.push({ subject: subj, count: cnt, mins: Math.max(1, Math.round(EM.suggestMin(subj, cnt))) });
+          });
+          if (!items.length) { UI.toast("请至少勾选一个模块并填写题数"); return; }
+          const ov = parseInt(body.querySelector("#comboMin").value, 10);
+          if (ov && ov > 0) {
+            const sum = items.reduce((a, b) => a + b.mins, 0);
+            if (sum > 0) items.forEach(it => { it.mins = Math.max(1, Math.round(it.mins / sum * ov)); });
+          }
+          window.__shuatiLaunch = { mode: "combo", combo: items };
+          location.hash = "#/shuati";
         };
       }
       render();

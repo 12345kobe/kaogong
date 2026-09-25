@@ -187,11 +187,13 @@
   function renderRoute() {
     const key = (location.hash.replace("#/", "") || "countdown");
     if (!MODULES[key]) { location.hash = "#/countdown"; return; }
-    // 离开「刷题模式」且仍在计时 → 自动结算（结束计时）
+    // 离开「刷题模式」：跳到「上岸计时器」小屏时保留计时（退出全屏继续刷），去其它页面才结算
     if (lastKey === "shuati" && key !== "shuati") {
       if (window.__shuatiCleanup) { try { window.__shuatiCleanup(); } catch (e) {} }
-      if (DB.timerState && DB.timerState().running) {
-        const r = DB.timerSettle("刷题模式");
+      if (key === "timer") {
+        // 退出全屏到小屏：计时继续，不结算（由小屏的「停止并结算」或再次离开决定）
+      } else if (DB.timerState && DB.timerState().running) {
+        const r = DB.timerSettle("刷题模式", true);
         UI.toast(`已退出刷题模式，计时结束：专注 ${fmtMs(r.sec * 1000)}${r.planId ? "，已记入今日计划 ✓" : ""}`);
         window.__updateTopTimer && window.__updateTopTimer();
       }
@@ -202,8 +204,9 @@
     const body = document.getElementById("pageBody"); body.innerHTML = "";
     try { MODULES[key].render(body); }
     catch (e) { body.innerHTML = `<div class="card empty">模块加载出错：${UI.esc(e.message)}</div>`; console.error(e); }
-    // 通用折叠：模块内辅助小板块默认收起（AI 有独立全屏布局、设置为表单页，均不参与）
-    if (key !== "ai" && key !== "settings") {
+    // 通用折叠：模块内辅助小板块默认收起（AI 有独立全屏布局、设置为表单页均不参与；
+    // 倒计时页 noCollapse=true → 所有板块保持展开，不折叠）
+    if (key !== "ai" && key !== "settings" && !(MODULES[key] && MODULES[key].noCollapse)) {
       try { UI.autoCollapse(body); } catch (e) { console.error(e); }
     }
     // AI 咨询：整屏对话模式（隐藏浮动按钮、去掉内边距，让对话区占屏 80%+）
@@ -402,7 +405,14 @@
     const s = DB.timerState ? DB.timerState() : null;
     if (s && s.running) {
       el.style.display = "";
-      el.textContent = "⏱ " + fmtMs(DB.timerElapsedMs());
+      const elapsed = DB.timerElapsedMs();
+      if (s.targetMs && s.targetMs > 0 && elapsed >= s.targetMs) {
+        el.textContent = "⏰ 已延迟 " + fmtMs(elapsed - s.targetMs);
+      } else if (s.targetMs && s.targetMs > 0) {
+        el.textContent = "⏳ 剩 " + fmtMs(DB.timerRemainingMs());
+      } else {
+        el.textContent = "⏱ " + fmtMs(elapsed);
+      }
     } else {
       el.style.display = "none";
     }

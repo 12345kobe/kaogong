@@ -153,6 +153,8 @@
     const d = DB(); if (!d || !d.timerState) return;
     const tt = d.timerState();
     if (!tt || !tt.running || !tt.targetMs || tt.targetMs <= 0) return;
+    // 刷题模式全屏 / 小屏 自行处理超时（从 0 转正向「已延迟」），不再弹窗
+    if (tt.shuati) return;
     if (d.timerElapsedMs() >= tt.targetMs) onCountdownEnd();
   }
   function onCountdownEnd() {

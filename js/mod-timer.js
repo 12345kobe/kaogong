@@ -56,7 +56,9 @@
         const plan = DB.getPlan(date);
         const running = s.running;
         const isCountdown = s.targetMs && s.targetMs > 0;
-        const displayMs = isCountdown ? Math.max(0, DB.timerRemainingMs()) : DB.timerElapsedMs();
+        const elapsed = DB.timerElapsedMs();
+        const overtime = isCountdown && elapsed >= s.targetMs;
+        const displayMs = overtime ? (elapsed - s.targetMs) : (isCountdown ? Math.max(0, DB.timerRemainingMs()) : elapsed);
         const laps = s.laps || [];
         const fastestN = laps.length > 1 ? (() => { let mn = 0; laps.forEach((d, i) => { if (d < laps[mn]) mn = i; }); return mn + 1; })() : -1;
 
@@ -76,8 +78,8 @@
           <button class="btn ghost sm" id="toShuati" style="margin-top:10px">📱 进入刷题模式（全屏 · 可自定义背景图）</button>
         </div>
         <div class="card" style="margin-top:8px;text-align:center">
-          <div id="tElapsed" style="font-size:48px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:1px">${fmt(displayMs)}</div>
-          <div id="tState" class="muted small" style="margin:6px 0 12px">${running ? (isCountdown ? "⏳ 倒计时中…" : "⏳ 计时中…") : (s.task ? "已暂停" : (isCountdown ? "未开始（倒计时）" : "未开始"))}${s.task ? " · " + esc(s.task) : ""}</div>
+          <div id="tElapsed" style="font-size:48px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:1px${overtime ? ";color:#ff6b81" : ""}">${fmt(displayMs)}</div>
+          <div id="tState" class="muted small" style="margin:6px 0 12px">${running ? (overtime ? "⏰ 已延迟 · 正向计时中" : (isCountdown ? "⏳ 倒计时中…" : "⏳ 计时中…")) : (s.task ? "已暂停" : (isCountdown ? "未开始（倒计时）" : "未开始"))}${overtime ? "（已延迟 " + fmt(elapsed - s.targetMs) + "）" : ""}${s.task ? " · " + esc(s.task) : ""}</div>
           <div class="row" style="justify-content:center;gap:10px;flex-wrap:wrap">
             <button class="btn ${running ? 'lap-btn' : 'btn ghost'}" id="lapBtn" ${running ? '' : 'disabled'}>⏱ 分段</button>
             ${running
@@ -111,8 +113,16 @@
         if (running) {
           iv = setInterval(() => {
             const st = DB.timerState();
-            if (el) el.textContent = fmt(st.targetMs && st.targetMs > 0 ? Math.max(0, DB.timerRemainingMs()) : DB.timerElapsedMs());
-            if (st.targetMs && st.targetMs > 0 && DB.timerElapsedMs() >= st.targetMs) {
+            const eMs = DB.timerElapsedMs();
+            const ot = st.targetMs > 0 && eMs >= st.targetMs;
+            if (el) {
+              const v = ot ? (eMs - st.targetMs) : (st.targetMs > 0 ? Math.max(0, DB.timerRemainingMs()) : eMs);
+              el.textContent = fmt(v);
+              el.style.color = ot ? "#ff6b81" : "";
+            }
+            if (st.targetMs && st.targetMs > 0 && eMs >= st.targetMs) {
+              // 刷题模式（tt.shuati）：由全屏/小屏自行显示「已延迟」正向计时，不弹窗结算
+              if (st.shuati) return;
               clearInterval(iv); iv = null;
               // 倒计时到点统一交给考试模式处理（弹窗 + 震动 + 结算），避免两处重复结算
               if (window.KGExam && KGExam.onCountdownEnd) KGExam.onCountdownEnd();
@@ -166,7 +176,9 @@
           // 复盘（正向计时）标记：结算时额外记一笔该科目复盘时长
           const tt0 = DB.timerState();
           const wasReview = !!tt0.review, revSubj = tt0.subject || "";
-          const r = DB.timerSettle("计时器");
+          const wasShuati = !!tt0.shuati;
+          // 刷题模式（含超时延迟段）按实际用时计；其余按原逻辑（倒计时计计划时限）
+          const r = DB.timerSettle("计时器", wasShuati);
           if (wasReview && window.KGExam && KGExam.logReview) {
             KGExam.logReview(revSubj, r.mins);
             try { DB.timerState().review = false; DB.save(); } catch (e) {}

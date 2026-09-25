@@ -368,13 +368,17 @@
       return ms;
     },
     /* 统一结算：停止计时 + 记当日专注分钟 + 标记绑定计划项完成。返回 {sec, mins, planId}
-       上岸计时器与刷题模式共用，避免重复逻辑。有选学科时按学科记专注时长（供学习统计/学习计划）。 */
-    timerSettle(label) {
+       上岸计时器与刷题模式共用，避免重复逻辑。有选学科时按学科记专注时长（供学习统计/学习计划）。
+       creditActual：为真时（刷题模式超时——计划时限段 + 延迟段），按实际用时计专注分钟，
+       而不是按 targetMs 计；这样「规定时间内没结束、往后延」的两段时间会相加计入总时长。 */
+    timerSettle(label, creditActual) {
       label = label || "计时器";
       const tt = state.taskTimer;
       const planId = tt.planId, targetMs = tt.targetMs, subject = tt.subject;
       const sec = this.timerStop();
-      const mins = targetMs && targetMs > 0 ? Math.max(1, Math.round(targetMs / 60000)) : Math.max(1, Math.round(sec / 60));
+      const mins = (creditActual && targetMs && targetMs > 0)
+        ? Math.max(1, Math.round(sec / 60))
+        : (targetMs && targetMs > 0 ? Math.max(1, Math.round(targetMs / 60000)) : Math.max(1, Math.round(sec / 60)));
       const mod = (subject && subject !== "") ? subject : label;
       this.addTimerMinutes(mod, mins);
       if (subject && subject !== "" && window.KG_SUBJECTS && window.KG_SUBJECTS.indexOf(this.fullSubject(subject)) >= 0) {

@@ -695,6 +695,13 @@ body.light:not(.glass) .wn-btn.on{color:#0f1828}
 .shuati-relate .btn{padding:9px 14px;font-size:13px}
 .shuati-fontrow{display:inline-flex;align-items:center;gap:6px;font-size:13px;cursor:pointer}
 .shuati-fontrow input[type=color]{border:1px solid rgba(255,255,255,.3);border-radius:6px}
+/* 刷题模式：超时「已延迟」正向计时（上方顶栏药丸 + 中央红色标签） */
+.shuati-otpill{background:rgba(255,107,129,.22);border:1px solid rgba(255,107,129,.6);color:#ff8c9e;
+  padding:6px 12px;border-radius:20px;font-size:13px;font-weight:800;white-space:nowrap}
+.shuati-overdue{font-size:18px;font-weight:800;color:#ff6b81;text-shadow:0 2px 8px rgba(0,0,0,.5);margin-top:10px}
+/* 刷题模式：综合刷题记录表单行 */
+.combo-row .shuati-input{width:64px;display:inline-block;margin:0 4px;padding:8px 6px;font-size:14px}
+.combo-row .shuati-input::placeholder{color:rgba(255,255,255,.55)}
 /* 刷题模式：未开始的任务输入 + 结束后的记录表单 */
 .shuati-input{width:100%;max-width:420px;padding:12px 14px;font-size:16px;border-radius:12px;
   border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.14);color:#fff;
