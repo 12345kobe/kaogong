@@ -45,7 +45,7 @@
   }
 
   window.MODULES.timer = {
-    title: "上岸计时器", icon: "timer",
+    title: "上岸计时器", icon: "timer", noCollapse: true,
     render(body) {
       const DB = window.DB, UI = window.UI;
       const date = DB.today();
