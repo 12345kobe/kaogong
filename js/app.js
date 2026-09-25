@@ -209,6 +209,21 @@
     if (key !== "ai" && key !== "settings" && !(MODULES[key] && MODULES[key].noCollapse)) {
       try { UI.autoCollapse(body); } catch (e) { console.error(e); }
     }
+    // 每个模块顶部常驻「PDF 录入题目」快捷入口（无需进设置即可录入，按学科归入对应题册）
+    if (key !== "pdfimport" && key !== "settings" && key !== "ai" && key !== "shuati") {
+      try {
+        const entry = UI.el(`<div class="pdf-quick-entry">
+          <button class="btn primary sm" id="pdfQuickBtn">📥 录入题目（PDF / 文字 / AI 识图）</button>
+          <span class="muted small" style="margin-left:8px">一键进录入，按学科归入对应题册</span>
+        </div>`);
+        body.insertBefore(entry, body.firstChild);
+        entry.querySelector("#pdfQuickBtn").onclick = () => {
+          window.__pdfImportFrom = key;
+          window.__pdfImportExpandAll = true;   // 进入 PDF 录入后自动展开所有板块
+          location.hash = "#/pdfimport";
+        };
+      } catch (e) { console.error(e); }
+    }
     // AI 咨询：整屏对话模式（隐藏浮动按钮、去掉内边距，让对话区占屏 80%+）
     try { document.body.classList.toggle("ai-mode", key === "ai"); } catch (e) {}
     // 把 PDF 导入的题册挂到对应模块的「自行刷题」入口

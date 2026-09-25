@@ -929,6 +929,10 @@ body.light:not(.glass) .ai-msg.bot{ background:#f6f8fc }
 .kg-det-b > .card{ margin-top:0 }
 body.light:not(.glass) .kg-det{ background:#fff }
 body.light:not(.glass) .kg-det-s:hover{ background:#f3f6fb }
+/* 各模块顶部常驻「PDF 录入题目」快捷入口 */
+.pdf-quick-entry{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:12px 14px; margin-bottom:12px; border:1px solid var(--line); border-radius:12px; background:linear-gradient(180deg,var(--panel),var(--panel2)); box-shadow:var(--shadow) }
+body.light:not(.glass) .pdf-quick-entry{ background:#fff }
+.pdf-expand-bar{ display:flex; gap:10px; align-items:center; margin-bottom:10px; flex-wrap:wrap }
 .kg-sep{border:none;border-top:1px solid var(--line);opacity:.6}
 
 /* ===== AI 咨询：整屏对话（占屏 80% 以上） ===== */

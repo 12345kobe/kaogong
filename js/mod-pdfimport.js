@@ -1426,6 +1426,27 @@
       const root = UI.el(`<div class="pdf-import"></div>`);
       body.appendChild(root);
 
+      // 顶部：展开全部 / 收起全部 切换（默认仍收起；点一下把录入方式 / 题册 / 自定义题库等所有板块一次打开）
+      const expandBar = UI.el(`<div class="pdf-expand-bar">
+        <button class="btn ghost sm" id="pdfExpandAll">▾ 展开全部板块</button>
+        <span class="muted small">默认收起；点「展开全部」一次打开所有板块（录入方式 / 题册 / 自定义题库）</span>
+      </div>`);
+      root.appendChild(expandBar);
+      const pdfExpandAll = expandBar.querySelector("#pdfExpandAll");
+      function setAllOpen(open) {
+        root.querySelectorAll("details.kg-det").forEach(d => { d.open = open; });
+        pdfExpandAll.textContent = open ? "▴ 收起全部板块" : "▾ 展开全部板块";
+      }
+      pdfExpandAll.onclick = () => {
+        const anyClosed = Array.from(root.querySelectorAll("details.kg-det")).some(d => !d.open);
+        setAllOpen(anyClosed);
+      };
+      // 从各模块「录入题目」入口进来时，自动展开所有板块（满足「点击即全部打开」）
+      if (window.__pdfImportExpandAll) {
+        window.__pdfImportExpandAll = false;
+        setTimeout(() => setAllOpen(true), 0);
+      }
+
       // 录入方式折叠区（默认收起，满足「默认关闭不展开」；识别完成后自动展开）
       const inputWrap = UI.el(`<details class="kg-det"><summary class="kg-det-s"><span class="kg-det-t">📥 录入方式（文件 / 文字 / AI 识图，点开）</span><span class="kg-det-arrow">▸</span></summary><div class="kg-det-b"></div></details>`);
       root.appendChild(inputWrap);
