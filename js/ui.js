@@ -901,7 +901,8 @@
         return false;
       };
       const updateClear = function (btn, inp) {
-        const show = !!inp.value && inp.value.length > 0 && (inp.matches(":focus") || inp.matches(":hover") || btn.matches(":hover"));
+        // 只要有内容就显示（手机没有 hover，聚焦要求会让按钮"看起来不存在"）
+        const show = !!inp.value && inp.value.length > 0;
         btn.style.display = show ? "flex" : "none";
       };
       const addTo = function (inp) {
@@ -917,6 +918,7 @@
         btn.setAttribute("aria-label", "清空");
         btn.textContent = "✕";
         btn.addEventListener("mousedown", function (e) { e.preventDefault(); }); // 避免点击时输入框失焦
+        btn.addEventListener("touchstart", function (e) { e.preventDefault(); }, { passive: false }); // iOS 触屏同理
         btn.addEventListener("click", function (e) {
           e.preventDefault();
           inp.value = "";
@@ -928,10 +930,6 @@
         inp.addEventListener("input", refresh);
         inp.addEventListener("focus", refresh);
         inp.addEventListener("blur", function () { setTimeout(refresh, 120); });
-        inp.addEventListener("mouseenter", refresh);
-        inp.addEventListener("mouseleave", refresh);
-        btn.addEventListener("mouseenter", refresh);
-        btn.addEventListener("mouseleave", refresh);
         if (parent) parent.appendChild(btn);
         refresh();
       };

@@ -2703,11 +2703,38 @@
           if (idx < items.length - 1) html += `<div class="pgbreak"></div>`;
         });
         html += `</body></html>`;
-        const f = document.createElement("iframe");
-        f.style.position = "fixed"; f.style.right = "0"; f.style.bottom = "0"; f.style.width = "0"; f.style.height = "0"; f.style.border = "0"; f.style.opacity = "0";
-        f.onload = () => { setTimeout(() => { try { f.contentWindow.focus(); f.contentWindow.print(); } catch (e) { UI.toast("导出失败：" + e.message); } }, 300); };
-        f.srcdoc = html; document.body.appendChild(f);
-        UI.toast("已打开打印窗口，选择「另存为 PDF」即可导出");
+        // 手机上隐藏 iframe + print() 弹不出打印窗口，改为：Blob → 新窗口优先，失败用内置预览弹窗兜底
+        const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        let opened = null;
+        try { opened = window.open(url, "_blank"); } catch (e) { opened = null; }
+        if (opened) {
+          setTimeout(() => { try { opened.focus(); opened.print(); } catch (e) {} }, 600);
+          UI.toast("已在新窗口打开导出内容，选「打印」→「另存为 PDF」即可导出");
+          setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 120000);
+          return;
+        }
+        // 新窗口被拦截（如主屏 PWA）→ 内置预览弹窗：打印 / 下载 HTML 兜底
+        const ov = document.createElement("div");
+        ov.style.cssText = "position:fixed;inset:0;z-index:10020;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:14px";
+        ov.innerHTML = `<div style="background:var(--bg,#fff);color:var(--txt,#111);border-radius:14px;width:min(720px,100%);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.35)">
+          <div style="display:flex;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid rgba(128,128,128,.25);flex-wrap:wrap">
+            <b style="flex:1;min-width:120px">导出预览（${items.length} 项）</b>
+            <button class="btn sm primary" id="kgExpPrint">🖨️ 打印 / 另存为PDF</button>
+            <a class="btn sm" id="kgExpDl" download="考公导出${Date.now()}.html" href="${url}">⬇️ 下载HTML</a>
+            <button class="btn sm" id="kgExpClose">✕ 关闭</button>
+          </div>
+          <iframe id="kgExpFrame" title="导出预览" style="flex:1;width:100%;border:0;background:#fff"></iframe>
+        </div>`;
+        document.body.appendChild(ov);
+        const fr = ov.querySelector("#kgExpFrame");
+        fr.srcdoc = html;
+        ov.querySelector("#kgExpPrint").onclick = () => {
+          try { fr.contentWindow.focus(); fr.contentWindow.print(); }
+          catch (e) { try { window.open(url, "_blank"); } catch (e2) { UI.toast("打印失败，请用「下载HTML」后自行转 PDF"); } }
+        };
+        ov.querySelector("#kgExpClose").onclick = () => { ov.remove(); try { URL.revokeObjectURL(url); } catch (e) {} };
+        UI.toast("已打开导出预览：可打印 / 另存为 PDF，或下载 HTML");
       }
 
       // 多选工具条：切换 / 批量移动 / 批量删除 / 导出 PDF
