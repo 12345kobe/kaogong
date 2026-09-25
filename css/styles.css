@@ -1423,7 +1423,7 @@ body.glass:not(.light)::after{ background:rgba(10,10,12,var(--g-overlay,0)); }
 .dr-h{margin:8px 0}
 .dr-pt{padding:8px 12px;border-left:3px solid var(--cyan);margin:0 0 10px;background:var(--panel);border-radius:0 var(--radius) var(--radius) 0;line-height:1.75}
 .dr-pt-t{font-weight:700}
-.dr-pt b{color:var(--cyan)}
+.dr-pt b, .dr-emp{color:var(--red,#d4391e);font-weight:700}
 
 /* ===== 启动页（2s，主题横竖屏图，右下角小版本号） ===== */
 #kgSplash{position:fixed;inset:0;z-index:99999;background:#0b0b0c center/cover no-repeat;transition:opacity .45s ease}

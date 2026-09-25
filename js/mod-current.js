@@ -891,7 +891,16 @@
       const drSec = UI.section("🎯 每周时政演练（考点学习 + 模拟演练）", { open: true });
       body.appendChild(drSec);
       const drBody = drSec.querySelector(".kg-det-b");
-      const drBold = s => esc(s || "").replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+      /* 考点重点突出：① 书名号《》内的政策/文件/文章名 ② 时间/数字（年份·百分数·期次）
+       * ③ 用户显式 **标粗**（PDF 原标粗 / 自导入保留）。内置 drills-data.js 考点无 **，
+       * 靠①②自动突出重点；自导入 PDF 的 ** 照常生效。esc 先行，注入的 <b> 受信任。 */
+      const drBold = s => {
+        let h = esc(s || "");
+        h = h.replace(/《([^》]{1,80})》/g, '《<b class="dr-emp">$1</b>》');
+        h = h.replace(/(20\d{2}(?:年\d{1,2}月\d{1,2}日|年\d{1,2}月|年)|约?\d+(?:\.\d+)?%|第[一二三四五六七八九十百零0-9]+(?:期|次))/g, '<b class="dr-emp">$1</b>');
+        h = h.replace(/\*\*([^*]{1,300})\*\*/g, "<b>$1</b>");
+        return h;
+      };
 
       function allDrills() {
         const built = (window.KG_DRILLS || []).map(w => Object.assign({ id: "d_" + w.label, custom: false }, w));
