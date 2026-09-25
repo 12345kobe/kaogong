@@ -196,16 +196,65 @@
     return deliverPdf(pdf, name, total);
   }
 
-  /* 优先生成真 PDF；失败自动回退到打印页（旧行为，桌面可用） */
+  /* ===== 手机端：同文档拉起系统打印页（纯文字排版，iOS/安卓打印页里可直接「存储为 PDF」）=====
+     图片式 PDF 会把内容按固定高度切割（文字被拦腰截断）；系统打印页是原文字自动分页，无此问题。 */
+  function printCss() {
+    return `
+@media screen{ #kgPrintRoot{ display:none !important; } }
+@media print{
+  body > *:not(#kgPrintRoot){ display:none !important; }
+  html,body{ background:#fff !important; margin:0 !important; padding:0 !important; }
+  #kgPrintRoot{ display:block !important; }
+  @page{ size:A4; margin:12mm; }
+  ${PDF_CSS.replace(/#kgPdfHost/g, "#kgPrintRoot")}
+}`;
+  }
+
+  function printInPlace(title, bodyHtml, opts) {
+    opts = opts || {};
+    const old = document.getElementById("kgPrintRoot");
+    if (old) old.remove();
+    const root = document.createElement("div");
+    root.id = "kgPrintRoot";
+    root.innerHTML = `<style>${printCss().replace("#kgPrintRoot{color:#111", "#kgPrintRoot{font-family:" + (opts.font || '"Microsoft YaHei","PingFang SC",sans-serif') + ";color:#111")}</style>
+      <h1>${title}</h1>
+      <div class="meta">导出来源：考公工作台 · 生成时间：${stampNow()}${opts.fontLabel ? " · 字体：" + opts.fontLabel : ""}</div>
+      ${bodyHtml}
+      <div class="foot">考公工作台 · 个人备考助手</div>`;
+    document.body.appendChild(root);
+    const done = function () {
+      const r = document.getElementById("kgPrintRoot");
+      if (r) r.remove();
+      window.removeEventListener("afterprint", done);
+    };
+    window.addEventListener("afterprint", done, { once: true });
+    setTimeout(function () {
+      try { window.print(); } catch (e) { console.warn("print 失败", e); }
+      setTimeout(done, 90000); // 兜底清理（部分浏览器不触发 afterprint）
+    }, 150);
+  }
+
+  function isMobileLike() {
+    return /iPhone|iPad|iPod|Android|Mobile/i.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  }
+
+  /* 导出路由：手机 → 拉起系统打印页（纯文字，可另存 PDF）；桌面 → 生成 PDF 文件下载 */
   async function exportPdfOrPrint(title, bodyHtml, opts) {
+    if (isMobileLike()) {
+      printInPlace(title, bodyHtml, opts);
+      if (window.UI && UI.toast) UI.toast("已拉起打印页：点「分享」→「存储到文件」即可导出 PDF");
+      return;
+    }
     try {
       if (window.UI && UI.toast) UI.toast("正在生成 PDF，请稍候…");
-      // 超时保护：手机渲染慢/卡住时不至于永远停在「正在生成」
+      // 超时保护：渲染慢/卡住时不至于永远停在「正在生成」
       const r = await Promise.race([
         htmlToPdf(title, bodyHtml, opts),
         new Promise((_, rej) => setTimeout(() => rej(new Error("生成超时")), 120000))
       ]);
       if (window.UI && UI.toast && r.mode !== "panel") UI.toast(`已导出 PDF（${r.pages} 页）：${r.filename}`);
+      return r;
     } catch (e) {
       console.warn("PDF 生成失败，回退打印：", e);
       if (window.UI && UI.toast) UI.toast("PDF 生成失败，已改用打印窗口");
