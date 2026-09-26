@@ -229,7 +229,7 @@
     if (key !== "pdfimport" && key !== "settings" && key !== "ai" && key !== "shuati") {
       try {
         const entry = UI.el(`<div class="pdf-quick-entry">
-          <button class="btn primary sm" id="pdfQuickBtn">📥 录入题目（PDF / 文字 / AI 识图）</button>
+          <button class="btn primary sm" id="pdfQuickBtn" data-guide-bypass>📥 录入题目（PDF / 文字 / AI 识图）</button>
           <span class="muted small" style="margin-left:8px">一键进录入，按学科归入对应题册</span>
         </div>`);
         body.insertBefore(entry, body.firstChild);
@@ -1032,9 +1032,20 @@
       if (DB.isLoggedIn()) DB.startAutoSync();
       renderRoute(); refreshTop();
       if (splash) { splash.classList.add("kg-splash-hide"); setTimeout(() => { try { splash.remove(); } catch (e) {} }, 500); }
-      // 新手引导：首次使用自动启动一次；跳过或走完后写入标记，此后不再干预
+      // 新手引导：只对「真·新用户」自动启动（本地无任何学习数据）。
+      // 清缓存 / 删除并重加主屏图标会丢 kg_guide_done 标记，但学习数据若还在（或云端同步回来），
+      // 说明是老用户——不再弹引导（引导遮罩会拦住「📥 录入题目」等快捷入口），直接补写完成标记。
       setTimeout(() => {
-        try { if (window.Guide && !window.Guide.isDone()) window.Guide.start(); } catch (e) { console.error(e); }
+        try {
+          if (window.Guide && !window.Guide.isDone()) {
+            const st = DB.state || {};
+            const hasUsage = (st.pdfBooks && st.pdfBooks.length)
+              || (st.pdfBookPractice && st.pdfBookPractice.length)
+              || (st.wrongbook && Object.keys(st.wrongbook).some(k => (st.wrongbook[k] || []).length));
+            if (hasUsage) { try { localStorage.setItem("kg_guide_done", "1"); } catch (e) {} }
+            else window.Guide.start();
+          }
+        } catch (e) { console.error(e); }
       }, 900);
     });
 

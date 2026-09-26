@@ -730,7 +730,11 @@ body.light:not(.glass) .wn-btn.on{color:#0f1828}
   #sidebar.open ~ #navScrim{opacity:1;pointer-events:auto}
   #menuToggle{display:block;width:42px;height:42px;font-size:18px}
   #topbar{padding-top:calc(env(safe-area-inset-top, 0px) + 12px);padding-left:14px;padding-right:14px}
-  #content{padding:16px 14px 50px}
+  /* 底部留白收敛：50px 的死空白在「内容刚好比屏幕高一点」的页面上很碍眼（要多拉一下才能看完）。
+     收到 32px，仍够让末行不压在悬浮按钮（✍ 手写 / 专注）上 */
+  #content{padding:16px 14px 32px}
+  /* 页面最后一个板块不再垫外边距，内容到底即止，不再拖出一截空白 */
+  #pageBody > :last-child{margin-bottom:0}
   .top-center{display:none}
   .clock{font-size:17px}
   .checkin-btn{padding:8px 12px;font-size:12px}

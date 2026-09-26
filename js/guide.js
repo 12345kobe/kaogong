@@ -110,6 +110,16 @@
   /* 只允许点击被高亮的那个区域：其余点击全部拦截 */
   function onMaskClick(e) {
     if (!active || !E) return;
+    // 逃生通道：带 data-guide-bypass 的按钮（如「📥 录入题目」）不受引导拦截——
+    // 点它视为放弃引导：先结束引导（写完成标记、拆遮罩），再把点击转交给按钮本身
+    let ub = null;
+    try {
+      E.mask.style.pointerEvents = "none";
+      ub = document.elementFromPoint(e.clientX, e.clientY);
+      E.mask.style.pointerEvents = "auto";
+    } catch (err) {}
+    const bypass = ub && ub.closest && ub.closest("[data-guide-bypass]");
+    if (bypass) { finish(); try { bypass.click(); } catch (err) {} return; }
     const t = targetEl();
     if (!t) return;
     const r = t.getBoundingClientRect();
