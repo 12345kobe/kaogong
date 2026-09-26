@@ -88,6 +88,22 @@
         document.body.style.removeProperty("--custom-blur");
       }
       applyEmojis();
+      applyAppIcon();
+    }
+    /* 桌面 App 图标按主题换装（与 head 内联脚本同一套映射）：
+       cyber→赛博朋克图 / cute→可爱图 / wuxia→武侠图 / 其余（minimal/custom等）→通用图。
+       iOS 加主屏那一刻读 apple-touch-icon；安卓读 manifest（下次打开生效）。 */
+    function applyAppIcon() {
+      const n = (getState() || {}).name;
+      const k = n === "cyber" ? "cyber" : n === "cute" ? "cute" : n === "wuxia" ? "wuxia" : "default";
+      try {
+        const mf = document.querySelector('link[rel="manifest"]');
+        if (mf) mf.href = "manifest-" + k + ".webmanifest";
+        const at = document.querySelector('link[rel="apple-touch-icon"]');
+        if (at) at.href = "assets/appicon/" + k + "-180.png";
+        const fv = document.querySelector('link[rel="icon"]');
+        if (fv) fv.href = "assets/appicon/" + k + "-192.png";
+      } catch (e) {}
     }
     /* 赛博朋克主题：导航/页标题图标改为变形金刚角色（擎天柱/大黄蜂/威震天），按模块分配 */
     const CYBER_ICON_MAP = {

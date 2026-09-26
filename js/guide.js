@@ -139,9 +139,17 @@
   /* 点中了导航项 → 进入模块后自动推进到该模块的说明步骤 */
   function onHash() {
     if (!active) return;
+    const cur = (location.hash || "").replace("#/", "") || "countdown";
+    const keys = MODS.map(m => m.key);
+    // 引导进行中用户跳到了覆盖范围外的模块（如点开「PDF 录入」）：自动结束引导并释放遮罩，不阻断操作
+    if (keys.indexOf(cur) === -1) {
+      active = false;
+      try { localStorage.setItem(DONE_KEY, "1"); } catch (e) {}
+      try { const g = document.getElementById("kgGuide"); if (g) g.remove(); } catch (e) {}
+      return;
+    }
     const s = steps[idx];
     if (!s) return;
-    const cur = (location.hash || "").replace("#/", "") || "countdown";
     if (s.type === "nav" && cur === s.key) { idx++; render(); }
   }
 
@@ -189,7 +197,14 @@
       const mr = document.getElementById("modalRoot"); if (mr) { mr.innerHTML = ""; mr.style.display = "none"; }
       document.querySelectorAll(".modal-mask,.modal-backdrop,.modal").forEach(n => { try { n.remove(); } catch (e) {} });
     } catch (e) {}
-    try { location.hash = "#/countdown"; } catch (e) {}
+    // 新手引导只覆盖 NAV 内的模块；若用户当前已在引导覆盖范围外的页面（如「PDF 录入」），
+    // 不打断、不强制跳回，直接结束引导，避免遮罩拦截点击。
+    var _gcur = (location.hash || "").replace("#/", "") || "countdown";
+    if (MODS.map(function (m) { return m.key; }).indexOf(_gcur) === -1) {
+      active = false;
+      try { var _g = document.getElementById("kgGuide"); if (_g) _g.remove(); } catch (e) {}
+      return false;
+    }
     render();
     return true;
   }

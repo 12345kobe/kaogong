@@ -1,0 +1,15 @@
+{
+  "name": "考公工作台 · 个人备考助手",
+  "short_name": "考公工作台",
+  "description": "集计划、学习、训练、复盘于一体的考公备考工具",
+  "start_url": "./?v=20260923a",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f1b3d",
+  "theme_color": "#0f1b3d",
+  "icons": [
+    { "src": "assets/appicon/wuxia-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/appicon/wuxia-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

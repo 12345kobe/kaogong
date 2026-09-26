@@ -2448,6 +2448,71 @@
         } catch (e) { UI.toast("启动练习失败：" + e.message); }
       }
 
+      /* ===== 合并刷题：多选题册的全部题目合成一场练习（答题页内可随时切练题/背题模式） ===== */
+      function startMultiQuiz() {
+        try {
+          const sel = gatherSelected().filter(it => it.type === "book");
+          if (!sel.length) { UI.toast("请先勾选要合并练习的题册（时政材料暂不支持合并刷题）"); return; }
+          const flat = [];
+          sel.forEach(it => {
+            const b = it.ref;
+            (b.sections || []).forEach((s, si) => (s.questions || []).forEach(q => {
+              if (q && q.q && q.options && q.options.length >= 2) flat.push({ q: q, b: b, si: si });
+            }));
+          });
+          if (!flat.length) { UI.toast("选中的题册里没有可练习的题目"); return; }
+          const qs = flat.map(f => {
+            const q = f.q, b = f.b;
+            const m = {
+              q: q.q, options: (q.options || []).slice(),
+              a: (q.a >= 0 && q.a < q.options.length) ? q.a : -1,
+              e: q.e || "", tag: (b && b.name) || "文件导入",
+              subject: (b && b.subject) || "常识" // 每题带来源学科：错题本/正确率按科目归档
+            };
+            if (typeof q.a === "string" && /^[A-Ea-e]{1,6}$/.test(q.a)) {
+              m.a = q.a.toUpperCase();
+              if (q.multi) m.multi = q.multi;
+              if (q.type) m.type = q.type;
+            }
+            if (q.img) m.img = q.img;
+            return m;
+          });
+          const host = UI.el(`<div style="max-height:64vh;overflow:auto;padding-top:8px"></div>`);
+          UI.modal({
+            title: "🎯 合并刷题 · " + sel.length + " 册 " + qs.length + " 题（顶部可切练题/背题）", body: host, width: "760px",
+            actions: [{ label: "关闭", cls: "ghost", onClick: (mm, c) => c() }]
+          });
+          window.Quiz.start(host, qs, sel.length === 1 ? (sel[0].ref.subject || "常识") : "常识", {
+            onDone(r) {
+              try {
+                // 按来源题册/章节拆分成绩，逐册记入练习统计（与单册练习同一套记录）
+                const groups = {};
+                flat.forEach((f, i) => {
+                  const k = (f.b.id || f.b.name || "book") + "::" + f.si;
+                  if (!groups[k]) groups[k] = { b: f.b, si: f.si, idx: [] };
+                  groups[k].idx.push(i);
+                });
+                Object.keys(groups).forEach(k => {
+                  const g = groups[k];
+                  const qT = g.idx.map(i => (r.qTimes && r.qTimes[i]) || 0);
+                  const ans = g.idx.map(i => (r.answers && r.answers[i]) || null);
+                  const total = g.idx.length;
+                  const correct = ans.filter(x => x && x.right).length;
+                  recordPractice(g.b, g.si, {
+                    total: total, correct: correct,
+                    pct: total ? Math.round(correct / total * 100) : 0,
+                    totalSec: qT.reduce((a, m) => a + (m || 0), 0),
+                    qTimes: qT, answers: ans
+                  }, "合并刷题 · " + sel.length + "册");
+                });
+                UI.toast(`合并刷题完成：${r.correct}/${r.total} · 正确率 ${r.pct}%（已按题册分别记入统计）`);
+                renderBooks();
+              } catch (e) {}
+            }
+          });
+        } catch (e) { UI.toast("启动合并刷题失败：" + e.message); }
+      }
+
       /* ===== 我的题册 + 文件夹（按学科整理，长按拖动，跟电脑整理文件一样） ===== */
       let _ftDrag = null; // 移动端长按拖动的临时状态
       let multiOn = false; const multiSel = new Set(); // 多选模式：选中的条目 "type:id"
@@ -2730,8 +2795,9 @@ h1{font-size:22px;text-align:center;border-bottom:2px solid #333;padding-bottom:
           // 多选工具条
           const bar = UI.el(`<div class="ft-mbar">
             <button class="btn sm ${multiOn ? "primary" : "ghost"}" id="multiToggle">${multiOn ? "✓ 多选模式" : "▢ 多选"}</button>
-            <span id="multiCount" class="muted small">${multiOn ? ("已选 " + multiSel.size + " 项") : "勾选后可批量移动 / 删除 / 导出"}</span>
+            <span id="multiCount" class="muted small">${multiOn ? ("已选 " + multiSel.size + " 项") : "勾选后可合并刷题 / 批量移动 / 删除 / 导出"}</span>
             ${multiOn ? `<span class="ft-macts">
+              <button class="btn sm primary" id="multiQuiz">🎯 合并刷题</button>
               <select id="multiMove"><option value="">移动到文件夹…</option>${window.KGFolders.list(subjShortName(ftsSubject)).map(f => `<option value="${esc(f.id)}">${esc((f.parentId ? "　" : "") + f.name)}</option>`).join("")}</select>
               <button class="btn sm" id="multiDel">批量删除</button>
               <button class="btn sm primary" id="multiExp">导出PDF</button>
@@ -2758,6 +2824,7 @@ h1{font-size:22px;text-align:center;border-bottom:2px solid #333;padding-bottom:
                 db().save(); multiSel.clear(); UI.toast("已删除 " + sel.length + " 项"); renderBooks();
               }
             };
+            bar.querySelector("#multiQuiz").onclick = () => startMultiQuiz();
             bar.querySelector("#multiExp").onclick = () => { exportItemsPdf(gatherSelected()); };
             bar.querySelector("#multiClear").onclick = () => { multiSel.clear(); renderBooks(); };
           }

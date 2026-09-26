@@ -116,7 +116,20 @@ def walk_files(root):
     return out
 
 files = walk_files(DIST)
-print(f"   待推送文件：{len(files)} 个")
+# 增量模式：KG_ONLY_FILE 指向一个「相对路径清单」txt（每行一个，相对 site/）。
+# 只推清单里的文件——GitHub tree 带 base_tree 时未列出的路径保持原样，因此这是安全的增量更新。
+# 用途：沙箱网络间歇性 SSL EOF 时，把 ~290 次 blob 调用压到十几次，避免全量跑到一半失败。
+ONLY_FILE = os.environ.get("KG_ONLY_FILE", "")
+if ONLY_FILE:
+    with open(ONLY_FILE, "r", encoding="utf-8") as f:
+        want = [ln.strip() for ln in f if ln.strip() and not ln.strip().startswith("#")]
+    missing = [w for w in want if not os.path.isfile(os.path.join(DIST, w))]
+    if missing:
+        print("   ❌ 清单里有文件不存在：", missing[:5]); sys.exit(1)
+    files = [(w, os.path.join(DIST, w)) for w in want]
+    print(f"   ⚡ 增量模式：只推 {len(files)} 个文件（其余保持线上原样）")
+else:
+    print(f"   待推送文件：{len(files)} 个")
 
 # 当前 main 引用
 st, ref = api("GET", f"/repos/{login}/{REPO}/git/refs/heads/main")
@@ -145,12 +158,13 @@ for rel, full in files:
     with open(full, "rb") as f:
         data = f.read()
     is_text = rel.endswith((".html", ".css", ".js", ".json", ".webmanifest", ".txt", ".md"))
+    # blob 上传重试调高：沙箱网络会间歇性 SSL EOF / 超时，默认 4 次（约 9s）扛不住较长抽风
     if is_text:
         st_b, blob = api("POST", f"/repos/{login}/{REPO}/git/blobs",
-                         {"content": data.decode("utf-8"), "encoding": "utf-8"})
+                         {"content": data.decode("utf-8"), "encoding": "utf-8"}, retries=8)
     else:
         st_b, blob = api("POST", f"/repos/{login}/{REPO}/git/blobs",
-                         {"content": base64.b64encode(data).decode("ascii"), "encoding": "base64"})
+                         {"content": base64.b64encode(data).decode("ascii"), "encoding": "base64"}, retries=8)
     if st_b != 201 or not isinstance(blob, dict) or "sha" not in blob:
         print("   ❌ 创建 blob 失败：", rel, st_b, blob.get("message") if isinstance(blob, dict) else blob); sys.exit(1)
     tree_entries.append({"path": rel, "mode": "100644", "type": "blob", "sha": blob["sha"]})
@@ -159,17 +173,21 @@ for rel, full in files:
 # 必须显式传 {"sha": null} 才会真正删掉。否则仓库里的历史垃圾（如早年误拷进去的
 # backend/backend + node_modules）会永久残留，越堆越多，甚至把 tree 请求撑爆返回 422。
 local_paths = {rel for rel, _ in files}
-st_rt, rtree = api("GET", f"/repos/{login}/{REPO}/git/trees/{base_sha}?recursive=1")
-if st_rt == 200 and isinstance(rtree, dict):
-    remote_blobs = {t["path"] for t in (rtree.get("tree") or []) if t.get("type") == "blob"}
-    to_delete = sorted(remote_blobs - local_paths)
-    if to_delete:
-        print(f"   🧹 仓库中已不存在于 site/ 的文件 {len(to_delete)} 个，本次一并删除"
-              + (f"：{to_delete[0]} 等" if len(to_delete) > 1 else f"：{to_delete[0]}"))
-        for p in to_delete:
-            tree_entries.append({"path": p, "mode": "100644", "type": "blob", "sha": None})
+# 增量模式不清删：清单外的文件必须原样保留，pruning 会把它们误删
+if ONLY_FILE:
+    print("   ⚡ 增量模式：跳过删除清理，仓库其余文件保持原样")
 else:
-    print(f"   ⚠️ 读取远端 tree 失败（{st_rt}），本次不做删除清理")
+    st_rt, rtree = api("GET", f"/repos/{login}/{REPO}/git/trees/{base_sha}?recursive=1")
+    if st_rt == 200 and isinstance(rtree, dict):
+        remote_blobs = {t["path"] for t in (rtree.get("tree") or []) if t.get("type") == "blob"}
+        to_delete = sorted(remote_blobs - local_paths)
+        if to_delete:
+            print(f"   🧹 仓库中已不存在于 site/ 的文件 {len(to_delete)} 个，本次一并删除"
+                  + (f"：{to_delete[0]} 等" if len(to_delete) > 1 else f"：{to_delete[0]}"))
+            for p in to_delete:
+                tree_entries.append({"path": p, "mode": "100644", "type": "blob", "sha": None})
+    else:
+        print(f"   ⚠️ 读取远端 tree 失败（{st_rt}），本次不做删除清理")
 
 # 创建 tree + commit + 更新引用；遇到 422 非快进（并发部署竞态）则重新拉取基准并重试一次
 commit = None
