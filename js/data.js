@@ -27,9 +27,14 @@
   const LS_KEY = "kg_desk_state_v1";
   const LS_TOKEN = "kg_sync_token";
   const LS_USER = "kg_sync_user";
+  const LS_DEVICE = "kg_device_id";
+  // ★ 同步保险箱：这些键不进云端（状态本体 / 登录凭据 / 设备 ID），其余 kg_* 全部镜像同步
+  const LS_VAULT_SKIP = { kg_desk_state_v1: 1, kg_sync_token: 1, kg_sync_user: 1, kg_device_id: 1 };
 
   const DEFAULT_STATE = {
-    meta: { version: 1, createdAt: null },
+    meta: { version: 1, createdAt: null, updatedAt: 0, deviceId: "" },
+    vault: {},   // ★ 同步保险箱：本机 localStorage 里所有 kg_* 配置（AI 密钥/服务商/字体/偏好…）镜像，随云端同步，换设备自动还原
+    vaultAt: 0,  // vault 最后写入时间（用于判断该采用云端还是本机）
     settings: { mode: "cumulative", dailyReset: false, timerGoalMin: 25, quizMode: "practice" },
     profile: { name: "考生" },
     countdown: {
@@ -170,7 +175,50 @@
       return list;
     },
 
-    _localSave() { try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {} },
+    /* 本机配置保险箱：把所有 kg_* 的 localStorage 项（AI 密钥 / 服务商 / 模型 / 字体 / 偏好…）
+       镜像进 state.vault，随云端同步；换设备登录同一账号后自动写回本机，配置一模一样。 */
+    deviceId() {
+      let id = null;
+      try { id = localStorage.getItem(LS_DEVICE); } catch (e) {}
+      if (!id) { id = "d" + Math.random().toString(36).slice(2, 9); try { localStorage.setItem(LS_DEVICE, id); } catch (e) {} }
+      return id;
+    },
+    _snapshotVault() {
+      const v = {};
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (!k || k.indexOf("kg_") !== 0 || LS_VAULT_SKIP[k]) continue;
+          const val = localStorage.getItem(k);
+          if (val != null) v[k] = "kg1:" + this._b64enc(val);   // 轻度可逆混淆：避免密钥明文出现在仓库里被扫描/吊销
+        }
+      } catch (e) {}
+      state.vault = v;
+      state.vaultAt = Date.now();
+    },
+    _applyVault(v) {
+      if (!v) return 0;
+      let n = 0;
+      try {
+        for (const k in v) {
+          if (LS_VAULT_SKIP[k] || k.indexOf("kg_") !== 0) continue;
+          const cur = localStorage.getItem(k);
+          let raw = v[k];
+          try { if (typeof raw === "string" && raw.indexOf("kg1:") === 0) raw = this._b64dec(raw.slice(4)); } catch (e) {}
+          if (cur !== raw) { localStorage.setItem(k, raw); n++; }
+        }
+      } catch (e) {}
+      return n;
+    },
+    _localSave() {
+      // 每次落盘都刷新「本机最后修改时间」，供云端判断哪边更新（跨设备最后写入生效）
+      state.meta = state.meta || {};
+      state.meta.updatedAt = Date.now();
+      try { state.meta.deviceId = this.deviceId(); } catch (e) {}
+      this._snapshotVault();
+      try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {}
+      this._dirty = true;
+    },
     save(immediate) {
       if (immediate) {
         this._localSave();
@@ -444,7 +492,8 @@
         (s.todos && Object.keys(s.todos).length));
     },
     /* ===== 累积合并：把两份数据「并集 / 求和 / 取大」地合在一起，绝不覆盖已有历史 ===== */
-    mergeStates(a, b) {
+    mergeStates(a, b, opts) {
+      const cloudNewer = !!(opts && opts.cloudNewer);
       if (!a) return JSON.parse(JSON.stringify(b || {}));
       if (!b) return a;
       const out = JSON.parse(JSON.stringify(a));
@@ -626,6 +675,119 @@
         }
       }
 
+      // ===== 手写笔迹 / 附件：跨设备同步（按 updatedAt 取较新；无时间戳则取笔画更多的一份） =====
+      out.notes = out.notes || {};
+      const ntIn = b.notes || {};
+      for (const s in ntIn) {
+        out.notes[s] = out.notes[s] || {};
+        for (const id in (ntIn[s] || {})) {
+          const inc = ntIn[s][id], cur = out.notes[s][id];
+          if (!cur || !(cur.strokes || []).length) { out.notes[s][id] = inc; continue; }
+          const ct = cur.updatedAt || 0, it = (inc && inc.updatedAt) || 0;
+          if (it > ct) out.notes[s][id] = inc;
+          else if (!ct && ((inc && inc.strokes ? inc.strokes.length : 0) > (cur.strokes || []).length)) out.notes[s][id] = inc;
+        }
+      }
+      out.attachments = out.attachments || {};
+      const atIn = b.attachments || {};
+      for (const s in atIn) {
+        out.attachments[s] = out.attachments[s] || {};
+        for (const id in (atIn[s] || {})) {
+          const cur = out.attachments[s][id] || [], inc = atIn[s][id] || [];
+          const sig = (x) => (x ? (x.name || "") + "|" + String(((x && x.data) || "").length) : "");
+          const have = new Set(cur.map(sig));
+          inc.forEach(x => { const g = sig(x); if (g && g !== "|0" && !have.has(g)) { cur.push(x); have.add(g); } });
+          out.attachments[s][id] = cur;
+        }
+      }
+
+      // 收藏 / 待办 / 每日计划：按 id 去重合并，完成状态取「或」（一边勾了就算完成）
+      out.favorites = out.favorites || {};
+      const fvIn = b.favorites || {};
+      for (const s in fvIn) out.favorites[s] = mergeArrById(out.favorites[s], fvIn[s]);
+      out.todos = out.todos || {};
+      const tdIn = b.todos || {};
+      for (const m in tdIn) {
+        const cur = out.todos[m] || [];
+        const map = new Map(cur.map(x => [S(x && x.id), x]));
+        (tdIn[m] || []).forEach(x => {
+          const id = S(x && x.id), c = map.get(id);
+          if (!c) { cur.push(x); if (id) map.set(id, x); }
+          else if (x && x.done) c.done = true;
+        });
+        out.todos[m] = cur;
+      }
+      out.dailyPlan = out.dailyPlan || {};
+      const dpIn = b.dailyPlan || {};
+      for (const d in dpIn) {
+        const A = out.dailyPlan[d] || { items: [], note: "" }, B = dpIn[d] || { items: [], note: "" };
+        A.items = A.items || [];
+        const map = new Map(A.items.map(x => [S(x && x.id), x]));
+        (B.items || []).forEach(x => {
+          const id = S(x && x.id), c = map.get(id);
+          if (!c) { A.items.push(x); if (id) map.set(id, x); }
+          else if (x && x.done) c.done = true;
+        });
+        if (!A.note && B.note) A.note = B.note;
+        else if (cloudNewer && B.note) A.note = B.note;
+        out.dailyPlan[d] = A;
+      }
+      // 公式 / 收藏公式：按文本去重合并
+      out.formulas = out.formulas || {};
+      const fmIn = b.formulas || {};
+      ["data", "quantity"].forEach(k => {
+        const sigOf = (x) => S((x && (x.id != null ? x.id : (x.text != null ? x.text : (x.name != null ? x.name : (x.q != null ? x.q : x.title))))));
+        const cur = out.formulas[k] || [], have = new Set(cur.map(sigOf));
+        (fmIn[k] || []).forEach(x => { const g = sigOf(x); if (g && !have.has(g)) { cur.push(x); have.add(g); } });
+        out.formulas[k] = cur;
+      });
+      // 艾宾浩斯复习进度：取更靠后的一份（box / next 都取大）
+      out.reviews = out.reviews || {};
+      out.reviews.verbal = out.reviews.verbal || {};
+      const rvIn = (b.reviews && b.reviews.verbal) || {};
+      for (const w in rvIn) {
+        const A = out.reviews.verbal[w], B = rvIn[w] || {};
+        out.reviews.verbal[w] = !A ? B : { box: Math.max(A.box || 0, B.box || 0), next: Math.max(A.next || 0, B.next || 0) };
+      }
+      // 时事热点用户修改：缺的补、有的取更完整的一份
+      out.hotspotsEdits = out.hotspotsEdits || {};
+      const heIn = b.hotspotsEdits || {};
+      for (const k in heIn) {
+        const A = out.hotspotsEdits[k], B = heIn[k] || {};
+        if (!A) { out.hotspotsEdits[k] = B; continue; }
+        out.hotspotsEdits[k] = {
+          title: (cloudNewer && B.title) ? B.title : (A.title || B.title),
+          body: ((B.body || "").length > (A.body || "").length) ? B.body : (A.body || B.body),
+          summary: ((B.summary || "").length > (A.summary || "").length) ? B.summary : (A.summary || B.summary)
+        };
+      }
+      // 申论每日名言：同一天勾选状态取并集，跨天取更晚的一份
+      out.essay = out.essay || {};
+      const bq = (b.essay || {}).quoteDaily, aq = out.essay.quoteDaily;
+      if (bq) {
+        if (!aq || (bq.date || "") > (aq.date || "")) out.essay.quoteDaily = JSON.parse(JSON.stringify(bq));
+        else if (bq.date === aq.date) {
+          const n = Math.max((aq.done || []).length, (bq.done || []).length), done = [];
+          for (let i = 0; i < n; i++) done[i] = !!(aq.done || [])[i] || !!(bq.done || [])[i];
+          aq.done = done; out.essay.quoteDaily = aq;
+        }
+      }
+
+      // =====「换手机也要一模一样」：设置类数据以云端较新的一份为准（最后写入生效）=====
+      //   学习类数据（题库/笔记/错题/历史）一律「只增不减」合并，绝不覆盖；
+      //   设置类（主题 / 资料 / 目标 / 考试日期 / 考试模式 / 本机配置保险箱）云端更新就整体采用。
+      if (cloudNewer) {
+        ["settings", "theme", "profile", "studyPlan", "timerGoal", "examMode", "examQuiz", "vault"].forEach(k => {
+          if (b[k] != null && typeof b[k] === "object") out[k] = JSON.parse(JSON.stringify(b[k]));
+          else if (b[k] !== undefined) out[k] = b[k];
+        });
+        if (b.countdown && Array.isArray(b.countdown.exams) && b.countdown.exams.length) {
+          out.countdown = out.countdown || {};
+          out.countdown.exams = JSON.parse(JSON.stringify(b.countdown.exams));
+        }
+        out.vaultAt = b.vaultAt || Date.now();
+      }
+
       // 其余字段：本地已有内容优先，缺失的才用传入数据补齐
       function fill(cur, inc) {
         for (const k in (inc || {})) {
@@ -663,23 +825,74 @@
       return true;
     },
 
-    /* ===== 自动同步：定时拉取 + 切回页面 / 获得焦点时立即拉取（保存时自动上传已在 save() 中） ===== */
+    /* ===== 自动同步：① 任何数据变动立即上传 ② 云端一有变化立即拉取 ===== */
     startAutoSync(intervalMs) {
       this.stopAutoSync();
-      const ms = intervalMs || 60000;
-      this._autoTimer = setInterval(() => this._schedulePull(), ms);
-      const onWake = () => { if (document.visibilityState === "visible") this._schedulePull(); };
+      const ms = intervalMs || 15000;
+      const tick = () => {
+        if (document.visibilityState !== "visible") return;
+        this.syncIfDirty();     // 本机数据有变 → 上传
+        this.checkCloud();      // 云端有变 → 拉取合并
+      };
+      this._autoTimer = setInterval(tick, ms);
+      const onWake = () => { if (document.visibilityState === "visible") { this.syncIfDirty(); this.checkCloud(); } };
       document.addEventListener("visibilitychange", onWake);
       window.addEventListener("focus", onWake);
+      window.addEventListener("online", onWake);
       this._onWake = onWake;
+      // 首次启动把云端版本记为基线，避免立刻重复拉一次
+      setTimeout(() => { this.checkCloud(true); }, 1500);
     },
     stopAutoSync() {
       if (this._autoTimer) { clearInterval(this._autoTimer); this._autoTimer = null; }
       if (this._onWake) {
         document.removeEventListener("visibilitychange", this._onWake);
         window.removeEventListener("focus", this._onWake);
+        window.removeEventListener("online", this._onWake);
         this._onWake = null;
       }
+    },
+    /* —— 变更检测：只要 state 与「上次成功上传时」不同就推一次，兜住所有没走 save() 的直接改动 —— */
+    _sig() {
+      try {
+        const s = JSON.stringify(state);
+        let h = 0;
+        for (let i = 0; i < s.length; i += 97) h = (h * 31 + s.charCodeAt(i)) | 0;  // 稀疏采样，够快也够灵敏
+        return s.length + ":" + h;
+      } catch (e) { return ""; }
+    },
+    syncIfDirty() {
+      if (!this.isLoggedIn() || !this._cloudReady) return;
+      if (this._syncing || this._pulling) return;
+      if (this._dirty) { this._dirty = false; this._schedulePush(); return; }
+      const sig = this._sig();
+      if (sig && sig !== this._pushedSig) { this._pushedSig = sig; this._schedulePush(); }
+    },
+    _cloudSeenKey() { return "kg_cloud_seen_" + (this.currentUser() || "user"); },
+    /* 云端版本：取该文件最新一次提交 sha（很轻，不含内容） */
+    async _cloudRev() {
+      try {
+        const r = await this._gh(`/repos/${GH.owner}/${GH.repo}/commits?sha=${GH.dataBranch}&path=${this._userPath()}&per_page=1`);
+        if (r && r.length) return r[0].sha;
+      } catch (e) {}
+      return null;
+    },
+    /* 云端是否变过 → 变了就拉取合并（另一台设备改了任何东西，这边自动跟上） */
+    async checkCloud(force) {
+      if (!this.isLoggedIn() || !this._cloudReady || this._pulling || this._syncing) return;
+      const rev = await this._cloudRev();
+      if (!rev) return;
+      const same = rev === this._lastCloudSha;
+      this._lastCloudSha = rev;
+      if (same && !force) return;      // 云端没变，不打扰
+      try { await this.pull(); } catch (e) {}
+    },
+    _afterApply() {
+      // 云端数据落到本机后：刷新顶栏 + 主题立即生效 + 重画当前页（答题/手写进行中不打断）
+      try { if (window.__refreshTop) window.__refreshTop(); } catch (e) {}
+      try { if (window.Theme && window.Theme.apply) window.Theme.apply(); } catch (e) {}
+      const busy = !!document.querySelector(".hw-overlay") || !!document.querySelector(".quiz-full") || !!(window.Quiz && window.Quiz.active);
+      try { if (!busy && window.__kgRerender) window.__kgRerender(); } catch (e) {}
     },
     _schedulePull() {
       if (!this.isLoggedIn() || !this._cloudReady || this._pulling || this._syncing) return;
@@ -726,33 +939,44 @@
     },
     async pull() {
       if (!this.isLoggedIn()) return { skip: true, msg: "未登录" };
+      this._pulling = true;
       try {
         const r = await this._gh(`/repos/${GH.owner}/${GH.repo}/contents/${this._userPath()}?ref=${GH.dataBranch}`);
         const data = mergeDefault(JSON.parse(this._b64dec(r.content)), DEFAULT_STATE);
         // 与本机「累积合并」：本机尚未上传的历史不会被云端覆盖
-        const before = this._countCustom(state);
-        state = this.mergeStates(state, data);
+        const beforeSig = this._sig();
+        // 判定云端是否比「本机上次见到的版本」更新 —— 是则设置类数据以云端为准（换设备后一模一样）
+        const cloudAt = (data.meta && data.meta.updatedAt) || 0;
+        const seen = Number(localStorage.getItem(this._cloudSeenKey()) || 0) || 0;
+        // 见过的时间戳为空（新设备/首次）或云端明显更新 → 以云端为准；2 秒容差避免自己刚推的回声被当成新数据
+        const cloudNewer = !seen || cloudAt > seen + 2000;
+        state = this.mergeStates(state, data, { cloudNewer });
         this.state = state;
+        if (cloudNewer) {
+          const n = this._applyVault(data.vault);       // 还原 AI 密钥 / 服务商 / 字体 / 偏好等本机配置
+          try { localStorage.setItem(this._cloudSeenKey(), String(cloudAt || Date.now())); } catch (e) {}
+          if (n) this._vaultApplied = n;
+        }
         this._localSave();
-        const after = this._countCustom(state);
-        // 只统计「云端有、本机没有」的增量（按 id 去重后的净新增）
-        const stats = {
-          customQuestions: Math.max(0, after.customQuestions - before.customQuestions),
-          pdfBooks: Math.max(0, after.pdfBooks - before.pdfBooks),
-          pdfBookPractice: Math.max(0, after.pdfBookPractice - before.pdfBookPractice)
-        };
-        const hasNew = stats.customQuestions || stats.pdfBooks || stats.pdfBookPractice;
-        // 导入完成后，把本机所有记录（含刚合并进来的）自动回传云端，保证两端一致
-        if (hasNew) { try { await this.push(); } catch (e) { console.warn("回传云端失败", e); } }
-        return { stats, hasNew };
+        const afterSig = this._sig();
+        const changed = beforeSig !== afterSig;
+        this._pushedSig = afterSig;
+        this._dirty = false;
+        // 合并结果回传云端，保证两端一致
+        if (changed) { try { await this.push(); } catch (e) { console.warn("回传云端失败", e); } }
+        if (changed || this._vaultApplied) { this._vaultApplied = 0; this._afterApply(); try { window.UI && window.UI.toast("☁️ 已同步云端最新数据"); } catch (e) {} }
+        return { changed };
       } catch (e) {
         if (e.notFound) return { skip: true, notFound: true, msg: "云端暂无数据" };
         console.warn("云端拉取失败", e);
         return { skip: true, error: true, msg: (e && e.message) || "拉取失败" };
+      } finally {
+        this._pulling = false;
       }
     },
     async push() {
       if (!this.isLoggedIn()) return;
+      this._localSave();                       // 上传前先落盘：确保 meta.updatedAt 与 vault 都是最新的
       const path = this._userPath();
       const content = this._b64enc(JSON.stringify(state));
       let sha = null;
@@ -778,20 +1002,34 @@
         } else throw e;
       }
     },
+    _afterPush() {
+      // 推成功：把「我已见到的云端版本」记成自己这份的时间戳，避免下次把自己的回声当成新数据
+      const at = (state.meta && state.meta.updatedAt) || Date.now();
+      try { localStorage.setItem(this._cloudSeenKey(), String(at)); } catch (e) {}
+      this._pushedSig = this._sig();
+      this._dirty = false;
+      this._lastCloudSha = null;   // 让下次 checkCloud 重新取真实 sha
+    },
     _schedulePush() {
       if (!this.isLoggedIn() || !this._cloudReady) return;
       if (this._syncing) { this._syncPending = true; return; }
       this._syncing = true;
-      this.push().catch(e => console.warn("云端同步失败", e)).then(() => {
-        this._syncing = false;
-        if (this._syncPending) { this._syncPending = false; this._schedulePush(); }
-      });
+      this.push().then(() => { this._afterPush(); })
+        .catch(e => console.warn("云端同步失败", e))
+        .then(() => {
+          this._syncing = false;
+          if (this._syncPending) { this._syncPending = false; this._schedulePush(); }
+        });
     }
   };
   DB._token = localStorage.getItem(LS_TOKEN) || null;
   DB._cloudReady = false;
   DB._syncing = false;
   DB._syncPending = false;
+  DB._pulling = false;
+  DB._dirty = false;
+  DB._pushedSig = "";
+  DB._lastCloudSha = null;
 
   window.DB = DB;
 })();
