@@ -2574,10 +2574,35 @@
         if (sec.style.display === "none") {
           sec.style.display = "block"; sec.innerHTML = "";
           (it.ref.sections || []).forEach((s, si) => {
-            const det = UI.section(`§ ${s.name || ("第" + (si + 1) + "块")} · ${(s.questions || []).length} 题${(s.theory && String(s.theory).trim()) ? " · 有考点" : ""}`);
-            sec.appendChild(det);
-            renderSectionBody(det.querySelector(".kg-det-b"), it.ref, si, false);
+            const hasT = !!(s.theory && String(s.theory).trim());
+            const nq = (s.questions || []).length;
+            if (!hasT && !nq) return;
+            // 紧凑一行：只露「考点 / 刷题」入口，详情按需展开（不再一上来就铺全部考点和题目）
+            const wrap = UI.el(`<div></div>`);
+            wrap.innerHTML = `<div class="ft-sec-line" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:5px 2px;border-top:1px dashed var(--line)">
+                <span class="small" style="flex:1;min-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">§ ${esc(s.name || ("第" + (si + 1) + "块"))}</span>
+                ${hasT ? `<button class="btn xs" data-a="study">📖 考点</button>` : ""}
+                ${nq ? `<button class="btn xs primary" data-a="quiz">🎯 刷题 ${nq}</button>` : ""}
+                <button class="btn xs ghost" data-a="more">详情 ▾</button>
+              </div>
+              <div class="ft-sec-more" style="display:none"></div>`;
+            const line = wrap.firstElementChild, more = wrap.lastElementChild;
+            const stBtn = line.querySelector('[data-a="study"]');
+            if (stBtn) stBtn.onclick = (e) => { e.stopPropagation(); openStudy(it.ref, si, false); };
+            const qBtn = line.querySelector('[data-a="quiz"]');
+            if (qBtn) qBtn.onclick = (e) => { e.stopPropagation(); startQuiz(it.ref, si, s.questions || [], (it.ref.name || "题册") + " · " + (s.name || "")); };
+            line.querySelector('[data-a="more"]').onclick = (e) => {
+              e.stopPropagation();
+              const btn = e.currentTarget;
+              if (more.style.display === "none") {
+                more.style.display = "block";
+                if (!more.dataset.loaded) { renderSectionBody(more, it.ref, si, false); more.dataset.loaded = "1"; }
+                btn.textContent = "收起 ▴";
+              } else { more.style.display = "none"; btn.textContent = "详情 ▾"; }
+            };
+            while (wrap.firstChild) sec.appendChild(wrap.firstChild);
           });
+          if (!sec.childNodes.length) sec.innerHTML = `<div class="muted small" style="padding:4px 2px">（本册暂无内容）</div>`;
         } else { sec.style.display = "none"; sec.innerHTML = ""; }
       }
       function wireDrag(el, it) {

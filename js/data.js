@@ -273,7 +273,8 @@
       date = date || this.today();
       const plan = this.getPlan(date);
       item.id = item.id || this.uid();
-      item.done = false; item.createdAt = item.createdAt || Date.now();
+      // 默认未完成；自动记录（刷题/闪卡结束时）会显式传 done:true，落地即打勾
+      item.done = item.done === true; item.createdAt = item.createdAt || Date.now();
       plan.items.push(item);
       this.save();
       return item;
@@ -296,12 +297,12 @@
       this.getPlan(date).note = note;
       this.save();
     },
-    /* 刷题 / 闪卡 自动记录进当日计划 */
+    /* 刷题 / 闪卡 自动记录进当日计划（活动已发生 → 直接打勾，不用再手动勾） */
     autoPlanRecord(type, module, meta) {
       try {
         const label = { quiz: "刷题", flash: "闪卡" }[type] || type;
         const text = meta && meta.text ? meta.text : (label + (module ? "·" + module : ""));
-        this.addPlanItem(this.today(), { module: module || "", type: type, text: text, meta: meta || null });
+        this.addPlanItem(this.today(), { module: module || "", type: type, text: text, meta: meta || null, done: true });
       } catch (e) {}
     },
 
