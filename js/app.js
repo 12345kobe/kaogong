@@ -1007,6 +1007,7 @@
       }, { once: true });
     }
     window.__refreshTop = refreshTop;
+    window.__kgRerender = renderRoute;   // 云端数据合并后由 DB 调用重画当前页（答题/手写进行中会自动跳过）
     window.refreshSocialBadge = refreshSocialBadge;
     // 系统字号：启动时按保存的比例缩放主界面（transform 方案，文字与布局同步缩放；聊天/弹窗在 #app 之外不受影响）
     try {

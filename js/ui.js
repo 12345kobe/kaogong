@@ -358,6 +358,8 @@
         }
         if (!notes.strokes) notes.strokes = [];
         let keepNotes = !!(saved && saved.strokes && saved.strokes.length); // 已有永久笔记时默认「保留」
+        // 笔迹落盘时打时间戳：跨设备同步按「较新的一份」生效
+        const withStamp = (n) => { const o = JSON.parse(JSON.stringify(n)); o.updatedAt = Date.now(); return o; };
         let dirty = false, redo = [];
         let tool = "pen";                 // pen | erase
         let cur = null, drawing = false;  // cur.points 为屏幕像素坐标，含压感 p
@@ -564,10 +566,10 @@
               const k = _hwKey(subject, id);
               if (notes.strokes.length) _hwSession[k] = JSON.parse(JSON.stringify(notes));
               else delete _hwSession[k];
-              if (keepNotes) notesRoot[subject][id] = JSON.parse(JSON.stringify(notes));
+              if (keepNotes) notesRoot[subject][id] = withStamp(notes);
               DB.save(); if (onChange) onChange();
             } else {
-              if (notes.strokes.length) notesRoot[subject][id] = notes; else if (saved) delete notesRoot[subject][id];
+              if (notes.strokes.length) notesRoot[subject][id] = withStamp(notes); else if (saved) delete notesRoot[subject][id];
               DB.save(); if (onChange) onChange();
             }
           }
