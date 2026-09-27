@@ -2543,13 +2543,15 @@
       function itemRow(it) {
         const chk = multiOn ? `<label class="ft-chk-wrap"><input type="checkbox" class="ft-chk" data-type="${esc(it.type)}" data-id="${esc(it.id)}" ${multiSel.has(it.type + ":" + it.id) ? "checked" : ""}/></label>` : "";
         const row = UI.el(`<div class="ft-item" draggable="true" data-type="${esc(it.type)}" data-id="${esc(it.id)}">
-          ${chk}
-          <span class="ft-ico">${it.type === "affair" ? "📰" : "📚"}</span>
-          <span class="ft-name ft-open">${esc(it.title)}</span>
-          <span class="ft-sub">${esc(it.sub || "")}</span>
-          ${it.type === "book"
-            ? `<button class="btn xs ft-act" data-act="ren">✏️</button><button class="btn xs ghost ft-act" data-act="del">🗑</button>`
-            : `<button class="btn xs ft-act" data-act="open">查看</button>`}
+          <div class="ft-head">
+            ${chk}
+            <span class="ft-ico">${it.type === "affair" ? "📰" : "📚"}</span>
+            <span class="ft-name ft-open">${esc(it.title)}</span>
+            <span class="ft-sub">${esc(it.sub || "")}</span>
+            ${it.type === "book"
+              ? `<button class="btn xs ft-act" data-act="ren">✏️</button><button class="btn xs ghost ft-act" data-act="del">🗑</button>`
+              : `<button class="btn xs ft-act" data-act="open">查看</button>`}
+          </div>
           <div class="ft-sec" style="display:none"></div>
         </div>`);
         if (multiOn) {
@@ -2573,6 +2575,7 @@
         const sec = row.querySelector(".ft-sec");
         if (sec.style.display === "none") {
           sec.style.display = "block"; sec.innerHTML = "";
+          row.classList.add("ft-expanded");
           (it.ref.sections || []).forEach((s, si) => {
             const hasT = !!(s.theory && String(s.theory).trim());
             const nq = (s.questions || []).length;
@@ -2603,7 +2606,7 @@
             while (wrap.firstChild) sec.appendChild(wrap.firstChild);
           });
           if (!sec.childNodes.length) sec.innerHTML = `<div class="muted small" style="padding:4px 2px">（本册暂无内容）</div>`;
-        } else { sec.style.display = "none"; sec.innerHTML = ""; }
+        } else { sec.style.display = "none"; sec.innerHTML = ""; row.classList.remove("ft-expanded"); }
       }
       function wireDrag(el, it) {
         el.draggable = true;

@@ -640,12 +640,9 @@ body.light:not(.glass) .lap-row.lap-fast .lap-time{color:#1f9e6b}
 
 /* ===== 申论 · 每日名言积累（浅色模式黑字） ===== */
 .qd-text{font-size:15px;margin-top:4px;line-height:1.7}
-.qd-text.qd-undone{color:#e7ecff}                      /* 深色模式：未读仍用淡蓝白 */
+.qd-text.qd-undone{color:var(--txt);opacity:.95}       /* 跟随主题文字色：任何主题/模式/玻璃模式都可读 */
 .qd-text.qd-done{color:var(--txt-dim);text-decoration:line-through;opacity:.85}
 .qd-author{font-size:13px;color:var(--txt-dim);margin-top:2px}
-body.light:not(.glass) .qd-text.qd-undone{color:#0f1828}            /* 浅色模式：未读直接黑字 */
-body.light:not(.glass) .qd-text.qd-done{color:#5a6b86;text-decoration:line-through;opacity:.85}
-body.light:not(.glass) .qd-author{color:#1c2433}                   /* 浅色模式：作者深色加深 */
 
 /* ===== Mobile ===== */
 /* ===== 白噪音按钮（顶栏） ===== */
@@ -1280,14 +1277,21 @@ mark.kw{background:rgba(255,206,0,.38);color:inherit;padding:0 2px;border-radius
 .ft-folder .ft-act{margin-left:2px}
 .ft-folder .ft-act:last-child{margin-left:auto}
 .ft-items{display:flex;flex-direction:column;gap:4px;padding:4px 0 4px 10px}
-.ft-item{display:flex;align-items:center;gap:6px;padding:6px 8px;border:1px solid var(--line,#e3e8f0);border-radius:8px;background:var(--panel,#fff)}
+.ft-item{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:6px 8px;border:1px solid var(--line,#e3e8f0);border-radius:8px;background:var(--panel,#fff)}
+.ft-item .ft-head{display:flex;align-items:center;gap:6px;flex:1 1 100%;min-width:0}
+.ft-item.ft-expanded{align-items:flex-start}
+/* 展开时固定 3:7：左 30% 题册信息，右 70% 考点/刷题内容（横竖屏一致） */
+.ft-item.ft-expanded .ft-head{flex:0 0 30%;max-width:30%;align-self:flex-start;flex-wrap:wrap;align-content:flex-start}
+.ft-item.ft-expanded .ft-head .ft-name{white-space:normal}
+.ft-item.ft-expanded .ft-head .ft-sub{max-width:100%;white-space:normal}
+.ft-item.ft-expanded .ft-sec{flex:1 1 0;min-width:0;margin:0 0 0 8px}
 .ft-item .ft-ico{font-size:15px;flex:0 0 auto}
 .ft-item .ft-name{flex:1;min-width:0;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ft-item .ft-sub{color:var(--muted,#999);font-size:12px;flex:0 0 auto;max-width:42%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ft-item .ft-act{flex:0 0 auto}
 .ft-item[draggable=true]{cursor:grab}
 .ft-node.ft-drop > .ft-folder,.ft-folder.ft-drop{outline:2px dashed var(--accent,#3a6df0);background:rgba(58,109,240,.10)}
-.ft-sec{margin:6px 0 6px 8px;border-left:2px solid var(--line,#e3e8f0);padding-left:8px}
+.ft-sec{flex:1 1 100%;margin:6px 0 6px 8px;border-left:2px solid var(--line,#e3e8f0);padding-left:8px}
 #ftGhost{background:var(--panel,#fff);border:1px solid var(--accent,#3a6df0);border-radius:8px;padding:6px 8px;font-size:13px;max-width:80vw;box-shadow:0 4px 12px rgba(0,0,0,.3)}
 
 /* ============================================================
@@ -1601,3 +1605,22 @@ body.theme-custom.has-bg::before{ filter:blur(var(--custom-blur,20px)) saturate(
 @keyframes kgShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-7px)}75%{transform:translateX(7px)}}
 
 /* 玻璃模式下的卡片底色由 body.glass .card 统一用 --g-alpha 驱动，无需主题单独覆盖 */
+
+/* ============================================================
+   浅色模式可读性兜底（含玻璃模式）：正文/说明性文字一律用深色，
+   不再受 :not(.glass) 限制；用户要求的强调色（红色重点等）保持不变。
+   ============================================================ */
+body.light .exam-line b{color:#8a6a00}
+body.light .rw-def b{color:#8a6a00}
+body.light .kp-orig b.hl,body.light .kp-jiexi b.hl{color:#7a5c00}
+body.light .rel-head,body.light .rw-sub{color:#5a3fb0}
+body.light .fc-verdict.ng{color:#c01f38}
+body.light .fc-verdict code{color:#111}
+body.light .essay-toolbar .et-btn.danger{color:#c0392b}
+body.light .lap-row.lap-latest .lap-label,body.light .lap-row.lap-latest .lap-time{color:#c01f38}
+body.light .lap-row.lap-fast .lap-label,body.light .lap-row.lap-fast .lap-time{color:#1f9e6b}
+body.light .shuati-form .fld{color:var(--txt-dim)}
+body.light .shuati-otpill{color:#b3261e}
+body.light .shuati-overdue{color:#c01f38;text-shadow:none}
+body.light .shuati-input{background:#fff;border-color:var(--line);color:#111;-webkit-text-fill-color:#111}
+body.light .shuati-input::placeholder{color:#8a94a6}

@@ -266,7 +266,7 @@
           const done = !!qdState.done[ti];
           if (done) doneCount++;
           const row = UI.el(`<div class="qd-row" style="display:flex;gap:10px;align-items:flex-start">
-            <button class="qd-chk" data-i="${ti}" style="flex:0 0 auto;width:26px;height:26px;border-radius:50%;border:2px solid #9fb0d8;background:${done ? '#34e7e4' : 'transparent'};color:#0f1b3d;font-weight:800;cursor:pointer;margin-top:2px">${done ? '✓' : ''}</button>
+            <button class="qd-chk" data-i="${ti}" style="flex:0 0 auto;width:26px;height:26px;border-radius:50%;border:2px solid var(--txt-dim,#9fb0d8);background:${done ? '#34e7e4' : 'transparent'};color:#0f1b3d;font-weight:800;cursor:pointer;margin-top:2px">${done ? '✓' : ''}</button>
             <div style="flex:1"><span class="chip">${UI.esc(th)}</span>
             <div class="qd-text ${done ? 'qd-done' : 'qd-undone'}">"${UI.esc(q ? q.t : '')}"</div>
             <div class="qd-author muted small">${q && q.author ? '——' + UI.esc(q.author) : ''}</div></div></div>`);
