@@ -92,41 +92,62 @@ body.kg-sub #pageBody{padding:0;margin:0}
 
   function has(route) { return !!(route && pages[route]); }
 
-  /* 顶层 .kg-det 收集（只看直接子节点，嵌套的由下一层递归处理） */
-  function findDets(container) {
+  /* 顶层「可收起块」收集（只看直接子节点）
+     - .kg-det（原折叠块）恒定纳入
+     - .card 仅在 opts.cards 时纳入：用于把整个模块首页全部收成方格
+     跳过：方格网格自身、全局录入入口、标注 data-kg-keep="1" 的元素 */
+  function findBlocks(container, opts) {
+    const wantCards = !!(opts && opts.cards);
     return Array.prototype.filter.call(container.children, function (c) {
-      return c && c.classList && c.classList.contains("kg-det");
+      if (!c || !c.classList) return false;
+      if (c.dataset && c.dataset.kgKeep === "1") return false;
+      if (c.classList.contains("kg-tiles")) return false;
+      if (c.classList.contains("pdf-quick-entry")) return false;
+      if (c.classList.contains("kg-det")) return true;
+      if (c.classList.contains("card")) return wantCards;
+      return false;
     });
   }
 
-  /* ===== 吸收：把容器里的折叠块换成方格，并为每块生成子路由 =====
-     返回被转换的数量。内容为真实 DOM 节点，搬家后已绑定的事件仍然生效。 */
-  function absorb(parentRoute, container) {
-    const dets = findDets(container);
-    if (!dets.length) return 0;
+  /* ===== 吸收：把容器里的板块换成方格，并为每块生成子路由 =====
+     内容一律保留为真实 DOM（卡片本体搬进子页容器），因此已绑定的事件、
+     以及模块后续异步渲染的内容都不会丢失。 */
+  function absorb(parentRoute, container, opts) {
+    const blocks = findBlocks(container, opts);
+    if (!blocks.length) return 0;
 
     ensureStyle();
     const grid = document.createElement("div");
     grid.className = "kg-tiles";
-    container.insertBefore(grid, dets[0]);
+    container.insertBefore(grid, blocks[0]);
 
     let n = 0;
-    dets.forEach(function (det) {
+    blocks.forEach(function (b) {
       // 模块按数据主动隐藏的板块，不生成方格入口
-      if (det.hidden) return;
-      if (det.style && det.style.display === "none") return;
-      const tEl = det.querySelector(".kg-det-t");
-      let title = (tEl && tEl.textContent || "").trim();
+      if (b.hidden) return;
+      if (b.style && b.style.display === "none") return;
+
+      let title = "", host = null;
+      if (b.classList.contains("kg-det")) {
+        const tEl = b.querySelector(".kg-det-t");
+        title = (tEl && tEl.textContent || "").trim();
+        host = b.querySelector(".kg-det-b");
+      } else {
+        const h = b.querySelector("h3, h2, .card-title");
+        title = h ? (h.textContent || "").trim() : "";
+        const wrap = document.createElement("div");
+        wrap.className = "kg-host";
+        wrap.appendChild(b);        // 卡片本体搬进子页容器
+        host = wrap;
+      }
       if (!title) title = "板块 " + (n + 1);
-      const bEl = det.querySelector(".kg-det-b");
       n++;
       const route = parentRoute + "/" + n;
 
-      // 存容器元素本身（而非子节点快照）：模块异步追加的内容也能在子页里正常显示
       pages[route] = {
         title: title,
         parent: parentRoute,
-        host: bEl || null,
+        host: host || null,
         build: null
       };
 
@@ -139,9 +160,10 @@ body.kg-sub #pageBody{padding:0;margin:0}
       tile.onclick = function () { location.hash = "#/" + route; };
       grid.appendChild(tile);
 
-      if (det.parentNode) det.parentNode.removeChild(det);
+      // .kg-det 仍在 DOM 中，需摘掉；.card 已在上一步搬进 wrap（未挂载）
+      if (b.classList.contains("kg-det") && b.parentNode) b.parentNode.removeChild(b);
     });
-    return dets.length;
+    return n;
   }
 
   /* ===== 渲染子页 ===== */
@@ -184,7 +206,12 @@ body.kg-sub #pageBody{padding:0;margin:0}
     else { box.innerHTML = '<div class="card empty">暂无内容</div>'; }
 
     // 递归：子页里若还有折叠块，继续拆成更深一级路由
-    try { absorb(route, box); } catch (e) { console.error(e); }
+    // 注意：吸收对象是「内容容器本身」而非 box，否则挂在 .kg-det-b 里的嵌套块抓不到
+    try {
+      let target = box;
+      if (p.host && p.host.classList && p.host.classList.contains("kg-det-b")) target = p.host;
+      absorb(route, target);
+    } catch (e) { console.error(e); }
 
     return true;
   }

@@ -299,7 +299,13 @@
     }
     // ===== 布局改造：模块内的「展开/折叠」板块 → 自动换成方格入口 + 子路由页 =====
     // 放在所有 mount 之后，保证动态插入的板块也一并被吸收
-    try { if (window.Pager) window.Pager.absorb(key, body); } catch (e) { console.error(e); }
+    try {
+      if (window.Pager) {
+        // 计时器类模块保持展开（主功能要一眼看到）；其余模块首页全部收成方格入口
+        const KEEP_OPEN = ["countdown", "timer", "ai"];
+        window.Pager.absorb(key, body, { cards: KEEP_OPEN.indexOf(key) < 0 });
+      }
+    } catch (e) { console.error(e); }
     // 深链支持：直接访问 #/模块/序号 时，上面的渲染已注册子页，此处再进入对应子页
     if (raw.indexOf("/") > 0 && window.Pager && window.Pager.has(raw)) {
       try { if (window.Pager.render(raw)) { lastKey = raw; return; } } catch (e) { console.error(e); }
