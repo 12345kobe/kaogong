@@ -352,8 +352,115 @@
 
   function goHome() {
     document.querySelectorAll(".modal-mask").forEach(m => m.remove());
-    if (location.hash !== "#/countdown") location.hash = "#/countdown";
+    if (location.hash !== "#/data-speed") location.hash = "#/data-speed";
   }
+
+  /* ===== 速算模块分类 ===== */
+  const CATS = [
+    { key: "baihuafen", name: "百化分" },
+    { key: "squaring", name: "平方数" },
+    { key: "cubing", name: "三次方" },
+    { key: "fourth", name: "四次方" },
+    { key: "rooting", name: "开根号" }
+  ];
+
+  /* 学习：展示该模块全部「题目 = 答案」 */
+  function openStudy(cat, name) {
+    const UI = window.UI;
+    const ALL_ITEMS = window.FORMULA_ITEMS || [];
+    const list = ALL_ITEMS.filter(x => x.cat === cat);
+    if (!list.length) { UI.toast("该模块暂无数据"); return; }
+    const box = UI.el(`<div></div>`);
+    box.innerHTML = `<div style="max-height:60vh;overflow:auto;display:flex;flex-direction:column;gap:6px">
+      ${list.map(it => `<div class="todo"><div style="flex:1"><b>${UI.esc(it.prompt)}</b>
+        <span style="color:#34e7e4;font-family:monospace"> = ${UI.esc(it.answer)}</span></div></div>`).join("")}
+    </div>`;
+    UI.modal({
+      title: `${name} · 学习（${list.length} 条）`, body: box, width: "560px",
+      actions: [
+        { label: "导出PDF", cls: "btn", onClick: () => {
+            window.PDF.exportHtml(`资料分析 · ${name}（${list.length} 条）`,
+              list.map(it => `<div class="item">${UI.esc(it.prompt)} = <b>${UI.esc(it.answer)}</b></div>`).join(""));
+          } },
+        { label: "关闭", cls: "ghost", onClick: (m, c) => c() }
+      ]
+    });
+  }
+
+  /* 测试：先选顺序，再开始该模块全部条目 */
+  function openTest(cat, name) {
+    const UI = window.UI;
+    const ALL_ITEMS = window.FORMULA_ITEMS || [];
+    const list = ALL_ITEMS.filter(x => x.cat === cat);
+    if (!list.length) { UI.toast("该模块暂无数据"); return; }
+    const box = UI.el(`<div></div>`);
+    box.innerHTML = `<div class="muted small" style="margin-bottom:10px">该模块共 <b>${list.length}</b> 条，全部练完才算完成一轮。</div>
+      <label class="row" style="gap:8px;align-items:center"><input type="radio" name="ord" value="shuffle" checked/> 打乱顺序（默认）</label>
+      <label class="row" style="gap:8px;align-items:center"><input type="radio" name="ord" value="order"/> 原顺序</label>`;
+    UI.modal({
+      title: `${name} · 测试`, body: box, width: "460px",
+      actions: [
+        { label: "取消", cls: "ghost", onClick: (m, c) => c() },
+        { label: "困难模式（自填）", cls: "btn", onClick: (m, c) => { c(); startFlashcards(null, "hard", cat, box.querySelector('input[name=ord]:checked').value === "shuffle"); } },
+        { label: "普通模式（闪卡）", cls: "primary", onClick: (m, c) => { c(); startFlashcards(null, "easy", cat, box.querySelector('input[name=ord]:checked').value === "shuffle"); } }
+      ]
+    });
+  }
+
+  /* 速算背诵练习：弹窗列出 5 个模块（学习 / 测试），作为「闪卡」入口 */
+  function openSpeedPicker() {
+    const UI = window.UI;
+    const ALL_ITEMS = window.FORMULA_ITEMS || [];
+    const EBf = window.Ebbinghaus;
+    const box = UI.el(`<div></div>`);
+    box.innerHTML = `<h2 style="margin:0 0 8px">📇 速算背诵练习（分模块 · 学习 / 测试）</h2>
+      <div class="muted small" style="margin-bottom:10px">共 5 个模块，点击「学习」看对照表，或「测试」闪卡作答（该模块全部练完才算一轮）。</div>
+      <div id="fcStats" class="eb-stats" style="margin:10px 0"></div>
+      <div id="fcMods" style="display:flex;flex-wrap:wrap;gap:10px"></div>`;
+    function renderFcStats() {
+      const st = EBf.getStats("formula");
+      const unrev = Math.max(0, st.total - st.seen);
+      box.querySelector("#fcStats").innerHTML = `
+        <div class="eb-stat"><span class="n">${st.seen}/${st.total}</span><span class="l">已复习 / 总数</span></div>
+        <div class="eb-stat"><span class="n">${unrev}</span><span class="l">未复习</span></div>
+        <div class="eb-stat" id="fcDueStat" style="cursor:pointer" title="点击：学习 / 测试"><span class="n">${st.due}</span><span class="l">待复习(到期) · 点此</span></div>
+        <div class="eb-stat"><span class="n">${st.mastered}</span><span class="l">已掌握</span></div>
+        <div class="eb-stat"><span class="n">${st.accuracy}%</span><span class="l">正确率</span></div>`;
+      const dueEl = box.querySelector("#fcDueStat");
+      if (dueEl) dueEl.onclick = () => {
+        const due = ALL_ITEMS.filter(x => EBf.isDue("formula", x.prompt));
+        window.KGReview.open({
+          title: "资料分析 · 速算 · 待复习", subject: "资料", group: "formula",
+          items: due.map(x => ({ id: x.prompt, prompt: x.prompt, answer: x.answer })),
+          frontLabel: "题目", backLabel: "答案",
+          emptyMsg: "当前没有到期待复习的速算条目",
+          onExit: () => { renderFcStats(); }
+        });
+      };
+    }
+    const fcMods = box.querySelector("#fcMods");
+    CATS.forEach(c => {
+      const list = ALL_ITEMS.filter(x => x.cat === c.key);
+      if (!list.length) return;
+      let seen = 0;
+      list.forEach(x => { const r = EBf.getRecord("formula", x.prompt); if (r && r.seen) seen++; });
+      const pct = list.length ? Math.round(seen / list.length * 100) : 0;
+      const card = UI.el(`<div class="nw-sec" style="border:1px solid #27345f;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;min-width:180px">
+        <div style="font-weight:700">${UI.esc(c.name)} <span class="muted small">(${list.length} 条)</span></div>
+        <div style="height:6px;background:#27345f;border-radius:4px;overflow:hidden"><span style="display:block;height:100%;width:${pct}%;background:linear-gradient(90deg,#34e7e4,#ff5cf0)"></span></div>
+        <div class="muted small">已复习 ${seen}/${list.length}（${pct}%）</div>
+        <div class="row" style="gap:6px">
+          <button class="btn sm" data-act="study">📖 学习</button>
+          <button class="btn sm primary" data-act="test">📇 测试</button>
+        </div></div>`);
+      card.querySelector("[data-act='study']").onclick = () => openStudy(c.key, c.name);
+      card.querySelector("[data-act='test']").onclick = () => openTest(c.key, c.name);
+      fcMods.appendChild(card);
+    });
+    renderFcStats();
+    UI.modal({ title: "速算背诵练习", body: box, width: "680px", actions: [{ label: "关闭", cls: "ghost", onClick: (m, c) => c() }] });
+  }
+  window.KGSpeed = { open: openSpeedPicker };
 
   /* ===== 资料分析入口 ===== */
   window.MODULES.data = {
@@ -361,109 +468,17 @@
     render(body) {
       const UI = window.UI;
       UI.StudyPanel("data", body);
-      // 公式板块
+      // 公式板块（默认展开，不再折叠）
       FormulaBoard("data", "data", "资料分析", window.BANKS.FORMULAS_DATA, "列出资料分析常用公式，支持自定义编辑、增删。").render(body);
-      // 五个速算模块入口
-      const CATS = [
-        { key: "baihuafen", name: "百化分" },
-        { key: "squaring", name: "平方数" },
-        { key: "cubing", name: "三次方" },
-        { key: "fourth", name: "四次方" },
-        { key: "rooting", name: "开根号" }
-      ];
-      const ALL_ITEMS = window.FORMULA_ITEMS || [];
-
-      const fcCard = UI.el(`<div class="card" style="margin-top:16px">
-        <h3>📇 速算背诵练习（分模块 · 学习 / 测试）</h3>
-        <div class="muted small">共 5 个模块，点击任一模块进入。进入后有两个按钮：<b>📖 学习</b>（直接展示「题目 = 答案」对照表，如 50% = 1/2）与 <b>📇 测试</b>（闪卡作答，默认打乱顺序，也可选原顺序；<b>该模块全部知识点练完才算一轮</b>）。</div>
-        <div id="fcStats" class="eb-stats" style="margin:10px 0"></div>
-        <div id="fcMods" style="display:flex;flex-wrap:wrap;gap:10px;margin:8px 0"></div>
+      // 速算背诵练习：跳转到专属子页面（闪卡 + 速算闯关游戏）
+      const storeKey = "data";
+      const entry = UI.el(`<div class="card" style="margin-top:16px">
+        <h3>📇 速算背诵练习</h3>
+        <div class="muted small">百化分 / 平方数 / 三次方 / 四次方 / 开根号 —— 闪卡背诵 + 速算闯关「消消乐」。点此进入专属页面。</div>
+        <button class="btn primary" id="spEnter" style="margin-top:10px">➡ 进入速算背诵练习</button>
       </div>`);
-      body.appendChild(fcCard);
-
-      const EBf = window.Ebbinghaus;
-      function renderFcStats() {
-        const st = EBf.getStats("formula");
-        const unrev = Math.max(0, st.total - st.seen);
-        fcCard.querySelector("#fcStats").innerHTML = `
-          <div class="eb-stat"><span class="n">${st.seen}/${st.total}</span><span class="l">已复习 / 总数</span></div>
-          <div class="eb-stat"><span class="n">${unrev}</span><span class="l">未复习</span></div>
-          <div class="eb-stat" id="fcDueStat" style="cursor:pointer" title="点击：学习 / 测试"><span class="n">${st.due}</span><span class="l">待复习(到期) · 点此</span></div>
-          <div class="eb-stat"><span class="n">${st.mastered}</span><span class="l">已掌握</span></div>
-          <div class="eb-stat"><span class="n">${st.accuracy}%</span><span class="l">正确率</span></div>`;
-        const dueEl = fcCard.querySelector("#fcDueStat");
-        if (dueEl) dueEl.onclick = () => {
-          const due = ALL_ITEMS.filter(x => EBf.isDue("formula", x.prompt));
-          window.KGReview.open({
-            title: "资料分析 · 速算 · 待复习", subject: "资料", group: "formula",
-            items: due.map(x => ({ id: x.prompt, prompt: x.prompt, answer: x.answer })),
-            frontLabel: "题目", backLabel: "答案",
-            emptyMsg: "当前没有到期待复习的速算条目",
-            onExit: () => { renderFcStats(); }
-          });
-        };
-      }
-
-      /* 学习：展示该模块全部「题目 = 答案」 */
-      function openStudy(cat, name) {
-        const list = ALL_ITEMS.filter(x => x.cat === cat);
-        if (!list.length) { UI.toast("该模块暂无数据"); return; }
-        const box = UI.el(`<div></div>`);
-        box.innerHTML = `<div style="max-height:60vh;overflow:auto;display:flex;flex-direction:column;gap:6px">
-          ${list.map(it => `<div class="todo"><div style="flex:1"><b>${UI.esc(it.prompt)}</b>
-            <span style="color:#34e7e4;font-family:monospace"> = ${UI.esc(it.answer)}</span></div></div>`).join("")}
-        </div>`;
-        UI.modal({
-          title: `${name} · 学习（${list.length} 条）`, body: box, width: "560px",
-          actions: [
-            { label: "导出PDF", cls: "btn", onClick: () => {
-                window.PDF.exportHtml(`资料分析 · ${name}（${list.length} 条）`,
-                  list.map(it => `<div class="item">${UI.esc(it.prompt)} = <b>${UI.esc(it.answer)}</b></div>`).join(""));
-              } },
-            { label: "关闭", cls: "ghost", onClick: (m, c) => c() }
-          ]
-        });
-      }
-
-      /* 测试：先选顺序，再开始该模块全部条目 */
-      function openTest(cat, name) {
-        const list = ALL_ITEMS.filter(x => x.cat === cat);
-        if (!list.length) { UI.toast("该模块暂无数据"); return; }
-        const box = UI.el(`<div></div>`);
-        box.innerHTML = `<div class="muted small" style="margin-bottom:10px">该模块共 <b>${list.length}</b> 条，全部练完才算完成一轮。</div>
-          <label class="row" style="gap:8px;align-items:center"><input type="radio" name="ord" value="shuffle" checked/> 打乱顺序（默认）</label>
-          <label class="row" style="gap:8px;align-items:center"><input type="radio" name="ord" value="order"/> 原顺序</label>`;
-        UI.modal({
-          title: `${name} · 测试`, body: box, width: "460px",
-          actions: [
-            { label: "取消", cls: "ghost", onClick: (m, c) => c() },
-            { label: "困难模式（自填）", cls: "btn", onClick: (m, c) => { c(); startFlashcards(body, "hard", cat, box.querySelector('input[name=ord]:checked').value === "shuffle"); } },
-            { label: "普通模式（闪卡）", cls: "primary", onClick: (m, c) => { c(); startFlashcards(body, "easy", cat, box.querySelector('input[name=ord]:checked').value === "shuffle"); } }
-          ]
-        });
-      }
-
-      const fcMods = fcCard.querySelector("#fcMods");
-      CATS.forEach(c => {
-        const list = ALL_ITEMS.filter(x => x.cat === c.key);
-        if (!list.length) return;
-        let seen = 0;
-        list.forEach(x => { const r = EBf.getRecord("formula", x.prompt); if (r && r.seen) seen++; });
-        const pct = list.length ? Math.round(seen / list.length * 100) : 0;
-        const card = UI.el(`<div class="nw-sec" style="border:1px solid #27345f;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;min-width:180px">
-          <div style="font-weight:700">${UI.esc(c.name)} <span class="muted small">(${list.length} 条)</span></div>
-          <div style="height:6px;background:#27345f;border-radius:4px;overflow:hidden"><span style="display:block;height:100%;width:${pct}%;background:linear-gradient(90deg,#34e7e4,#ff5cf0)"></span></div>
-          <div class="muted small">已复习 ${seen}/${list.length}（${pct}%）</div>
-          <div class="row" style="gap:6px">
-            <button class="btn sm" data-act="study">📖 学习</button>
-            <button class="btn sm primary" data-act="test">📇 测试</button>
-          </div></div>`);
-        card.querySelector("[data-act='study']").onclick = () => openStudy(c.key, c.name);
-        card.querySelector("[data-act='test']").onclick = () => openTest(c.key, c.name);
-        fcMods.appendChild(card);
-      });
-
-      renderFcStats();
+      body.appendChild(entry);
+      entry.querySelector("#spEnter").onclick = () => { location.hash = "#/data-speed"; };
       try { body.appendChild(UI.notebook(storeKey, storeKey + "_main", body)); } catch (e) {}
     }
   };

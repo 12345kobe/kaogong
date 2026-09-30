@@ -1624,3 +1624,8 @@ body.light .shuati-otpill{color:#b3261e}
 body.light .shuati-overdue{color:#c01f38;text-shadow:none}
 body.light .shuati-input{background:#fff;border-color:var(--line);color:#111;-webkit-text-fill-color:#111}
 body.light .shuati-input::placeholder{color:#8a94a6}
+
+/* ===== 资料分析 → 速算背诵练习 子页面（页面跳转式布局） ===== */
+.sp-opt{transition:transform .15s,box-shadow .15s;background:var(--card-bg,#16224a)}
+.sp-opt:hover{transform:translateY(-3px);box-shadow:0 10px 24px rgba(0,0,0,.28)}
+.sp-opt:active{transform:translateY(0)}

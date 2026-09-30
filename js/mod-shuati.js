@@ -106,16 +106,34 @@
           planTask = "📝 " + quizSubject + "复盘" + (reviewNote ? " · " + reviewNote : "");
         }
         try {
-          const it = DB.addPlanItem(DB.today(), { module: subj || "计时器", type: "focus", text: planTask, minutes: Math.round((target || 0) / 60000) });
+          // 复用同一天「同文本、未完成」的专注项：绝不重复创建（之前每次 render 都新建一条，
+          // 暂停几次就多出几条空白计划项）；计划时限放 focusMin 供展示，minutes 只记实际专注时长
+          const plan = DB.getPlan(DB.today());
+          const exist = plan.items.find(x => !x.done && x.type === "focus" && x.text === planTask);
+          const it = exist || DB.addPlanItem(DB.today(), { module: subj || "计时器", type: "focus", text: planTask, minutes: 0, focusMin: Math.round((target || 0) / 60000) });
           pId = it && it.id;
         } catch (e) {}
-        DB.timerStart(planTask, pId, target, subj);
-        const tt = DB.timerState();
-        tt.shuati = true;                 // 标记：由刷题模式自行处理超时，屏蔽考试模式弹窗
-        if (mode === "review") tt.review = true;
-        try { DB.save(); } catch (e) {}
         planId = pId; subject = subj; task = planTask;
-        started = true;
+        started = true;   // 先标记，render 才会渲染计时 UI（倒计时遮罩盖在其上）
+
+        // 真正开始计时（先建计划项，倒计时结束后再启动，保证「3→2→1→GO 后才开始答题」）
+        const reallyStart = () => {
+          DB.timerStart(planTask, pId, target, subj);
+          const tt = DB.timerState();
+          tt.shuati = true;                 // 标记：由刷题模式自行处理超时，屏蔽考试模式弹窗
+          if (mode === "review") tt.review = true;
+          try { DB.save(); } catch (e) {}
+          try { window.__updateTopTimer && window.__updateTopTimer(); } catch (e) {}
+          render();
+        };
+
+        // 国省考「刷题」入口（quiz / combo）：先放 3→2→1→GO 巨大数字倒计时，再开始计时答题；
+        // 复盘（review）直接开始，不走倒计时
+        if ((mode === "quiz" || mode === "combo") && window.KGExam && window.KGExam.bigCountdown) {
+          window.KGExam.bigCountdown(reallyStart);
+        } else {
+          reallyStart();
+        }
       }
 
       function bindCommon() {
@@ -148,8 +166,10 @@
 
       function render() {
         if (iv) { clearInterval(iv); iv = null; }
-        // 自动开始（限时 / 复盘 / 综合）：仅在实际未运行时启动一次
-        if (autoStart && !DB.timerState().running && !ended) startLaunched();
+        // 自动开始（限时 / 复盘 / 综合）：只启动一次（以 started 为准）。
+        // 之前用 !running 判断 —— 暂停后 running=false 会再次触发 startLaunched()，
+        // 造成：① 重复创建计划项（多出空白任务）② 计时被重启、超时基准被重置、暂停失效
+        if (autoStart && !started && !ended) startLaunched();
 
         const s = DB.timerState();
         const running = s.running;
@@ -375,13 +395,31 @@
       }
 
       function finalize(mins, creditActual) {
+        // timerSettle 内部已把实际专注分钟写入绑定计划项并打勾（it.minutes += mins; it.done = true），
+        // 这里绝不能再加一次 —— 之前这段重复累加正是「时长翻倍」的病根
         const r = DB.timerSettle("刷题模式", creditActual);
-        if (planId) {
-          const it = DB.getPlan(DB.today()).items.find(x => x.id === planId);
-          if (it) { it.minutes = (it.minutes || 0) + mins; it.done = true; DB.save(); }
-        }
+        if (r && r.planId) planId = r.planId;
         window.__updateTopTimer && window.__updateTopTimer();
         return r;
+      }
+
+      /* 限时刷题 / 综合刷题：把「超时」时长（实际用时 - 计划时限，秒）标到计划项上，
+         打卡日历的每日计划里会显示 ⏰ 超时 X分Y秒 */
+      function targetMsOf() {
+        if (mode === "quiz") return Math.round((quizMins || 0) * 60000);
+        if (mode === "combo") return Math.round(combo.reduce((a, b) => a + (b.mins || 0), 0) * 60000);
+        return 0;
+      }
+      function recordOvertime() {
+        try {
+          if (!planId) return;
+          const t = targetMsOf();
+          if (!t) return;
+          const over = finalElapsedMs - t;
+          if (over <= 0) return;
+          const it = DB.getPlan(DB.today()).items.find(x => x.id === planId);
+          if (it) { it.overtime = Math.round(over / 1000); DB.save(); }
+        } catch (e) {}
       }
 
       function doSave() {
@@ -401,6 +439,7 @@
         }
         const mins = Math.max(1, Math.round(finalElapsedMs / 60000));
         finalize(mins, true); // 实际用时计（计划段+延迟段相加）
+        recordOvertime();
         if (mode === "combo") {
           combo.forEach((c, i) => {
             const cnt = parseInt(body.querySelector("#cCount" + i).value, 10) || 0;
@@ -433,6 +472,7 @@
       function doSkip() {
         const mins = Math.max(1, Math.round(finalElapsedMs / 60000));
         finalize(mins, true);
+        recordOvertime();
         if (DB.state && DB.state.shuatiLaunch) { DB.state.shuatiLaunch = null; try { DB.save(); } catch (e) {} }
         UI.toast(`刷题模式结束：专注 ${fmtMsFull(finalElapsedMs)}${planId ? "，已记入今日计划 ✓" : ""}`);
         location.hash = "#/calendar";

@@ -114,10 +114,12 @@
       });
     },
 
-    /* ===== 可折叠小板块（<details>，默认折叠，open:true 则默认展开） ===== */
+    /* ===== 小板块（<details>，默认展开；仅当 opts.open===false 才折叠） =====
+       布局重构后取消「点击展开/折叠」：默认全部展开，像普通网页一样直接看到内容；
+       仅极少数确需收起的场景才显式传 open:false。 */
     section(title, opts) {
       opts = opts || {};
-      const open = opts.open ? " open" : "";
+      const open = (opts.open === false) ? "" : " open";
       return el(`<details class="kg-det"${open}>
         <summary class="kg-det-s"><span class="kg-det-t">${esc(title)}</span><span class="kg-det-arrow">▸</span></summary>
         <div class="kg-det-b"></div>

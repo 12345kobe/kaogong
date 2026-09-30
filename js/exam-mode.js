@@ -206,13 +206,77 @@
     monIv = setInterval(check, 500);
   }
 
+  /* ===== 巨大数字 3→2→1→GO 全屏倒计时（刷题开始前缓冲） =====
+     回调 cb 在 GO 动画结束后触发（即真正开始计时/答题）。任何异常都尽量回退到直接 cb()，
+     保证「倒计时挂了也要能开刷」。 */
+  function bigCountdown(cb) {
+    try {
+      const ov = document.createElement("div");
+      ov.id = "kgBigCd";
+      ov.style.cssText = "position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;" +
+        "flex-direction:column;background:rgba(8,10,18,.95);color:#fff;user-select:none;-webkit-user-select:none;" +
+        "touch-action:none;transition:opacity .25s";
+      const num = document.createElement("div");
+      num.style.cssText = "font-size:32vw;font-weight:900;line-height:1;letter-spacing:2px;" +
+        "text-shadow:0 0 50px rgba(52,231,228,.55);will-change:transform,opacity";
+      const tip = document.createElement("div");
+      tip.style.cssText = "margin-top:6px;font-size:19px;color:#cdd6f0;letter-spacing:4px;font-weight:600";
+      tip.textContent = "准备开始…";
+      ov.appendChild(num); ov.appendChild(tip);
+      document.body.appendChild(ov);
+
+      let n = 3;
+      const flash = (txt, color, tipTxt) => {
+        num.textContent = txt;
+        num.style.color = color;
+        num.style.transition = "none";
+        num.style.transform = "scale(1.55)";
+        num.style.opacity = "0";
+        // 强制 reflow 后再播放「缩小淡入」动画
+        void num.offsetWidth;
+        requestAnimationFrame(() => {
+          num.style.transition = "transform .34s cubic-bezier(.2,.9,.3,1.35),opacity .34s";
+          num.style.transform = "scale(1)";
+          num.style.opacity = "1";
+        });
+        if (tipTxt) tip.textContent = tipTxt;
+        beep();
+      };
+      flash("3", "#34e7e4", "准备开始…");
+      const iv = setInterval(() => {
+        n--;
+        if (n >= 1) {
+          flash(String(n), "#34e7e4", "准备开始…");
+        } else if (n === 0) {
+          flash("GO!", "#3ddc97", "开始答题！");
+          clearInterval(iv);
+          setTimeout(() => {
+            ov.style.opacity = "0";
+            setTimeout(() => { try { ov.remove(); } catch (e) {} }, 260);
+            try { cb && cb(); } catch (e2) {}
+          }, 650);
+        }
+      }, 1000);
+      // 兜底：万一 interval 被清理（极端情况），2.5s 后强行收尾
+      setTimeout(() => {
+        if (document.getElementById("kgBigCd") && n > 0) {
+          clearInterval(iv);
+          try { ov.remove(); } catch (e) {}
+          try { cb && cb(); } catch (e2) {}
+        }
+      }, 5200);
+    } catch (e) {
+      try { cb && cb(); } catch (e2) {}
+    }
+  }
+
   window.KGExam = {
     MODES: MODES, ORDER: ORDER,
     mode: mode, setMode: setMode, toggleMode: toggleMode, label: label,
     cfg: cfg, perMin: perMin, paceText: paceText, suggestMs: suggestMs, suggestMin: suggestMin,
     subjects: subjects, fmtMin: fmtMin,
     startQuiz: startQuiz, startReview: startReview, logReview: logReview, todayReviewMin: todayReviewMin,
-    buzz: buzz, startMonitor: startMonitor, onCountdownEnd: onCountdownEnd
+    buzz: buzz, startMonitor: startMonitor, onCountdownEnd: onCountdownEnd, bigCountdown: bigCountdown
   };
 
   setTimeout(startMonitor, 800);

@@ -199,9 +199,43 @@
     if (img) img.onerror = () => { img.outerHTML = ICONS[m.icon] || ""; };
   }
 
+  /* ===== 子页面：资料分析 → 速算背诵练习 =====
+     页面跳转式布局：点「速算背诵练习」跳到本页，提供两个入口，各自打开悬浮窗（同之前体验）。 */
+  function renderDataSpeed() {
+    setActive("data");                       // 导航高亮「资料分析」
+    const pt = document.getElementById("pageTitle");
+    if (pt) pt.innerHTML = '<span class="nav-ico-wrap pt-ico">' + ((window.Theme && Theme.themeIconHtml) ? Theme.themeIconHtml("data", MODULES.data) : "") + '</span><span class="nav-txt">速算背诵练习</span>';
+    const body = document.getElementById("pageBody");
+    body.innerHTML = "";
+    body.appendChild(UI.el(`<div class="card" style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <button class="btn ghost sm" id="spBack">← 返回资料分析</button>
+    </div>`));
+    const grid = UI.el(`<div class="grid g2" style="gap:16px"></div>`);
+    grid.appendChild(UI.el(`<div class="card sp-opt" id="spFlash" style="cursor:pointer;border:2px solid #34e7e4">
+      <div style="font-size:42px">📇</div>
+      <h3 style="margin:8px 0">闪卡背诵（分模块）</h3>
+      <div class="muted small">百化分 / 平方数 / 三次方 / 四次方 / 开根号<br>学习对照 + 测试（闪卡 / 填空），按艾宾浩斯调度</div>
+    </div>`));
+    grid.appendChild(UI.el(`<div class="card sp-opt" id="spGame" style="cursor:pointer;border:2px solid #ff5cf0">
+      <div style="font-size:42px">🎮</div>
+      <h3 style="margin:8px 0">速算闯关 · 消消乐</h3>
+      <div class="muted small">5 关：在网格中点选「题目」与「答案」配对消除<br>点错闪红不消除，统计正确率，通关记学习时长</div>
+    </div>`));
+    body.appendChild(grid);
+    body.querySelector("#spBack").onclick = () => { location.hash = "#/data"; };
+    body.querySelector("#spFlash").onclick = () => { try { window.KGSpeed && window.KGSpeed.open(); } catch (e) { console.error(e); } };
+    body.querySelector("#spGame").onclick = () => { try { window.MatchGame && window.MatchGame.open(); } catch (e) { console.error(e); } };
+    const fab = document.getElementById("focusFab");
+    if (fab) { fab.style.display = ""; fab.dataset.module = "data"; }
+    lastKey = "data-speed";
+  }
+
   let lastKey = null;
   function renderRoute() {
-    const key = (location.hash.replace("#/", "") || "countdown");
+    const raw = (location.hash.replace("#/", "") || "countdown");
+    // 子页面：资料分析 → 速算背诵练习（两个悬浮窗入口：闪卡 / 消消乐）
+    if (raw === "data-speed") { renderDataSpeed(); return; }
+    const key = raw;
     if (!MODULES[key]) { location.hash = "#/countdown"; return; }
     // 离开「刷题模式」：跳到「上岸计时器」小屏时保留计时（退出全屏继续刷），去其它页面才结算
     if (lastKey === "shuati" && key !== "shuati") {
@@ -220,11 +254,6 @@
     const body = document.getElementById("pageBody"); body.innerHTML = "";
     try { MODULES[key].render(body); }
     catch (e) { body.innerHTML = `<div class="card empty">模块加载出错：${UI.esc(e.message)}</div>`; console.error(e); }
-    // 通用折叠：模块内辅助小板块默认收起（AI 有独立全屏布局、设置为表单页均不参与；
-    // 倒计时页 noCollapse=true → 所有板块保持展开，不折叠）
-    if (key !== "ai" && key !== "settings" && !(MODULES[key] && MODULES[key].noCollapse)) {
-      try { UI.autoCollapse(body); } catch (e) { console.error(e); }
-    }
     // 每个模块顶部常驻「PDF 录入题目」快捷入口（无需进设置即可录入，按学科归入对应题册）
     if (key !== "pdfimport" && key !== "settings" && key !== "ai" && key !== "shuati") {
       try {
