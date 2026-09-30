@@ -198,6 +198,7 @@
     const img = pt.querySelector("img.t-ico");
     if (img) img.onerror = () => { img.outerHTML = ICONS[m.icon] || ""; };
   }
+  window.setActiveNav = setActive;   // 供子页面（Pager）复用导航高亮
 
   /* ===== 子页面：资料分析 → 速算背诵练习 =====
      页面跳转式布局：点「速算背诵练习」跳到本页，提供两个入口，各自打开悬浮窗（同之前体验）。 */
@@ -233,9 +234,14 @@
   let lastKey = null;
   function renderRoute() {
     const raw = (location.hash.replace("#/", "") || "countdown");
-    // 子页面：资料分析 → 速算背诵练习（两个悬浮窗入口：闪卡 / 消消乐）
+    try { if (window.Pager) window.Pager.exitSub(); } catch (e) {}
+    // 二级及以上子页面：方格入口跳转进来的「内容区全屏页」（子页在模块渲染后注册）
+    if (raw.indexOf("/") > 0 && window.Pager && window.Pager.has(raw)) {
+      try { if (window.Pager.render(raw)) { lastKey = raw; return; } } catch (e) { console.error(e); }
+    }
+    // 兼容旧路由：资料分析 → 速算背诵练习
     if (raw === "data-speed") { renderDataSpeed(); return; }
-    const key = raw;
+    const key = raw.split("/")[0];
     if (!MODULES[key]) { location.hash = "#/countdown"; return; }
     // 离开「刷题模式」：跳到「上岸计时器」小屏时保留计时（退出全屏继续刷），去其它页面才结算
     if (lastKey === "shuati" && key !== "shuati") {
@@ -290,6 +296,13 @@
     if (fab) {
       if (key === "timer" || key === "shuati") { fab.style.display = "none"; }
       else { fab.style.display = ""; fab.dataset.module = key; }
+    }
+    // ===== 布局改造：模块内的「展开/折叠」板块 → 自动换成方格入口 + 子路由页 =====
+    // 放在所有 mount 之后，保证动态插入的板块也一并被吸收
+    try { if (window.Pager) window.Pager.absorb(key, body); } catch (e) { console.error(e); }
+    // 深链支持：直接访问 #/模块/序号 时，上面的渲染已注册子页，此处再进入对应子页
+    if (raw.indexOf("/") > 0 && window.Pager && window.Pager.has(raw)) {
+      try { if (window.Pager.render(raw)) { lastKey = raw; return; } } catch (e) { console.error(e); }
     }
     lastKey = key;
   }

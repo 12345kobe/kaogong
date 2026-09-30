@@ -8,12 +8,10 @@
 (function () {
   "use strict";
   window.MODULES = window.MODULES || {};
-  function FormulaBoard(moduleKey, storeKey, title, defFormulas, intro) {
-    return {
-      title, icon: moduleKey,
-      render(body) {
+  /* 公式板块内容：渲染到给定容器（首页不再直接展示，改为「◯◯公式」全屏子页） */
+  function renderBoard(body, o) {
         const DB = window.DB, UI = window.UI;
-        UI.StudyPanel(moduleKey, body);
+        const storeKey = o.storeKey, title = o.title, intro = o.intro, defFormulas = o.defFormulas;
         const card = UI.el(`<div class="card"><h3>📐 ${UI.esc(title)} · 公式板块</h3>
           <div class="muted small">${UI.esc(intro)}</div>
           <div class="row" style="margin:10px 0"><button class="btn primary" id="addF">＋ 添加公式</button></div>
@@ -58,6 +56,32 @@
         }
         card.querySelector("#addF").onclick = () => editF(null);
         renderList();
+  }
+
+  /* 模块首页：只放方格入口；点进「◯◯公式」跳到内容区全屏子页看公式 */
+  function FormulaBoard(moduleKey, storeKey, title, defFormulas, intro, opts) {
+    opts = opts || {};
+    return {
+      title, icon: moduleKey,
+      render(body) {
+        const UI = window.UI, P = window.Pager;
+        UI.StudyPanel(moduleKey, body);
+        const cfg = { moduleKey, storeKey, title, intro, defFormulas };
+        const href = "#/" + moduleKey + "/formulas";
+        if (P) {
+          P.define(moduleKey + "/formulas", {
+            parent: moduleKey,
+            title: title + " · 公式",
+            build(box) { renderBoard(box, cfg); }
+          });
+        }
+        const g = P ? P.grid() : UI.el(`<div class="kg-tiles"></div>`);
+        g.appendChild(P
+          ? P.tile("📐", title + "公式", href)
+          : UI.el(`<div class="kg-tile" onclick="location.hash='${href}'">📐 ${UI.esc(title)}公式</div>`));
+        (opts.tiles || []).forEach(t => g.appendChild(P ? P.tile(t.ico, t.title, t.href) : UI.el(`<div class="kg-tile" onclick="location.hash='${t.href}'">${t.ico} ${UI.esc(t.title)}</div>`)));
+        body.appendChild(g);
+        if (opts.notebook) { try { body.appendChild(UI.notebook(storeKey, storeKey + "_main", body)); } catch (e) {} }
       }
     };
   }
@@ -462,26 +486,13 @@
   }
   window.KGSpeed = { open: openSpeedPicker };
 
-  /* ===== 资料分析入口 ===== */
-  window.MODULES.data = {
-    title: "资料分析", icon: "data",
-    render(body) {
-      const UI = window.UI;
-      UI.StudyPanel("data", body);
-      // 公式板块（默认展开，不再折叠）
-      FormulaBoard("data", "data", "资料分析", window.BANKS.FORMULAS_DATA, "列出资料分析常用公式，支持自定义编辑、增删。").render(body);
-      // 速算背诵练习：跳转到专属子页面（闪卡 + 速算闯关游戏）
-      const storeKey = "data";
-      const entry = UI.el(`<div class="card" style="margin-top:16px">
-        <h3>📇 速算背诵练习</h3>
-        <div class="muted small">百化分 / 平方数 / 三次方 / 四次方 / 开根号 —— 闪卡背诵 + 速算闯关「消消乐」。点此进入专属页面。</div>
-        <button class="btn primary" id="spEnter" style="margin-top:10px">➡ 进入速算背诵练习</button>
-      </div>`);
-      body.appendChild(entry);
-      entry.querySelector("#spEnter").onclick = () => { location.hash = "#/data-speed"; };
-      try { body.appendChild(UI.notebook(storeKey, storeKey + "_main", body)); } catch (e) {}
-    }
-  };
+  /* ===== 资料分析入口：首页 = 方格（资料分析公式 / 速算背诵练习） ===== */
+  window.MODULES.data = FormulaBoard("data", "data", "资料分析", window.BANKS.FORMULAS_DATA,
+    "列出资料分析常用公式，支持自定义编辑、增删。", {
+      notebook: true,
+      tiles: [{ ico: "📇", title: "速算背诵练习", href: "#/data-speed" }]
+    });
 
-  window.MODULES.quantity = FormulaBoard("quantity", "quantity", "数量关系", window.BANKS.FORMULAS_QUANTITY, "列出数量关系常用公式，支持自定义编辑、增删。");
+  window.MODULES.quantity = FormulaBoard("quantity", "quantity", "数量关系", window.BANKS.FORMULAS_QUANTITY,
+    "列出数量关系常用公式，支持自定义编辑、增删。", {});
 })();
