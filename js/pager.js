@@ -53,6 +53,8 @@ body.light:not(.glass) .kg-tile{background:#fff}
 /* 子页面：占满内容区，去掉外层留白 */
 body.kg-sub #content{padding:0 0 60px}
 body.kg-sub #pageBody{padding:0;margin:0}
+/* 子页里不显示全局标题栏（顶部 kg-topbar 已带 返回+标题），压缩纵向空间 */
+body.kg-sub #pageTitle{display:none}
 .kg-subpage{padding:16px 14px}
 /* 子页里直接承载原折叠块的内容容器，去掉其内边距使内容铺满 */
 .kg-subpage > .kg-det-b{padding:0;margin:0}
@@ -94,7 +96,8 @@ body.kg-sub #pageBody{padding:0;margin:0}
 
   /* 顶层「可收起块」收集（只看直接子节点）
      - .kg-det（原折叠块）恒定纳入
-     - .card 仅在 opts.cards 时纳入：用于把整个模块首页全部收成方格
+     - opts.cards 时纳入：.card、以及「只包着一张 .card 的普通 div」（如政治理论的知识点复习：
+       模块把卡片套在自己的容器 div 里再挂到 body —— 这类最容易被当成「板块不见了」）
      跳过：方格网格自身、全局录入入口、标注 data-kg-keep="1" 的元素 */
   function findBlocks(container, opts) {
     const wantCards = !!(opts && opts.cards);
@@ -105,6 +108,8 @@ body.kg-sub #pageBody{padding:0;margin:0}
       if (c.classList.contains("pdf-quick-entry")) return false;
       if (c.classList.contains("kg-det")) return true;
       if (c.classList.contains("card")) return wantCards;
+      if (wantCards && c.children.length === 1 && c.children[0] &&
+          c.children[0].classList && c.children[0].classList.contains("card")) return true;
       return false;
     });
   }
@@ -119,7 +124,10 @@ body.kg-sub #pageBody{padding:0;margin:0}
     ensureStyle();
     const grid = document.createElement("div");
     grid.className = "kg-tiles";
-    container.insertBefore(grid, blocks[0]);
+    // 方格永远放最上面（紧跟全局「录入题目」入口之后）：模块专属板块在上、倒计时/进度在下
+    let anchor = container.firstChild;
+    if (anchor && anchor.classList && anchor.classList.contains("pdf-quick-entry")) anchor = anchor.nextSibling;
+    if (anchor) container.insertBefore(grid, anchor); else container.appendChild(grid);
 
     let n = 0;
     blocks.forEach(function (b) {
@@ -127,18 +135,24 @@ body.kg-sub #pageBody{padding:0;margin:0}
       if (b.hidden) return;
       if (b.style && b.style.display === "none") return;
 
-      let title = "", host = null;
-      if (b.classList.contains("kg-det")) {
+      let title = "", host = null, isDet = b.classList.contains("kg-det");
+      if (isDet) {
         const tEl = b.querySelector(".kg-det-t");
         title = (tEl && tEl.textContent || "").trim();
         host = b.querySelector(".kg-det-b");
-      } else {
+      } else if (b.classList.contains("card")) {
         const h = b.querySelector("h3, h2, .card-title");
         title = h ? (h.textContent || "").trim() : "";
         const wrap = document.createElement("div");
         wrap.className = "kg-host";
         wrap.appendChild(b);        // 卡片本体搬进子页容器
         host = wrap;
+      } else {
+        // 普通容器 div 包着一张卡片：整个容器搬走，标题取内部卡片的标题
+        const card = b.querySelector(".card");
+        const h = card && card.querySelector("h3, h2, .card-title");
+        title = h ? (h.textContent || "").trim() : "";
+        host = b;
       }
       if (!title) title = "板块 " + (n + 1);
       n++;
@@ -160,8 +174,8 @@ body.kg-sub #pageBody{padding:0;margin:0}
       tile.onclick = function () { location.hash = "#/" + route; };
       grid.appendChild(tile);
 
-      // .kg-det 仍在 DOM 中，需摘掉；.card 已在上一步搬进 wrap（未挂载）
-      if (b.classList.contains("kg-det") && b.parentNode) b.parentNode.removeChild(b);
+      // 折叠块/容器还在 DOM 中，摘掉；.card 已被搬进 wrap（未挂载），无需再删
+      if (!b.classList.contains("card") && b.parentNode) b.parentNode.removeChild(b);
     });
     return n;
   }
@@ -174,11 +188,10 @@ body.kg-sub #pageBody{padding:0;margin:0}
 
     document.body.classList.add("kg-sub");
 
-    // 导航高亮落在顶层模块；标题显示「子页标题」+ 返回到父级
+    // 导航高亮落在顶层模块。子页标题只由下方 .kg-topbar 展示；
+    // 全局 #pageTitle 在 body.kg-sub 下整体隐藏，避免「同一标题上下显示两遍」。
     const root = String(route).split("/")[0];
     try { window.setActiveNav && window.setActiveNav(root); } catch (e) {}
-    const pt = document.getElementById("pageTitle");
-    if (pt) pt.innerHTML = '<span class="nav-txt">' + esc(p.title) + '</span>';
 
     const body = document.getElementById("pageBody");
     body.innerHTML = "";
