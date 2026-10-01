@@ -12,7 +12,7 @@
         s.querySelector(".kg-det-b").appendChild(card);
         body.appendChild(s);
       }
-      /* 上岸计时器已移除：右下角「专注」悬浮按钮直达计时器模块 */
+      UI.StudyBar("essay", body);   /* 精简专注条（补记录） */
 
       // 小题 / 大作文 进度
       const prog = UI.el(`<div class="card"><h3>✍ 练习进度</h3>

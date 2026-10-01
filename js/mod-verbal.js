@@ -146,7 +146,7 @@
     title: "言语理解", icon: "verbal",
     render(body) {
       const DB = window.DB, UI = window.UI;
-      /* 上岸计时器已移除：右下角「专注」悬浮按钮直达计时器模块 */
+      UI.StudyBar("verbal", body);   /* 精简专注条（补记录） */
 
       /* ================= 必备实词积累（每日10条 · 实词 + 成语 · 去做题 + 选量刷真题） =================
          数据：window.VERBAL_WORDS = { updatedAt, entries:[{id,num,name,type,paras,exams}] }

@@ -490,7 +490,7 @@
     title: "时政", icon: "current",
     render(body) {
       const UI = window.UI;
-      /* 上岸计时器已移除：右下角「专注」悬浮按钮直达计时器模块 */
+      if (UI.StudyBar) UI.StudyBar("current", body);   /* 精简专注条（补记录） */
 
       /* =========== 时事热点（每日 12:00 / 20:00 自动抓取） =========== */
       const hsSec = UI.section("🔥 时事热点（每日 12:00 / 20:00 自动抓取）", { open: false });

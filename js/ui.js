@@ -243,6 +243,52 @@
       render();
     },
 
+    /* ===== 精简专注条：一行卡片，保留「＋补记录」，时长汇入上岸计时器的今日总时长
+       （data-kg-keep 防止被 Pager 收进方格；大圆环面板只保留在计时器模块本体）===== */
+    StudyBar(module, mount) {
+      const name = (window.MODULES[module] && window.MODULES[module].title) || "";
+      const bar = el(`<div class="card kg-studybar" data-kg-keep="1" style="display:flex;align-items:center;gap:10px;padding:10px 14px;margin:12px 0;flex-wrap:wrap">
+        <span style="font-size:18px">⏱</span>
+        <span class="small">今日已专注 <b id="sbMin" style="font-size:16px">0</b> 分钟</span>
+        <span style="flex:1"></span>
+        <button class="btn ghost sm" id="sbLog">＋补记录</button>
+        <button class="btn sm primary" id="sbGo">去计时</button>
+      </div>`);
+      mount.appendChild(bar);
+      const refresh = () => { bar.querySelector("#sbMin").textContent = DB.getTodayMinutes(); };
+      refresh();
+      bar.querySelector("#sbGo").onclick = () => { location.hash = "#/timer"; };
+      bar.querySelector("#sbLog").onclick = () => {
+        const host = el(`<div>
+          <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:12px">
+            ${[5, 15, 25, 30, 45, 60].map(m => `<button class="btn sm sb-chip" data-m="${m}">${m} 分钟</button>`).join("")}
+          </div>
+          <div class="row" style="gap:8px;align-items:center">
+            <input type="number" min="1" max="600" value="25" id="sbMinIn" style="width:90px"/>
+            <span class="muted small">分钟（点上面快捷键或直接输入）</span>
+          </div>
+        </div>`);
+        UI.modal({
+          title: "补记录" + (name ? " · " + name : ""),
+          body: host,
+          actions: [
+            { label: "关闭", cls: "ghost", onClick: (m, c) => c() },
+            { label: "✓ 记录", cls: "primary", keepOpen: true, onClick: (m, c) => {
+              const min = Math.max(1, Math.min(600, +host.querySelector("#sbMinIn").value || 25));
+              DB.addTimerMinutes(module, min);
+              const tm = DB.state.timer.counts = DB.state.timer.counts || {};
+              const t = DB.today(); tm[t] = (tm[t] || 0) + 1;
+              DB.save();
+              refresh();
+              UI.toast("已补记录 " + min + " 分钟 ✓");
+              c();
+            } }
+          ]
+        });
+        host.querySelectorAll(".sb-chip").forEach(b => b.onclick = () => { host.querySelector("#sbMinIn").value = b.dataset.m; });
+      };
+    },
+
     /* ===== 待办事项 + 每日进度（合并卡片） ===== */
     StudyPanel(module, mount) {
       const wrap = el(`<div class="grid g2"></div>`);
