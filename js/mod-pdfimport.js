@@ -2742,25 +2742,42 @@
       }
 
       // 批量导出 PDF：把选中题册 / 时政材料渲染成可打印 HTML（浏览器「另存为 PDF」）
-      function exportItemsPdf(items) {
-        if (!items.length) { UI.toast("请先勾选要导出的项"); return; }
+      /* 构建导出 HTML（v20261001k）：
+         - 保留题册原有排版：板块名做标题、考点在前、题目全册连续编号；
+         - 答案位置可选：inline=紧跟每题；end=统一放文末（先做题后对答案）。 */
+      function buildBookExportHtml(items, mode) {
         let html = `<div class="meta">共 ${items.length} 项</div>`;
-        items.forEach((it, idx) => {
+        items.forEach(it => {
           if (it.type === "book") {
             const b = it.ref;
             html += `<div class="subhead">📚 ${esc(b.name || "题册")}（${subjectLabel(b.subject) || b.subject}）</div>`;
+            let n = 0; const endAns = [];
             (b.sections || []).forEach(s => {
-              if (s.theory && String(s.theory).trim()) html += `<div class="sec"><b>【考点】</b>${esc(String(s.theory))}</div>`;
-              (s.questions || []).forEach((q, qi) => {
+              if (s.name) html += `<div class="sec">${esc(s.name)}</div>`;
+              if (s.theory && String(s.theory).trim()) html += `<div class="aff"><h3>考点 / 资料</h3>${esc(String(s.theory))}</div>`;
+              (s.questions || []).forEach(q => {
+                n++;
                 const opts = (q.options || []).map((o, oi) => `${String.fromCharCode(65 + oi)}. ${esc(o)}`).join("　");
                 const aLet = (typeof q.a === "string" && /^[A-Ea-e]{1,6}$/.test(q.a))
                   ? q.a.toUpperCase() : ((q.a >= 0 && q.a < q.options.length) ? String.fromCharCode(65 + q.a) : "");
-                const ans = aLet || "（待校对）";
-                html += `<div class="item"><div class="q">${qi + 1}. ${esc(q.q || "")}</div><div class="opt">${opts}</div>`;
-                if (q.e) html += `<div class="exp">解析：${esc(q.e)}</div>`;
-                html += `<div class="ans">答案：${ans}</div></div>`;
+                html += `<div class="item"><div class="q">${n}. ${esc(q.q || "")}</div><div class="opt">${opts}</div>`;
+                if (mode === "inline") {
+                  if (q.e) html += `<div class="exp">解析：${esc(q.e)}</div>`;
+                  html += `<div class="ans">答案：${aLet || "（待校对）"}</div></div>`;
+                } else {
+                  html += `</div>`;
+                  endAns.push({ n, a: aLet, e: q.e || "" });
+                }
               });
             });
+            if (mode === "end" && endAns.length) {
+              html += `<div class="sec">答案与解析（共 ${endAns.length} 题）</div>`;
+              endAns.forEach(l => {
+                html += `<div class="aitem"><span class="anum">${l.n}.</span>${l.a || "（待校对）"}`;
+                if (l.e) html += `<div class="exp">解析：${esc(l.e)}</div>`;
+                html += `</div>`;
+              });
+            }
           } else {
             const a = it.ref; const d = a.data || {};
             html += `<div class="subhead">📰 ${esc(a.title || a.date || "时政材料")}</div>`;
@@ -2779,22 +2796,55 @@
             }
           }
         });
-        // 真·PDF：本地 html2canvas + jsPDF 直接生成 .pdf 文件下载（手机可用）；失败才回退打印
-        const doFallback = () => {
-          const blob = new Blob([`<!doctype html><html><head><meta charset="utf-8"><title>考公工作台 · 导出台账</title>
-<style>body{font-family:"Kaiti SC","STKaiti","KaiTi",serif;color:#111;background:#fff;padding:24px;line-height:1.7}
-h1{font-size:22px;text-align:center;border-bottom:2px solid #333;padding-bottom:8px}</style></head><body>
-<h1>考公工作台 · 导出台账</h1>${html}</body></html>`], { type: "text/html;charset=utf-8" });
-          const url = URL.createObjectURL(blob);
-          const w = window.open(url, "_blank");
-          if (!w) UI.toast("浏览器拦截了新窗口，请允许弹窗后重试");
-          else setTimeout(() => { try { w.focus(); w.print(); } catch (e) {} }, 600);
-        };
-        if (window.PDF && PDF.exportPdf) {
-          PDF.exportPdf("考公工作台 · 导出台账", html, { font: '"Kaiti SC","STKaiti","KaiTi",serif' })
-            .catch(() => doFallback());
-        } else doFallback();
+        return html;
       }
+
+      /* 导出选项弹窗：答案位置二选一，导出成功后清空本次勾选 */
+      function exportItemsPdf(items) {
+        if (!items.length) { UI.toast("请先勾选要导出的项"); return; }
+        const box = UI.el(`<div>
+          <label class="fld">答案位置</label>
+          <label style="display:block;margin:7px 0;cursor:pointer"><input type="radio" name="kgExpAns" value="inline" checked/> 答案在题目后（每题紧跟答案与解析）</label>
+          <label style="display:block;margin:7px 0;cursor:pointer"><input type="radio" name="kgExpAns" value="end"/> 答案在文末（先做题，最后统一对答案）</label>
+          <div class="muted small" style="margin-top:8px">导出成功后会自动清空本次勾选，方便下次直接选别的题册。</div>
+        </div>`);
+        UI.modal({
+          title: "📄 导出题册（" + items.length + " 项）", body: box, width: "470px",
+          actions: [
+            { label: "取消", cls: "ghost", onClick: (m, c) => c() },
+            {
+              label: "导出", cls: "primary", onClick: (m, c) => {
+                const mode = (box.querySelector("input[name=kgExpAns]:checked") || {}).value || "inline";
+                c();
+                const html = buildBookExportHtml(items, mode);
+                const ok = () => {
+                  try { multiSel.clear(); multiOn = false; renderBooks(); } catch (e) {}
+                  UI.toast("导出完成，本次勾选已清空，可直接勾选其他题册");
+                };
+                const doFallback = () => {
+                  const blob = new Blob([`<!doctype html><html><head><meta charset="utf-8"><title>考公工作台 · 导出台账</title>
+<style>body{font-family:"Kaiti SC","STKaiti","KaiTi",serif;color:#111;background:#fff;padding:24px;line-height:1.7}
+h1{font-size:22px;text-align:center;border-bottom:2px solid #333;padding-bottom:8px}
+.sec{font-weight:800;margin:14px 0 8px}.subhead{font-weight:800;font-size:16px;margin:12px 0}
+.item{border:1px solid #ddd;border-radius:8px;padding:8px 10px;margin-bottom:8px}
+.aitem{border:1px dashed #999;border-radius:8px;padding:6px 10px;margin-bottom:6px}
+.exp{background:#fafafa;border-left:3px solid #9b6cff;padding:4px 8px;margin-top:4px;font-size:13px}
+.ans{color:#1f8a4c;font-weight:700}.aff h3{margin:10px 0 4px}</style></head><body>
+<h1>考公工作台 · 导出台账</h1>${html}</body></html>`], { type: "text/html;charset=utf-8" });
+                  const url = URL.createObjectURL(blob);
+                  const w = window.open(url, "_blank");
+                  if (!w) UI.toast("浏览器拦截了新窗口，请允许弹窗后重试");
+                  else { ok(); setTimeout(() => { try { w.focus(); w.print(); } catch (e) {} }, 600); }
+                };
+                if (window.PDF && PDF.exportPdf) PDF.exportPdf("考公工作台 · 导出台账", html, { font: '"Kaiti SC","STKaiti","KaiTi",serif' }).then(ok).catch(() => doFallback());
+                else doFallback();
+              }
+            }
+          ]
+        });
+      }
+      /* 供各模块的「我导入的题册」页复用（多选导出） */
+      window.KGPdfExportItems = exportItemsPdf;
 
       // 多选工具条：切换 / 批量移动 / 批量删除 / 导出 PDF
       let multiBar = null;

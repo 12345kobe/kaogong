@@ -355,8 +355,9 @@
     body.appendChild(sec);
     const box = sec.querySelector(".kg-det-b");
 
-    /* ===== 全模块演练（v20261001j）：跨该模块下所有题册随机抽 5-20 题 =====
-       放在模块级（不是某个小题册里）：可勾选要参与的题册，默认全选。 */
+    /* ===== 模块级题册演练 / 导出（v20261001k）=====
+       不再用内联勾选块：点「多选题册」弹出悬浮窗，列出所有题册名供勾选，
+       勾选后可直接演练或导出 PDF。 */
     const poolOf = (bkList) => {
       const out = [];
       bkList.forEach(bk => (bk.sections || []).forEach(s =>
@@ -364,11 +365,12 @@
       return out;
     };
     const shuffle = (arr) => { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = arr[i]; arr[i] = arr[j]; arr[j] = t; } return arr; };
+    const subjName = window.KGSubjectFull ? KGSubjectFull(subj) : subj;
     const modCard = UI.el(`<div class="card">
-      <h3>🎯 全模块演练（${UI.esc(window.KGSubjectFull ? KGSubjectFull(subj) : subj)}）</h3>
-      <div class="muted small">跨本模块所有题册随机抽题合成一场练习（可只勾选部分题册）。</div>
-      <div class="pdb-pick" style="margin-top:8px"></div>
-      <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap;align-items:center">
+      <h3>🎯 题册演练 / 导出（${UI.esc(subjName)}）</h3>
+      <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center">
+        <button class="btn pdb-mod-pick">▢ 多选题册</button>
+        <button class="btn primary pdb-mod-go">🎲 全部演练</button>
         <label class="fld" style="margin:0">每次</label>
         <select class="pdb-mod-size" style="width:96px">
           <option value="5">5 题</option>
@@ -378,22 +380,36 @@
           <option value="15">15 题</option>
           <option value="20">20 题</option>
         </select>
-        <button class="btn primary pdb-mod-go">🎲 开始全模块演练</button>
       </div>
     </div>`);
     box.appendChild(modCard);
-    const pickHost = modCard.querySelector(".pdb-pick");
-    const renderPick = () => {
-      pickHost.innerHTML = books.map(b => `<label class="pdb-pick-i"><input type="checkbox" class="pdb-pick-c" value="${UI.esc(b.id)}" checked/> ${UI.esc(b.name || "未命名题册")}</label>`).join("");
-    };
-    renderPick();
-    modCard.querySelector(".pdb-mod-go").onclick = () => {
-      const ids = Array.prototype.map.call(pickHost.querySelectorAll(".pdb-pick-c:checked"), c => c.value);
-      const sel = ids.length ? books.filter(b => ids.indexOf(b.id) >= 0) : books;
-      const pool = shuffle(poolOf(sel));
+    const runDrill = (bkList) => {
+      const pool = shuffle(poolOf(bkList));
       if (!pool.length) { UI.toast("勾选的题册里没有可练习的题目"); return; }
       const n = Math.min(parseInt((modCard.querySelector(".pdb-mod-size") || {}).value || "10", 10) || 10, pool.length);
-      openQuiz(`${window.KGSubjectFull ? KGSubjectFull(subj) : subj} · 全模块演练（${n} 题 / ${sel.length} 册）`, pool.slice(0, n));
+      openQuiz(`${subjName} · 题册演练（${n} 题 / ${bkList.length} 册）`, pool.slice(0, n));
+    };
+    modCard.querySelector(".pdb-mod-go").onclick = () => runDrill(books);
+    modCard.querySelector(".pdb-mod-pick").onclick = () => {
+      const list = UI.el(`<div>${books.map(b => `<label style="display:flex;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid var(--line);cursor:pointer"><input type="checkbox" class="pp-c" value="${UI.esc(b.id)}" checked/> <span>${UI.esc(b.name || "未命名题册")}</span></label>`).join("")}</div>`);
+      UI.modal({
+        title: "选择题册（共 " + books.length + " 册）", body: list, width: "470px",
+        actions: [
+          { label: "取消", cls: "ghost", onClick: (m, c) => c() },
+          { label: "🎲 演练勾选册", cls: "primary", onClick: (m, c) => {
+            const ids = Array.prototype.map.call(list.querySelectorAll(".pp-c:checked"), x => x.value);
+            const sel = ids.length ? books.filter(b => ids.indexOf(b.id) >= 0) : books;
+            c(); runDrill(sel);
+          } },
+          { label: "📄 导出勾选册", cls: "", onClick: (m, c) => {
+            const ids = Array.prototype.map.call(list.querySelectorAll(".pp-c:checked"), x => x.value);
+            const sel = ids.length ? books.filter(b => ids.indexOf(b.id) >= 0) : books;
+            c();
+            if (window.KGPdfExportItems) window.KGPdfExportItems(sel.map(b => ({ type: "book", ref: b })));
+            else UI.toast("导出组件未就绪，请稍后再试");
+          } }
+        ]
+      });
     };
 
     function openHtml(title, html) {
