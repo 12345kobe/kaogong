@@ -1630,12 +1630,15 @@ body.light .shuati-input::placeholder{color:#8a94a6}
 .sp-opt:hover{transform:translateY(-3px);box-shadow:0 10px 24px rgba(0,0,0,.28)}
 .sp-opt:active{transform:translateY(0)}
 
-/* ===== 玻璃面板色调跟随主题（v20261001h，修复「深底配深字/白雾配浅字」看不清）=====
-   原来深色主题的玻璃面板也是白色色调 rgba(255,255,255,α)，透出浅色壁纸时
-   面板发灰发白，浅色文字糊在上面完全没法读。现在：深色主题一律深色面板，
-   浅色主题保持白面板；文字色始终跟随主题，任何滑条档位都可读。 */
+/* ===== 玻璃面板色调跟随主题（v20261001i 修订）=====
+   深色主题：玻璃面一律深色色调（面板色跟主题走，文字恒为浅色 → 恒定可读）。
+   注意三条底线：
+   1. **绝不碰自带 accent 配色的按钮**：.btn.primary（青紫渐变+深字）、.checkin-btn
+     （绿色渐变+深字）、.btn.ghost/.danger——h 版曾把它们的背景盖成深色导致字看不见；
+   2. 面板透明度有下限 max(--g-alpha, 0.55)：滑条拉到最清透时面板也不至于挡不住浅色壁纸；
+   3. 文字色只跟主题变量，不做任何采样猜测。 */
 body.glass:not(.light) .card,
-body.glass:not(.light) .btn,
+body.glass:not(.light) .btn:not(.primary):not(.ghost):not(.danger),
 body.glass:not(.light) .chip,
 body.glass:not(.light) .opt,
 body.glass:not(.light) input,
@@ -1644,7 +1647,6 @@ body.glass:not(.light) textarea,
 body.glass:not(.light) .modal,
 body.glass:not(.light) .icon-btn,
 body.glass:not(.light) .sync-btn,
-body.glass:not(.light) .checkin-btn,
 body.glass:not(.light) .rw-card,
 body.glass:not(.light) .arc-q,
 body.glass:not(.light) .ai-overlay,
@@ -1653,9 +1655,31 @@ body.glass:not(.light) .today-date,
 body.glass:not(.light) .daily-quote,
 body.glass:not(.light) .glass-preview .gp-card,
 body.glass:not(.light) .kg-tile{
-  background:rgba(15,17,26,var(--g-alpha,.22));
+  background:rgba(15,17,26,max(var(--g-alpha,.22), 0.55));
   border-color:rgba(255,255,255,calc(var(--g-hi,.60) * .22));
 }
-/* 深色主题下输入框里的占位符与文字（input 在白雾上会看不清的问题一并了断） */
+/* 深色主题下输入框里的占位符与文字 */
 body.glass:not(.light) input::placeholder,
-body.glass:not(.light) textarea::placeholder{ color:rgba(210,218,235,.55) }
+body.glass:not(.light) textarea::placeholder{ color:rgba(210,218,235,.62) }
+/* 浅色主题玻璃面：白面板同样设透明度下限（深壁纸透上来时深字才有着落），
+   同样不碰 accent 按钮 */
+body.glass.light .card,
+body.glass.light .btn:not(.primary):not(.ghost):not(.danger),
+body.glass.light .chip,
+body.glass.light .opt,
+body.glass.light input,
+body.glass.light select,
+body.glass.light textarea,
+body.glass.light .modal,
+body.glass.light .icon-btn,
+body.glass.light .sync-btn,
+body.glass.light .rw-card,
+body.glass.light .arc-q,
+body.glass.light .ai-overlay,
+body.glass.light .glass-preview .gp-card,
+body.glass.light .kg-tile{
+  background:rgba(255,255,255,max(var(--g-alpha,.22), 0.72));
+}
+/* AI 头部副标题（模型名）在深色主题下提到更亮的灰，确保可读 */
+body.glass:not(.light) .ai-head-sub{ color:#b9c3da }
+body:not(.light) .ai-head-sub{ color:#aab4c8 }
