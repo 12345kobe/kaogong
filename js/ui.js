@@ -932,12 +932,10 @@
       btn.style.display = "none";
     },
 
-    /* ===== 全局：给所有文字输入框加「清空」按钮，点击即清空整框 =====
-       覆盖 input[type=text/search/email/url/tel]、无 type（默认 text）、textarea；
-       排除 number/date/range/color/file/checkbox/radio/button/submit/hidden/image 等，
-       以及 readonly/disabled 或带 data-kg-no-clear 的框。
-       用 MutationObserver 监听 DOM 变化，自动给路由切换 / 弹窗 / 异步模块里
-       动态生成的输入框也补上清除按钮。 */
+    /* ===== 全局：给所有文字输入框加「清除」键（v20261001g 重做）=====
+       旧版是悬浮在输入框右上的红色 ✕（fixed 定位），易误触且位置会飘。
+       新版：小「清除」键插在输入框正下方，**只有输入框聚焦且有内容时才出现**，
+       失焦即隐藏，防止误触。覆盖范围与排除规则不变。 */
     initClearButtons() {
       if (this._clearReady) return;
       this._clearReady = true;
@@ -950,43 +948,23 @@
         if (EXCLUDE_TYPE[t]) return true;
         return false;
       };
-      const SIZE = 26;
-      const recs = [];
-      /* 关键：按钮挂 body 上用 fixed 定位——不依赖父容器 position/overflow/z-index，
-         任何布局（flex、折叠区、弹窗、全屏页）都能稳定显示在输入框内右侧。 */
-      const place = function (rec) {
-        const inp = rec.inp, btn = rec.btn;
-        if (!inp.isConnected) { try { btn.remove(); } catch (e) {} return false; }
-        const has = !!(inp.value && inp.value.length);
-        if (!has) { btn.style.display = "none"; return true; }
-        const r = inp.getBoundingClientRect();
-        const vw = window.innerWidth || document.documentElement.clientWidth;
-        const vh = window.innerHeight || document.documentElement.clientHeight;
-        if (r.width < 56 || r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw) { btn.style.display = "none"; return true; }
-        btn.style.display = "flex";
-        btn.style.left = Math.max(2, Math.min(r.right - SIZE - 6, vw - SIZE - 2)) + "px";
-        btn.style.top = (inp.tagName === "TEXTAREA"
-          ? Math.max(2, Math.min(r.bottom - SIZE - 6, vh - SIZE - 2))
-          : r.top + Math.max(2, (r.height - SIZE) / 2)) + "px";
-        return true;
-      };
-      const placeAll = function () {
-        for (let i = recs.length - 1; i >= 0; i--) { if (!place(recs[i])) recs.splice(i, 1); }
-      };
       const addTo = function (inp) {
         if (inp.dataset.kgClear === "1" || SKIP(inp)) return;
         inp.dataset.kgClear = "1";
-        const ta = inp.tagName === "TEXTAREA";
-        inp.classList.add(ta ? "kg-has-clear-ta" : "kg-has-clear");
         const btn = document.createElement("button");
         btn.type = "button";
-        btn.className = "kg-clear-btn" + (ta ? " ta" : "");
-        btn.setAttribute("aria-label", "清空");
-        btn.title = "清空";
-        btn.textContent = "✕";
-        btn.style.cssText = "position:fixed;display:none;align-items:center;justify-content:center;" +
-          "width:26px;height:26px;border-radius:50%;border:1.5px solid #fff;background:#e23b54;color:#fff;" +
-          "font-size:15px;font-weight:700;line-height:1;padding:0;cursor:pointer;z-index:10030;box-shadow:0 1px 6px rgba(0,0,0,.35)";
+        btn.className = "kg-clear2";
+        btn.textContent = "清除";
+        // 插在输入框正下方（紧跟其后）；块级父容器里自然落在下一行
+        if (inp.nextSibling) inp.parentNode.insertBefore(btn, inp.nextSibling);
+        else inp.parentNode.appendChild(btn);
+        let hideT = 0;
+        const sync = function () {
+          clearTimeout(hideT);
+          const on = document.activeElement === inp && !!(inp.value && inp.value.length);
+          btn.style.display = on ? "inline-block" : "none";
+        };
+        const softHide = function () { clearTimeout(hideT); hideT = setTimeout(function () { btn.style.display = "none"; }, 200); };
         let lastClear = 0;
         const doClear = function () {
           const now = Date.now();
@@ -998,19 +976,16 @@
             inp.dispatchEvent(new Event("change", { bubbles: true }));
           } catch (err) {}
           try { inp.focus(); } catch (err) {}
-          place(rec);
+          sync();
         };
-        btn.addEventListener("mousedown", function (e) { e.preventDefault(); }); // 桌面：避免点按钮时输入框失焦
+        inp.addEventListener("focus", sync);
+        inp.addEventListener("input", sync);
+        inp.addEventListener("blur", softHide);   // 延迟 200ms 隐藏，给点击留时间
+        btn.addEventListener("mousedown", function (e) { e.preventDefault(); }); // 桌面：点按钮不让输入框失焦
         btn.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); doClear(); });
         // iOS：touchend 里清（touchstart 若 preventDefault 会把 click 一起吞掉，导致点了没反应）
         btn.addEventListener("touchend", function (e) { e.preventDefault(); e.stopPropagation(); doClear(); });
-        document.body.appendChild(btn);
-        const rec = { inp: inp, btn: btn };
-        recs.push(rec);
-        ["input", "focus", "keyup", "change", "paste"].forEach(function (ev) {
-          inp.addEventListener(ev, function () { place(rec); });
-        });
-        place(rec);
+        sync();
       };
       const scan = function () {
         try {
@@ -1018,13 +993,9 @@
         } catch (e) {}
       };
       scan();
-      // 输入/滚动/缩放/布局变化时重新定位；另有低频轮询兜底（含动态生成的弹窗与模块）
-      document.addEventListener("scroll", placeAll, true);
-      window.addEventListener("resize", placeAll);
-      window.addEventListener("orientationchange", placeAll);
-      setInterval(placeAll, 400);
+      // 动态生成的输入框（路由切换 / 弹窗 / 异步模块）自动补上
       let pending = false;
-      const sched = function () { if (pending) return; pending = true; setTimeout(function () { pending = false; scan(); placeAll(); }, 80); };
+      const sched = function () { if (pending) return; pending = true; setTimeout(function () { pending = false; scan(); }, 80); };
       const obs = new MutationObserver(sched);
       obs.observe(document.body, { childList: true, subtree: true });
     }

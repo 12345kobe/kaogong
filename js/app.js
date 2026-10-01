@@ -89,7 +89,54 @@
       }
       applyEmojis();
       applyAppIcon();
+      scheduleBgAdapt();
     }
+    /* ===== 背景亮度自适应（v20261001g）=====
+       玻璃模式透出背景图时，主题固定的文字色可能和背景撞色（浅背景+浅字看不清）。
+       这里把当前背景图采样成 8×8 求平均亮度，再按 --g-photo/--g-overlay 混合出
+       实际底色明暗，打到 html[data-bgb="light|dark"]，CSS 据此翻转默认文字色与底板。 */
+    let bgAdaptT = 0;
+    function currentBgUrl() {
+      const b = document.body;
+      if (!b.classList.contains("glass")) return "";
+      if (b.classList.contains("theme-custom") && b.classList.contains("has-bg")) {
+        const v = b.style.getPropertyValue("--custom-bg") || "";
+        const m = v.match(/url\(("|')?([\s\S]+?)\1\)/);
+        return m ? m[2].replace(/\\(["'])/g, "$1") : "";
+      }
+      const land = window.innerWidth > window.innerHeight;
+      if (b.classList.contains("theme-wuxia")) return "assets/bg/" + (land ? "wuxia-l.jpg" : "wuxia-p.jpg");
+      if (b.classList.contains("theme-cute")) return "assets/bg/" + (land ? "cute-l.jpg" : "cute-p.jpg");
+      return "";
+    }
+    function bgAdapt() {
+      const html = document.documentElement, b = document.body;
+      const fallback = () => html.setAttribute("data-bgb", b.classList.contains("light") ? "light" : "dark");
+      const url = currentBgUrl();
+      if (!url) { fallback(); return; }
+      const cs = getComputedStyle(b);
+      const num = n => { const v = parseFloat(cs.getPropertyValue(n)); return isNaN(v) ? 0 : Math.max(0, Math.min(1, v)); };
+      const photo = num("--g-photo"), overlay = num("--g-overlay");
+      const overlayLum = b.classList.contains("light") ? 249 : 12; // 罩色 rgba(255,250,235)/rgba(10,10,12) 亮度
+      const img = new Image();
+      img.onload = function () {
+        try {
+          const c = document.createElement("canvas"); c.width = 8; c.height = 8;
+          const x = c.getContext("2d"); x.drawImage(img, 0, 0, 8, 8);
+          const d = x.getImageData(0, 0, 8, 8).data;
+          let L = 0;
+          for (let i = 0; i < d.length; i += 4) L += 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+          L = L / (d.length / 4);
+          const eff = L * photo + overlayLum * overlay;
+          html.setAttribute("data-bgb", eff >= 128 ? "light" : "dark");
+        } catch (e) { fallback(); }
+      };
+      img.onerror = fallback;
+      img.src = url;
+    }
+    function scheduleBgAdapt() { clearTimeout(bgAdaptT); bgAdaptT = setTimeout(bgAdapt, 220); }
+    window.addEventListener("orientationchange", scheduleBgAdapt);
+    window.addEventListener("resize", scheduleBgAdapt);
     /* 桌面 App 图标按主题换装（与 head 内联脚本同一套映射）：
        cyber→赛博朋克图 / cute→可爱图 / wuxia→武侠图 / 其余（minimal/custom等）→通用图。
        iOS 加主屏那一刻读 apple-touch-icon；安卓读 manifest（下次打开生效）。 */
@@ -395,6 +442,18 @@
           </select>
           <button class="btn primary pdb-all">▶ 从第一个考点开始练</button>
         </div>
+        <div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap;align-items:center">
+          <label class="fld" style="margin:0">全题册每次</label>
+          <select class="pdb-full-size" style="width:96px">
+            <option value="5">5 题</option>
+            <option value="8">8 题</option>
+            <option value="10" selected>10 题</option>
+            <option value="12">12 题</option>
+            <option value="15">15 题</option>
+            <option value="20">20 题</option>
+          </select>
+          <button class="btn pdb-full">🎲 全题册演练</button>
+        </div>
       </div>`);
       let firstGo = null;
 
@@ -403,7 +462,8 @@
           const qs = (s.questions || []).filter(q => q && q.options && q.options.length >= 2 && q.q);
           const nm = s.name || ("第 " + (si + 1) + " 部分");
           const label = qs.length ? (nm + "（" + qs.length + " 题）") : ("📖 " + nm + "（考点讲解）");
-          const inner = UI.section(label);
+          // 默认收起（v20261001g）：点进题册只看到题册名与入口，板块内容由用户自己点开
+          const inner = UI.section(label, { open: false });
           const ic = UI.el(`<div class="card"></div>`);
           // 待校对判定：兼容字母串答案（多选 "ABD"），只有明显非法才计数
           const badAns = q => {
@@ -439,7 +499,7 @@
           }
           // 题目清单：每题 + 所属考点
           if (qs.length) {
-            const list = UI.section("题目清单（含考点）");
+            const list = UI.section("题目清单（含考点）", { open: false });
             const items = qs.slice(0, 300).map((q, qi) => {
               const stem = String(q.q || "").replace(/\s+/g, " ").slice(0, 46);
               const ans = q.multi ? ` · ${q.multi}` : (q.a >= 0 ? " · " + String.fromCharCode(65 + q.a) : "");
@@ -457,6 +517,19 @@
 
       const allBtn = card.querySelector(".pdb-all");
       if (allBtn) allBtn.onclick = () => { if (firstGo) firstGo(); else UI.toast("本题册暂无可练习的题目"); };
+      // 全题册演练（v20261001g）：跨所有板块随机抽 5-20 题合成一场练习
+      const fullBtn = card.querySelector(".pdb-full");
+      const fullSel = card.querySelector(".pdb-full-size");
+      if (fullBtn) {
+        fullBtn.onclick = () => {
+          const pool = [];
+          secs.forEach(s => (s.questions || []).forEach(q => { if (q && q.options && q.options.length >= 2 && q.q) pool.push(q); }));
+          if (!pool.length) { UI.toast("本题册暂无可练习的题目"); return; }
+          for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = pool[i]; pool[i] = pool[j]; pool[j] = t; }
+          const n = Math.min(parseInt((fullSel && fullSel.value) || "10", 10) || 10, pool.length);
+          openQuiz(`${bk.name || "题册"} · 全题册演练（${n} 题 · 随机跨板块）`, pool.slice(0, n));
+        };
+      }
       box.appendChild(card);
     });
   }

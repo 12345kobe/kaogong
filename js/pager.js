@@ -28,6 +28,17 @@
     return DEF[(idx - 1) % DEF.length];
   }
 
+  /* 去重符号（v20261001g）：标题里往往自带 emoji，方格图标再取一个就会出现
+     「📖📖 必备实词积累」这种双符号。规则：整条方格只保留一个符号——
+     标题含 emoji 就用它当图标、并把标题里的 emoji 全部清掉；没有才用默认图标。 */
+  const EMOJI_G = /[\u2190-\u2BFF\u{1F000}-\u{1FAFF}\u2600-\u27BF\u{FE0F}\u{200D}]/gu;
+  function oneEmoji(title) {
+    const t = String(title || "");
+    const ico = (t.match(/[\u2190-\u2BFF\u{1F000}-\u{1FAFF}\u2600-\u27BF]/u) || [""])[0];
+    const txt = ico ? t.replace(EMOJI_G, "").replace(/\s{2,}/g, " ").trim() : t.trim();
+    return { ico: ico, txt: txt };
+  }
+
   function ensureStyle() {
     if (styled) return;
     styled = true;
@@ -169,8 +180,9 @@ body.kg-sub #pageTitle{display:none}
       const tile = document.createElement("div");
       tile.className = "kg-tile";
       tile.setAttribute("role", "button");
-      tile.innerHTML = '<span class="kg-tile-ico">' + esc(iconOf(title, n)) + '</span>' +
-        '<span class="kg-tile-t">' + esc(title) + '</span>' +
+      const oe = oneEmoji(title);
+      tile.innerHTML = '<span class="kg-tile-ico">' + esc(oe.ico || iconOf(title, n)) + '</span>' +
+        '<span class="kg-tile-t">' + esc(oe.txt || title) + '</span>' +
         '<span class="kg-tile-arrow">›</span>';
       tile.onclick = function () { location.hash = "#/" + route; };
       grid.appendChild(tile);
@@ -237,8 +249,10 @@ body.kg-sub #pageTitle{display:none}
     const t = document.createElement("div");
     t.className = "kg-tile";
     t.setAttribute("role", "button");
-    t.innerHTML = '<span class="kg-tile-ico">' + esc(ico) + '</span>' +
-      '<span class="kg-tile-t">' + esc(title) + '</span>' +
+    const oe = oneEmoji(title);
+    const txt = ico ? (String(title || "").replace(EMOJI_G, "").replace(/\s{2,}/g, " ").trim() || title) : (oe.txt || title);
+    t.innerHTML = '<span class="kg-tile-ico">' + esc(ico || oe.ico) + '</span>' +
+      '<span class="kg-tile-t">' + esc(txt) + '</span>' +
       '<span class="kg-tile-arrow">›</span>';
     t.onclick = function () { location.hash = href; };
     return t;
