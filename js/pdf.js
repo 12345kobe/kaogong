@@ -243,16 +243,9 @@
      桌面 → 生成 PDF 文件下载 */
   async function exportPdfOrPrint(title, bodyHtml, opts) {
     if (isMobileLike()) {
-      let w = null;
-      try { w = window.open("", "_blank"); } catch (e) { w = null; }
-      if (w) {
-        printHtml(title, bodyHtml, opts);
-        if (window.UI && UI.toast) UI.toast("已打开打印页：点页面顶部「⬇ 导出 PDF / 打印」按钮");
-      } else {
-        // 新窗口被拦截 → 退回同文档打印
-        printInPlace(title, bodyHtml, opts);
-        if (window.UI && UI.toast) UI.toast("已拉起打印页：点「分享」→「存储到文件」即可导出 PDF");
-      }
+      // 手机：页内打印预览（iframe）+ 手动打印按钮，不再依赖弹窗/自动 print
+      printPanel(title, bodyHtml, opts);
+      if (window.UI && UI.toast) UI.toast("已打开打印预览：点顶部「🖨 打印 / 存储为 PDF」");
       return;
     }
     try {
@@ -271,14 +264,16 @@
     }
   }
 
-  function printHtml(title, bodyHtml, opts) {
-    const w = window.open("", "_blank");
-    if (!w) { alert("浏览器拦截了弹窗，请允许弹窗后重试"); return; }
+  /* 生成可打印文档（新窗口与页内预览共用同一份 HTML） */
+  function buildPrintDoc(title, bodyHtml, opts, mode) {
     const d = new Date();
     const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
     const homeUrl = window.location.href;
     const font = (opts && opts.font) || '"Microsoft YaHei","PingFang SC",sans-serif';
-    w.document.write(`<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8">
+    const head = mode === "iframe" ? "" : printToolbar(homeUrl);
+    const tail = mode === "iframe" ? "" : backHomeBtn(homeUrl) +
+      `<script>window.onload=function(){setTimeout(function(){window.print();},250);};<\/script>`;
+    return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8">
 <title>${title}</title>
 <style>
   /* 关键：不加这两行，打印/另存 PDF 时背景色（高亮）会被浏览器丢掉 */
@@ -325,15 +320,86 @@
   .foot{margin-top:24px;color:#999;font-size:12px;text-align:center}
   @media print{.noprint{display:none!important}}
 </style></head><body>
-${printToolbar(homeUrl)}
+${head}
 <h1>${title}</h1>
 <div class="meta">导出来源：考公工作台 · 生成时间：${stamp}${opts && opts.fontLabel ? " · 字体：" + opts.fontLabel : ""}</div>
 ${bodyHtml}
 <div class="foot">考公工作台 · 个人备考助手</div>
-${backHomeBtn(homeUrl)}
-<script>window.onload=function(){setTimeout(function(){window.print();},250);};<\/script>
-</body></html>`);
+${tail}
+</body></html>`;
+  }
+
+  function printHtml(title, bodyHtml, opts) {
+    const w = window.open("", "_blank");
+    if (!w) { printPanel(title, bodyHtml, opts); return; }
+    w.document.write(buildPrintDoc(title, bodyHtml, opts, "window"));
     w.document.close();
+  }
+
+  /* ===== 页内打印预览（v20261001j · iOS 专用兜底）=====
+     iOS（尤其主屏 PWA）常拦 window.open，且自动 print() 拉不起打印页。
+     这里把同一份文档塞进页内 iframe（srcdoc），用户在顶部工具栏点
+     「🖨 打印 / 存储为 PDF」——真实手势触发打印，成功率最高；
+     另有「在新窗口打开」「复制全文」两条兜底路径。 */
+  function printPanel(title, bodyHtml, opts) {
+    try {
+      const old = document.getElementById("kgPrintPanel");
+      if (old) old.remove();
+      const doc = buildPrintDoc(title, bodyHtml, opts, "iframe");
+      const host = document.createElement("div");
+      host.id = "kgPrintPanel";
+      host.style.cssText = "position:fixed;inset:0;z-index:10040;background:#fff;display:flex;flex-direction:column;font-family:-apple-system,'PingFang SC',sans-serif";
+      const bar = document.createElement("div");
+      bar.style.cssText = "flex:0 0 auto;display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:calc(env(safe-area-inset-top, 0px) + 8px) 10px 8px;background:#f4f6fb;border-bottom:1px solid #dfe3ee";
+      const mkBtn = (txt, bg, fn) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = txt;
+        b.style.cssText = "padding:9px 14px;font-size:14px;font-weight:800;color:#fff;background:" + bg +
+          ";border:none;border-radius:20px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.18)";
+        b.onclick = fn;
+        bar.appendChild(b);
+        return b;
+      };
+      const fr = document.createElement("iframe");
+      fr.style.cssText = "flex:1 1 auto;width:100%;border:0;background:#fff";
+      fr.setAttribute("srcdoc", doc);
+      mkBtn("🖨 打印 / 存储为 PDF", "#1f8a4c", function () {
+        try { if (fr.contentWindow) fr.contentWindow.print(); else window.print(); }
+        catch (e) { try { window.print(); } catch (e2) {} }
+      });
+      mkBtn("🧭 在新窗口打开", "#9b6cff", function () {
+        const w = window.open("", "_blank");
+        if (!w) { if (window.UI && UI.toast) UI.toast("弹窗被拦截，请改用左侧「打印」按钮"); return; }
+        w.document.write(buildPrintDoc(title, bodyHtml, opts, "window"));
+        w.document.close();
+      });
+      mkBtn("📋 复制全文", "#3a6df0", function () {
+        const tmp = document.createElement("div");
+        tmp.innerHTML = String(bodyHtml || "").replace(/<br\s*\/?>/gi, "\n").replace(/<\/(p|div|li|h\d|tr)>/gi, "\n").replace(/<[^>]+>/g, "");
+        const txt = (tmp.innerText || tmp.textContent || "").replace(/\n{3,}/g, "\n\n").trim();
+        const done = () => { if (window.UI && UI.toast) UI.toast("全文已复制，可粘贴到备忘录再导出 PDF"); };
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, done);
+          else {
+            const ta = document.createElement("textarea");
+            ta.value = txt; ta.style.position = "fixed"; ta.style.opacity = "0";
+            document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); done();
+          }
+        } catch (e) { done(); }
+      });
+      mkBtn("✕ 关闭", "#8a94a6", function () { host.remove(); });
+      const tip = document.createElement("div");
+      tip.style.cssText = "flex:0 0 auto;padding:6px 12px;font-size:12px;color:#5a6478;background:#fffbe8;border-top:1px solid #f0e6c0";
+      tip.textContent = "点「🖨 打印」后在打印预览页里选「分享 → 存储到文件」即可得到 PDF；若打印页仍弹不出，用「复制全文」粘贴到备忘录导出。";
+      host.appendChild(bar);
+      host.appendChild(fr);
+      host.appendChild(tip);
+      document.body.appendChild(host);
+    } catch (e) {
+      console.warn("打印预览失败", e);
+      try { window.print(); } catch (e2) {}
+    }
   }
 
   /* 构建导出结构：题目与答案分离

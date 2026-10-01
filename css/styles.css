@@ -1683,3 +1683,9 @@ body.glass.light .kg-tile{
 /* AI 头部副标题（模型名）在深色主题下提到更亮的灰，确保可读 */
 body.glass:not(.light) .ai-head-sub{ color:#b9c3da }
 body:not(.light) .ai-head-sub{ color:#aab4c8 }
+
+/* 全模块演练：题册勾选列表 */
+.pdb-pick{display:flex;flex-wrap:wrap;gap:6px 12px}
+.pdb-pick-i{display:inline-flex;align-items:center;gap:5px;font-size:13px;color:var(--txt-dim);
+  padding:3px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);cursor:pointer}
+.pdb-pick-i input{width:15px;height:15px;accent-color:var(--cyan);margin:0}

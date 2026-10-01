@@ -355,6 +355,47 @@
     body.appendChild(sec);
     const box = sec.querySelector(".kg-det-b");
 
+    /* ===== 全模块演练（v20261001j）：跨该模块下所有题册随机抽 5-20 题 =====
+       放在模块级（不是某个小题册里）：可勾选要参与的题册，默认全选。 */
+    const poolOf = (bkList) => {
+      const out = [];
+      bkList.forEach(bk => (bk.sections || []).forEach(s =>
+        (s.questions || []).forEach(q => { if (q && q.options && q.options.length >= 2 && q.q) out.push(q); })));
+      return out;
+    };
+    const shuffle = (arr) => { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = arr[i]; arr[i] = arr[j]; arr[j] = t; } return arr; };
+    const modCard = UI.el(`<div class="card">
+      <h3>🎯 全模块演练（${UI.esc(window.KGSubjectFull ? KGSubjectFull(subj) : subj)}）</h3>
+      <div class="muted small">跨本模块所有题册随机抽题合成一场练习（可只勾选部分题册）。</div>
+      <div class="pdb-pick" style="margin-top:8px"></div>
+      <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap;align-items:center">
+        <label class="fld" style="margin:0">每次</label>
+        <select class="pdb-mod-size" style="width:96px">
+          <option value="5">5 题</option>
+          <option value="8">8 题</option>
+          <option value="10" selected>10 题</option>
+          <option value="12">12 题</option>
+          <option value="15">15 题</option>
+          <option value="20">20 题</option>
+        </select>
+        <button class="btn primary pdb-mod-go">🎲 开始全模块演练</button>
+      </div>
+    </div>`);
+    box.appendChild(modCard);
+    const pickHost = modCard.querySelector(".pdb-pick");
+    const renderPick = () => {
+      pickHost.innerHTML = books.map(b => `<label class="pdb-pick-i"><input type="checkbox" class="pdb-pick-c" value="${UI.esc(b.id)}" checked/> ${UI.esc(b.name || "未命名题册")}</label>`).join("");
+    };
+    renderPick();
+    modCard.querySelector(".pdb-mod-go").onclick = () => {
+      const ids = Array.prototype.map.call(pickHost.querySelectorAll(".pdb-pick-c:checked"), c => c.value);
+      const sel = ids.length ? books.filter(b => ids.indexOf(b.id) >= 0) : books;
+      const pool = shuffle(poolOf(sel));
+      if (!pool.length) { UI.toast("勾选的题册里没有可练习的题目"); return; }
+      const n = Math.min(parseInt((modCard.querySelector(".pdb-mod-size") || {}).value || "10", 10) || 10, pool.length);
+      openQuiz(`${window.KGSubjectFull ? KGSubjectFull(subj) : subj} · 全模块演练（${n} 题 / ${sel.length} 册）`, pool.slice(0, n));
+    };
+
     function openHtml(title, html) {
       const mask = UI.el(`<div class="modal-mask"><div class="modal" style="max-width:760px;max-height:84vh;overflow:auto">
         <h3>📖 ${UI.esc(title)}</h3>
@@ -394,18 +435,6 @@
             <option value="0">本节全部</option>
           </select>
           <button class="btn primary pdb-all">▶ 从第一个考点开始练</button>
-        </div>
-        <div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap;align-items:center">
-          <label class="fld" style="margin:0">全题册每次</label>
-          <select class="pdb-full-size" style="width:96px">
-            <option value="5">5 题</option>
-            <option value="8">8 题</option>
-            <option value="10" selected>10 题</option>
-            <option value="12">12 题</option>
-            <option value="15">15 题</option>
-            <option value="20">20 题</option>
-          </select>
-          <button class="btn pdb-full">🎲 全题册演练</button>
         </div>
       </div>`);
       let firstGo = null;
@@ -470,19 +499,6 @@
 
       const allBtn = card.querySelector(".pdb-all");
       if (allBtn) allBtn.onclick = () => { if (firstGo) firstGo(); else UI.toast("本题册暂无可练习的题目"); };
-      // 全题册演练（v20261001g）：跨所有板块随机抽 5-20 题合成一场练习
-      const fullBtn = card.querySelector(".pdb-full");
-      const fullSel = card.querySelector(".pdb-full-size");
-      if (fullBtn) {
-        fullBtn.onclick = () => {
-          const pool = [];
-          secs.forEach(s => (s.questions || []).forEach(q => { if (q && q.options && q.options.length >= 2 && q.q) pool.push(q); }));
-          if (!pool.length) { UI.toast("本题册暂无可练习的题目"); return; }
-          for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = pool[i]; pool[i] = pool[j]; pool[j] = t; }
-          const n = Math.min(parseInt((fullSel && fullSel.value) || "10", 10) || 10, pool.length);
-          openQuiz(`${bk.name || "题册"} · 全题册演练（${n} 题 · 随机跨板块）`, pool.slice(0, n));
-        };
-      }
       box.appendChild(card);
     });
   }
