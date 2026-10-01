@@ -89,54 +89,7 @@
       }
       applyEmojis();
       applyAppIcon();
-      scheduleBgAdapt();
     }
-    /* ===== 背景亮度自适应（v20261001g）=====
-       玻璃模式透出背景图时，主题固定的文字色可能和背景撞色（浅背景+浅字看不清）。
-       这里把当前背景图采样成 8×8 求平均亮度，再按 --g-photo/--g-overlay 混合出
-       实际底色明暗，打到 html[data-bgb="light|dark"]，CSS 据此翻转默认文字色与底板。 */
-    let bgAdaptT = 0;
-    function currentBgUrl() {
-      const b = document.body;
-      if (!b.classList.contains("glass")) return "";
-      if (b.classList.contains("theme-custom") && b.classList.contains("has-bg")) {
-        const v = b.style.getPropertyValue("--custom-bg") || "";
-        const m = v.match(/url\(("|')?([\s\S]+?)\1\)/);
-        return m ? m[2].replace(/\\(["'])/g, "$1") : "";
-      }
-      const land = window.innerWidth > window.innerHeight;
-      if (b.classList.contains("theme-wuxia")) return "assets/bg/" + (land ? "wuxia-l.jpg" : "wuxia-p.jpg");
-      if (b.classList.contains("theme-cute")) return "assets/bg/" + (land ? "cute-l.jpg" : "cute-p.jpg");
-      return "";
-    }
-    function bgAdapt() {
-      const html = document.documentElement, b = document.body;
-      const fallback = () => html.setAttribute("data-bgb", b.classList.contains("light") ? "light" : "dark");
-      const url = currentBgUrl();
-      if (!url) { fallback(); return; }
-      const cs = getComputedStyle(b);
-      const num = n => { const v = parseFloat(cs.getPropertyValue(n)); return isNaN(v) ? 0 : Math.max(0, Math.min(1, v)); };
-      const photo = num("--g-photo"), overlay = num("--g-overlay");
-      const overlayLum = b.classList.contains("light") ? 249 : 12; // 罩色 rgba(255,250,235)/rgba(10,10,12) 亮度
-      const img = new Image();
-      img.onload = function () {
-        try {
-          const c = document.createElement("canvas"); c.width = 8; c.height = 8;
-          const x = c.getContext("2d"); x.drawImage(img, 0, 0, 8, 8);
-          const d = x.getImageData(0, 0, 8, 8).data;
-          let L = 0;
-          for (let i = 0; i < d.length; i += 4) L += 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
-          L = L / (d.length / 4);
-          const eff = L * photo + overlayLum * overlay;
-          html.setAttribute("data-bgb", eff >= 128 ? "light" : "dark");
-        } catch (e) { fallback(); }
-      };
-      img.onerror = fallback;
-      img.src = url;
-    }
-    function scheduleBgAdapt() { clearTimeout(bgAdaptT); bgAdaptT = setTimeout(bgAdapt, 220); }
-    window.addEventListener("orientationchange", scheduleBgAdapt);
-    window.addEventListener("resize", scheduleBgAdapt);
     /* 桌面 App 图标按主题换装（与 head 内联脚本同一套映射）：
        cyber→赛博朋克图 / cute→可爱图 / wuxia→武侠图 / 其余（minimal/custom等）→通用图。
        iOS 加主屏那一刻读 apple-touch-icon；安卓读 manifest（下次打开生效）。 */

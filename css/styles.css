@@ -1630,32 +1630,32 @@ body.light .shuati-input::placeholder{color:#8a94a6}
 .sp-opt:hover{transform:translateY(-3px);box-shadow:0 10px 24px rgba(0,0,0,.28)}
 .sp-opt:active{transform:translateY(0)}
 
-/* ===== 背景亮度自适应（v20261001g）：bg-adapt 采样背景图实际亮度后打 html[data-bgb]，
-   让「没有专门定义配色」的元素（吃 --txt/--txt-dim/玻璃底色的）随背景深浅自动翻转对比度：
-   背景偏亮 → 深色文字 + 白底托底；背景偏暗 → 浅色文字 + 深底托底。仅玻璃模式（透背景）需要。 */
-html[data-bgb="dark"] body.glass{ --txt:#f2f4fa; --txt-dim:#aeb8cf; }
-html[data-bgb="light"] body.glass{ --txt:#161b26; --txt-dim:#47546f; }
-html[data-bgb="dark"] body.glass .card,
-html[data-bgb="dark"] body.glass .btn,
-html[data-bgb="dark"] body.glass .chip,
-html[data-bgb="dark"] body.glass .opt,
-html[data-bgb="dark"] body.glass input,
-html[data-bgb="dark"] body.glass select,
-html[data-bgb="dark"] body.glass textarea,
-html[data-bgb="dark"] body.glass .modal,
-html[data-bgb="dark"] body.glass .icon-btn,
-html[data-bgb="dark"] body.glass .sync-btn,
-html[data-bgb="dark"] body.glass .checkin-btn,
-html[data-bgb="dark"] body.glass .rw-card,
-html[data-bgb="dark"] body.glass .kg-tile{
+/* ===== 玻璃面板色调跟随主题（v20261001h，修复「深底配深字/白雾配浅字」看不清）=====
+   原来深色主题的玻璃面板也是白色色调 rgba(255,255,255,α)，透出浅色壁纸时
+   面板发灰发白，浅色文字糊在上面完全没法读。现在：深色主题一律深色面板，
+   浅色主题保持白面板；文字色始终跟随主题，任何滑条档位都可读。 */
+body.glass:not(.light) .card,
+body.glass:not(.light) .btn,
+body.glass:not(.light) .chip,
+body.glass:not(.light) .opt,
+body.glass:not(.light) input,
+body.glass:not(.light) select,
+body.glass:not(.light) textarea,
+body.glass:not(.light) .modal,
+body.glass:not(.light) .icon-btn,
+body.glass:not(.light) .sync-btn,
+body.glass:not(.light) .checkin-btn,
+body.glass:not(.light) .rw-card,
+body.glass:not(.light) .arc-q,
+body.glass:not(.light) .ai-overlay,
+body.glass:not(.light) .clock,
+body.glass:not(.light) .today-date,
+body.glass:not(.light) .daily-quote,
+body.glass:not(.light) .glass-preview .gp-card,
+body.glass:not(.light) .kg-tile{
   background:rgba(15,17,26,var(--g-alpha,.22));
   border-color:rgba(255,255,255,calc(var(--g-hi,.60) * .22));
 }
-html[data-bgb="dark"] body.glass #topbar,
-html[data-bgb="dark"] body.glass #sidebar{
-  background:rgba(13,15,22,calc(.45 + var(--g-alpha,.22)*.4));
-}
-html[data-bgb="light"] body.glass #topbar,
-html[data-bgb="light"] body.glass #sidebar{
-  background:rgba(255,255,255,calc(.45 + var(--g-alpha,.22)*.4));
-}
+/* 深色主题下输入框里的占位符与文字（input 在白雾上会看不清的问题一并了断） */
+body.glass:not(.light) input::placeholder,
+body.glass:not(.light) textarea::placeholder{ color:rgba(210,218,235,.55) }
