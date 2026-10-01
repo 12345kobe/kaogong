@@ -259,7 +259,7 @@
       const DB = window.DB, UI = window.UI;
       MOD_ROOT = body;
       body.innerHTML = "";
-      UI.StudyPanel("common", body);
+      /* 上岸计时器已移除：右下角「专注」悬浮按钮直达计时器模块 */
 
       // ========== 原有：常识预测题（全模块混合随机） ==========
       const predCard = UI.el(`<div class="card"><h3>💡 常识预测题</h3>

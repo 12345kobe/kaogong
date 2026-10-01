@@ -34,20 +34,21 @@
     const s = document.createElement("style");
     s.textContent = `
 /* 方格入口网格：一个一个小方块 */
-.kg-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:12px;margin:14px 0}
+.kg-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:12px 0}
+/* 扁平风：横向布局、无投影、无悬浮抬升 */
 .kg-tile{
-  position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:6px;padding:14px 10px;min-height:118px;aspect-ratio:1/1;
-  border:1px solid var(--line);border-radius:16px;background:var(--panel2);
-  cursor:pointer;text-align:center;transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease;
+  display:flex;flex-direction:row;align-items:center;gap:10px;
+  padding:11px 13px;
+  border:1px solid var(--line);border-radius:10px;background:var(--panel2);
+  cursor:pointer;text-align:left;transition:border-color .14s ease,opacity .14s ease;
   -webkit-tap-highlight-color:transparent;user-select:none;
 }
-.kg-tile:hover{transform:translateY(-3px);border-color:#34e7e4;box-shadow:0 8px 22px rgba(52,231,228,.22)}
-.kg-tile:active{transform:translateY(-1px) scale(.98)}
-.kg-tile-ico{font-size:30px;line-height:1}
-.kg-tile-t{font-size:14px;font-weight:700;line-height:1.35;color:var(--txt);word-break:break-word;
-  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-.kg-tile-arrow{position:absolute;right:8px;top:8px;color:var(--txt-dim);font-size:14px;opacity:.75}
+.kg-tile:hover{border-color:#34e7e4}
+.kg-tile:active{opacity:.72}
+.kg-tile-ico{font-size:19px;line-height:1;flex:0 0 auto}
+.kg-tile-t{font-size:14px;font-weight:600;line-height:1.35;color:var(--txt);word-break:break-word;
+  flex:1;min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.kg-tile-arrow{flex:0 0 auto;color:var(--txt-dim);font-size:14px;opacity:.65}
 body.light:not(.glass) .kg-tile{background:#fff}
 
 /* 子页面：占满内容区，去掉外层留白 */
@@ -70,9 +71,9 @@ body.kg-sub #pageTitle{display:none}
 .kg-topbar .kg-back:active{transform:scale(.96)}
 .kg-topbar h2{margin:0;font-size:17px;font-weight:800;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media(max-width:520px){
-  .kg-tiles{grid-template-columns:repeat(2,1fr);gap:10px}
-  .kg-tile{min-height:104px;padding:12px 8px}
-  .kg-tile-ico{font-size:26px}
+  .kg-tiles{grid-template-columns:repeat(2,1fr);gap:8px}
+  .kg-tile{padding:10px 11px;gap:8px}
+  .kg-tile-ico{font-size:17px}
   .kg-tile-t{font-size:13px}
 }
 `;

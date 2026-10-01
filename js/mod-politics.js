@@ -388,7 +388,7 @@
     title: "政治理论", icon: "politics",
     render(body) {
       const UI = window.UI;
-      UI.StudyPanel("politics", body);
+      /* 上岸计时器已移除：右下角「专注」悬浮按钮直达计时器模块 */
 
       // 知识点复习板块
       const kpCard = UI.el(`<div></div>`);

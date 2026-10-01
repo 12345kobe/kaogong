@@ -65,7 +65,7 @@
       title, icon: moduleKey,
       render(body) {
         const UI = window.UI, P = window.Pager;
-        UI.StudyPanel(moduleKey, body);
+        /* 上岸计时器已移除：右下角「专注」悬浮按钮直达计时器模块 */
         const cfg = { moduleKey, storeKey, title, intro, defFormulas };
         const href = "#/" + moduleKey + "/formulas";
         if (P) {
