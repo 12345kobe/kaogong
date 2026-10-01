@@ -239,11 +239,20 @@
       (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   }
 
-  /* 导出路由：手机 → 拉起系统打印页（纯文字，可另存 PDF）；桌面 → 生成 PDF 文件下载 */
+  /* 导出路由：手机 → 新窗口打印页（页面带「⬇ 导出 PDF / 打印」按钮，打印页里可「分享→存储到文件」）；
+     桌面 → 生成 PDF 文件下载 */
   async function exportPdfOrPrint(title, bodyHtml, opts) {
     if (isMobileLike()) {
-      printInPlace(title, bodyHtml, opts);
-      if (window.UI && UI.toast) UI.toast("已拉起打印页：点「分享」→「存储到文件」即可导出 PDF");
+      let w = null;
+      try { w = window.open("", "_blank"); } catch (e) { w = null; }
+      if (w) {
+        printHtml(title, bodyHtml, opts);
+        if (window.UI && UI.toast) UI.toast("已打开打印页：点页面顶部「⬇ 导出 PDF / 打印」按钮");
+      } else {
+        // 新窗口被拦截 → 退回同文档打印
+        printInPlace(title, bodyHtml, opts);
+        if (window.UI && UI.toast) UI.toast("已拉起打印页：点「分享」→「存储到文件」即可导出 PDF");
+      }
       return;
     }
     try {

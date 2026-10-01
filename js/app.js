@@ -302,7 +302,7 @@
     try {
       if (window.Pager) {
         // 计时器类模块保持展开（主功能要一眼看到）；其余模块首页全部收成方格入口
-        const KEEP_OPEN = ["countdown", "timer", "ai"];
+        const KEEP_OPEN = ["countdown", "timer", "ai", "calendar"];
         window.Pager.absorb(key, body, { cards: KEEP_OPEN.indexOf(key) < 0 });
       }
     } catch (e) { console.error(e); }
