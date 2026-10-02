@@ -522,9 +522,27 @@
     /[（(]\s*答案\s*[：:]?\s*([A-Ea-e]{1,6})\s*[)）]/,
     /^\s*[（(]\s*([A-Ea-e])\s*[)）]\s*$/
   ];
+  /* 从一段文本开头连续取选项字母：支持 ABC / A、B、C / A,B,C / A B C / 全角ＡＢＣ */
+  function collectLetters(t) {
+    const m = /^\s*((?:[A-Ea-eＡ-Ｅ]\s*[，,、\u3000]?){1,6})/.exec(String(t || ""));
+    if (!m) return "";
+    const s = String(m[1])
+      .replace(/[Ａ-Ｅ]/g, c => String.fromCharCode(c.charCodeAt(0) - 65248))
+      .replace(/[\s，,、\u3000]/g, "")
+      .toUpperCase();
+    return /^[A-E]{1,6}$/.test(s) ? s : "";
+  }
   function pickAnswer(str) {
+    const s = String(str || "");
+    // ① 答案标记后的字母序列（这是多选题「【答案】ABC / 答案：A、B、C」的关键路径）
+    const mk = /(?:参考答案|正确答案|标准答案|答案)\s*[：:是为]?\s*[【\[（(]?\s*[】\]）)]?\s*/.exec(s);
+    if (mk) {
+      const L = collectLetters(s.slice(mk.index + mk[0].length));
+      if (L) return L;
+    }
+    // ② 旧规则兜底
     for (let i = 0; i < ANS_INLINE_RES.length; i++) {
-      const m = ANS_INLINE_RES[i].exec(str);
+      const m = ANS_INLINE_RES[i].exec(s);
       if (m && m[1]) return String(m[1]).toUpperCase();
     }
     return "";
@@ -540,9 +558,14 @@
 
     function setAns(letters) {
       if (!cur || !letters) return;
-      const idx = String(letters).toUpperCase().charCodeAt(0) - 65;
+      // 归一："A、B、C" / "A B C" / "ＡＢＣ" → "ABC"
+      const L = String(letters)
+        .replace(/[Ａ-Ｅ]/g, c => String.fromCharCode(c.charCodeAt(0) - 65248))
+        .toUpperCase().replace(/[\s，,、\u3000（）()【】\[\]]/g, "").replace(/[^A-E]/g, "");
+      if (!L) return;
+      const idx = L.charCodeAt(0) - 65;
       if (idx >= 0 && idx < 10) { cur.a = idx; cur.aSet = true; }
-      if (String(letters).length > 1) cur.multi = String(letters).toUpperCase();
+      if (L.length > 1) cur.multi = L;
     }
     function flush() {
       if (cur) {
@@ -631,6 +654,11 @@
           while (cur.options.length < idx) cur.options.push("");
           cur.options[idx] = txt;
           inOpts = true;
+          // 答案与选项同行（PDF 常见："D．xxx　【答案】ABC"）：选项已成型后仍要抓答案，否则多选答案丢失
+          if (cur.options.length >= 2 && /答案/.test(raw)) {
+            const ta = pickAnswer(raw);
+            if (ta && !cur.aSet) setAns(ta);
+          }
           return;
         }
       }

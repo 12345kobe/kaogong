@@ -250,13 +250,16 @@
         // 关键：把判定结果写回 results，否则 practice（练题）模式下 finish() 统计恒为 0 正确
         results[qi] = { ua: ua, right: right };
         card.dataset.revealed = "1"; card.dataset.done = "1";
+        // 用户作答集合：多选为数组，单选为单个下标（未作答则空）
+        const picked = multi ? (Array.isArray(ua) ? ua.slice() : [])
+          : (isNaN(ua) || ua == null ? [] : [ua]);
         card.querySelectorAll(".opt").forEach((ob, oi) => {
           ob.classList.add("dim");
-          if (answer.indexOf(oi) >= 0) ob.classList.add("correct");
-          else if (multi && ua.indexOf(oi) >= 0) ob.classList.add("wrong");
+          const isAns = answer.indexOf(oi) >= 0;
+          if (isAns) ob.classList.add("correct");
+          // 选错的那个（不在正确答案里却点了）一律标红——单选、多选都生效
+          if (picked.indexOf(oi) >= 0 && !isAns) ob.classList.add("wrong");
         });
-        const sel = card.querySelector(".opt.selected");
-        if (sel && !right && !multi) sel.classList.add("wrong");
         const exp = card.querySelector(".exp");
         exp.style.display = "block";
         const ansStr = answer.map(A).join("、");
