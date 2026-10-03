@@ -1689,3 +1689,23 @@ body:not(.light) .ai-head-sub{ color:#aab4c8 }
 .pdb-pick-i{display:inline-flex;align-items:center;gap:5px;font-size:13px;color:var(--txt-dim);
   padding:3px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);cursor:pointer}
 .pdb-pick-i input{width:15px;height:15px;accent-color:var(--cyan);margin:0}
+
+/* ===== 选项选中态必须压过玻璃面板底色（v20261003b）=====
+   v20261001i 的 body.glass .opt 深色面板规则特异性更高，把 .opt.selected
+   的高亮盖没了（用户点了不知道选中哪个）。这里按同等特异性补回。 */
+body.glass:not(.light) .opt.selected{
+  background:rgba(52,231,228,.26) !important;
+  border-color:#34e7e4 !important;
+  box-shadow:0 0 0 2px rgba(52,231,228,.35) inset;
+}
+body.glass.light .opt.selected{
+  background:rgba(15,179,176,.18) !important;
+  border-color:#0fb3b0 !important;
+  box-shadow:0 0 0 2px rgba(15,179,176,.35) inset;
+}
+/* ===== 长按划掉选项（v20261003b，仿粉笔）=====
+   长按 1 秒 → 整条划横 + 变灰暂时不可选；再长按恢复。 */
+.opt{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.opt.opt-x{opacity:.42;filter:grayscale(.7)}
+.opt.opt-x .q-txt,.opt.opt-x{ text-decoration:line-through; text-decoration-thickness:2px; text-decoration-color:var(--red) }
+.opt.opt-x::after{content:"✕";float:right;margin-left:8px;color:var(--red);font-weight:800;font-size:15px}

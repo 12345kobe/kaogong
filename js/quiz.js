@@ -364,7 +364,40 @@
 
         qq.options.forEach((o, i) => {
           const b = UI.el(`<button class="opt" data-oi="${i}">${A(i)}. ${nl2br(optText(o))}</button>`);
-          b.onclick = () => {
+          /* 长按 1 秒划掉 / 恢复（仿粉笔）：划掉后整条划横变灰、暂时不可选；再长按恢复。
+             只在未揭示的题上生效；pointer 事件统一处理（触屏 + 鼠标），长按不触发选中。 */
+          let xTimer = 0, xFired = false;
+          const clearX = () => { if (xTimer) { clearTimeout(xTimer); xTimer = 0; } };
+          b.addEventListener("pointerdown", () => {
+            if (card.dataset.done === "1") return;
+            xFired = false;
+            xTimer = setTimeout(() => {
+              xTimer = 0; xFired = true;
+              b.classList.toggle("opt-x");
+              try { if (navigator.vibrate) navigator.vibrate(25); } catch (e) {}
+              if (b.classList.contains("opt-x") && b.classList.contains("selected")) {
+                b.classList.remove("selected");
+                if (isMulti(qq)) {
+                  const sel = Array.prototype.slice.call(optsWrap.querySelectorAll(".opt.selected"))
+                    .map(x => parseInt(x.dataset.oi, 10)).sort((x, y) => x - y);
+                  card.dataset.ua = JSON.stringify(sel);
+                  results[qi] = { ua: sel, right: null };
+                  const cf = card.querySelector(".q-confirm"); if (cf) cf.style.display = sel.length ? "" : "none";
+                } else { delete card.dataset.ua; }
+              }
+            }, 1000);
+          });
+          b.addEventListener("pointerup", clearX);
+          b.addEventListener("pointerleave", clearX);
+          b.addEventListener("pointercancel", clearX);
+          b.addEventListener("pointermove", (e) => {
+            // 手指滑动（滚动页面）时取消长按判定
+            if (xTimer && (e.movementY || 0) > 6) clearX();
+          });
+          b.addEventListener("contextmenu", (e) => { e.preventDefault(); });
+          b.onclick = (ev) => {
+            if (xFired) { xFired = false; ev && ev.preventDefault && ev.preventDefault(); return; }  // 长按结束后的那次 click 不算选择
+            if (b.classList.contains("opt-x")) { UI.toast("该选项已划掉，长按可恢复"); return; }
             if (card.dataset.done === "1") return;
             const now = Date.now();
             // 每道题用时（自上一题作答以来的时间，首题自开始计时）

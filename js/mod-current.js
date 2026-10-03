@@ -133,6 +133,45 @@
     return parts.filter(Boolean);
   }
 
+  /* ===== 答案尾巴扫描（v20261004a）=====
+     从「答案标记」之后取选项字母序列 + 剩余解析：
+     - 支持 ABC / A、B、C / A,B,C / A B C / 全角ＡＢＣ → 多选题；
+     - 正确处理「【答案】 ABD C错误，严禁…」这种「答案 + 空格 + 以选项字母开头的解析」：
+       答案到 ABD 为止，"C错误…" 归入解析（旧逻辑会把 C 误并进答案或整段当文字答案）。 */
+  function scanAnsTail(t) {
+    let s = String(t || "").trim();
+    let letters = "", explain = "", i = 0, got = 0;
+    const fw = c => String.fromCharCode(c.charCodeAt(0) - 65248);
+    const norm = c => /[Ａ-Ｅ]/.test(c) ? fw(c) : c;
+    while (i < s.length && got < 6) {
+      const ch = norm(s[i]);
+      if (/[A-E]/.test(ch)) {
+        let j = i, run = "";
+        while (j < s.length) {
+          const c2 = norm(s[j]);
+          if (/[A-E]/.test(c2)) { run += c2; j++; } else break;
+        }
+        const after = s[j] || "";
+        // 已有答案、紧跟的字母后面直接是中文（如 "C错误"）→ 那是解析开头，不是答案
+        if (got > 0 && /[\u4e00-\u9fa5]/.test(after)) { explain = s.slice(i); break; }
+        letters += run; got += run.length; i = j;
+        const m = /^\s*[，,、；;]?\s*/.exec(s.slice(i)); i += m[0].length;
+        if (!s[i]) break;
+        if (/[\u4e00-\u9fa5]/.test(s[i])) { explain = s.slice(i); break; }
+        if (/[。．.]/.test(s[i])) { explain = s.slice(i).replace(/^[。．.\s]+/, ""); break; }
+      } else if (/[\s\u3000，,、；;]/.test(ch)) { i++; }
+      else if (/[（(【\[]/.test(ch)) { i++; }
+      else if (/[）)】\]]/.test(ch)) { i++; }
+      else if (/[。．.]/.test(ch)) { explain = s.slice(i).replace(/^[。．.\s]+/, ""); break; }
+      else { explain = s.slice(i); break; }
+    }
+    explain = (explain || "").trim()
+      .replace(/^[（(]\s*多选\s*[)）]\s*/, "")
+      .replace(/^多选\s*[）)]?\s*[:：]?\s*/, "");
+    return { letters: letters, explain: explain };
+  }
+  window.KGScanAnsTail = scanAnsTail;
+
   function parseQuestions(lines, kp) {
     /* lines：已按行切好；返回 [{q,options,a,e,type}] */
     const out = [];
@@ -186,13 +225,22 @@
         if (!t) { i++; continue; }
         // 答案支持多种写法：
         //   【答案】A / 【答案】：A / 答案：A / 正确答案：B / 正确选项：C
+        //   【答案】ABD（多选）—— 字母序列（含 A、B、C / A B C 等分隔写法）→ 多选
+        //   【答案】 ABD C错误，严禁… —— 答案 + 空格 + 以选项字母开头的解析
         //   也可用选项文字作答：如「【答案】普惠、创新、协同」
         //   兼容答案与解析同行：如「【答案】A【解析】官方表述」
-        const am = /^(?:【?答案】?|正确答案|正确选项)\s*[:：]?\s*([A-Da-d])\b(?:\s*[#【\[]?解析[#】\]]?\s*[:：]?\s*(.*))?$/.exec(t);
-        if (am) {
-          a = am[1].toUpperCase().charCodeAt(0) - 65;
-          if (am[2] && am[2].trim()) e = (e ? e + "　" : "") + am[2].trim();
-          i++; continue;
+        const ah = /^(?:【\s*答案\s*】|【?答案】?|正确答案|正确选项)\s*[:：]?\s*/.exec(t);
+        if (ah) {
+          const sc = scanAnsTail(t.slice(ah[0].length));
+          if (sc.letters) {
+            if (sc.letters.length > 1) { a = sc.letters; type = "multi"; }   // 多选：答案存字母串 "ABD"
+            else a = sc.letters.charCodeAt(0) - 65;
+            if (sc.explain) e = (e ? e + "　" : "") + sc.explain;
+            i++; continue;
+          }
+          // 无字母 → 继续走下面的文字答案分支
+          const am2 = /^(?:解析|【解析】|答案解析)\s*[:：]?\s*(.*)$/.exec(t.slice(ah[0].length));
+          if (am2 && am2[1] && am2[1].trim()) { e = (e ? e + "　" : "") + am2[1].trim(); i++; continue; }
         }
         const tm = /^(?:【?答案】?|正确答案|正确选项)\s*[:：]?\s*(.+)$/.exec(t);
         // 判断题：答案写 √/×/对/错/正确/错误 且题目本身无选项 → 自动补「正确/错误」两项
@@ -418,8 +466,8 @@
         });
         h += `</p>`;
         if (withAnswer) {
-          const ans = (q.a >= 0) ? String.fromCharCode(65 + q.a) : "—";
-          h += `<p style="color:#0a7">【答案】${ans}${q.e ? "　" + esc(q.e) : ""}</p>`;
+          const ans = (typeof q.a === "string" && q.a) ? q.a : ((q.a >= 0) ? String.fromCharCode(65 + q.a) : "—");
+          h += `<p style="color:#0a7">【答案】${ans}${/^[A-E]{2,}$/.test(String(q.a)) ? "（多选）" : ""}${q.e ? "　" + esc(q.e) : ""}</p>`;
         }
       });
     }

@@ -534,11 +534,13 @@
   }
   function pickAnswer(str) {
     const s = String(str || "");
-    // ① 答案标记后的字母序列（这是多选题「【答案】ABC / 答案：A、B、C」的关键路径）
+    // ① 答案标记后的字母序列（这是多选题「【答案】ABC / 答案：A、B、C」的关键路径）。
+    //    用扫描器而非贪婪正则：像「ABD C错误，严禁…」这种解析以选项字母开头的，
+    //    只取 ABD，不能把解析开头的 C 并进答案（否则多选答案错误）。
     const mk = /(?:参考答案|正确答案|标准答案|答案)\s*[：:是为]?\s*[【\[（(]?\s*[】\]）)]?\s*/.exec(s);
     if (mk) {
-      const L = collectLetters(s.slice(mk.index + mk[0].length));
-      if (L) return L;
+      const sc = (window.KGScanAnsTail || function (t) { return { letters: collectLetters(t), explain: "" }; })(s.slice(mk.index + mk[0].length));
+      if (sc.letters) return sc.letters;
     }
     // ② 旧规则兜底
     for (let i = 0; i < ANS_INLINE_RES.length; i++) {
@@ -1906,27 +1908,29 @@
 
       function saveCurrentStructured(data, folderId, materialsText) {
         const mat = String(materialsText || "").trim();
+        // 命名与「粘贴时政材料」一致：日期 + 时政（如 2026-10-04 时政材料）
+        const dayTag = (data && data.date) || DB.today();
         // ① 资料册：资料原文一字不省，整册保存（可随时翻阅），落同一文件夹
         if (mat) {
           window.KGPdfBooks.add({
-            subject: "时政", name: cnDateOf(mat) + "时政材料", named: true,
+            subject: "时政", name: dayTag + " 时政材料", named: true,
             folderId: folderId || window.KGFolders.rootId("时政"),
             sections: [{ name: "📄 时政材料（原文）", theory: mat, questions: [] }]
           });
         }
         // ② 题目册：题目+答案+解析
         const qs = toBookQuestions(data.questions || []);
-        const nq = qs.length ? saveQuestionsAs("时政", qs, folderId, cnDateOf(mat) + "时政题目") : 0;
+        const nq = qs.length ? saveQuestionsAs("时政", qs, folderId, dayTag + " 时政题目") : 0;
         // ③ 时政模块记录：资料结构化进时政模块（金句自动进申论时评），题不重复存
         const recData = Object.assign({}, data, { verbal: [], quiz: [] });
         const hasAny = (recData.news || []).length || (recData.essay.paras || []).length || (recData.essay.quotes || []).length || (recData.words || []).length;
         let rec = null;
         if (hasAny) {
-          rec = window.KGCurrent.importData(recData, DB.today());
+          rec = window.KGCurrent.importData(recData, dayTag);
           const live = (db().state.currentAffairs || []).find(x => x.id === rec.id);
           if (live) { live.folderId = folderId || window.KGFolders.rootId("时政"); db().save(); }
         }
-        return { rec: rec, news: (data.news || []).length, words: (data.words || []).length, nq: nq, nv: 0, matName: mat ? (cnDateOf(mat) + "时政材料") : "", bookName: nq ? (cnDateOf(mat) + "时政题目") : "" };
+        return { rec: rec, news: (data.news || []).length, words: (data.words || []).length, nq: nq, nv: 0, matName: mat ? (dayTag + " 时政材料") : "", bookName: nq ? (dayTag + " 时政题目") : "" };
       }
 
       function fileToDataUrl(file) {
