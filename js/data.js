@@ -87,6 +87,9 @@
     pdfBookPractice: [], // 刷题记录：[{id, date, time, bookId, bookName, section, subject, total, correct, pct, totalSec, items:[...]}]
     pdfBookFolders: [], // 题册/时政材料 文件夹树（按学科）：[{id, subject, name, parentId, createdAt}]；parentId=null 为学科根「默认文件夹」
     currentAffairs: [], // 时政记录：[ {id,date,title,createdAt,data:{news,essay,words,verbal,quiz}} ]
+    /* 每日时政热点（每晚 8 点自动生成）：{ 'YYYY-MM-DD': {date,title,news:[{area,star,title,body}],
+       essay:{topic,paras,quotes}, verbal:[言语题], quiz:[时政题]} } */
+    dailyHot: {},
     weeklyDrills: [], // 用户自导入每周时政演练：[{id,label,name,points,questions,createdAt}]（内置周演练在 js/drills-data.js）
     profile: { avatar: "", signature: "" }, // 头像（dataURL）/ 个性签名；随 DB.state 云端同步，跨设备一致
     hotspotsEdits: {}, // 时事热点用户修改：{ [hotspotId]: { title, body, summary } }
@@ -140,6 +143,14 @@
       if (migrated) this.save(true);
 
       this.dailyResetIfNeeded();
+
+      // 自检：清理「暂停刷题期间被重复创建」的空白重复计划项（历史遗留）
+      const dups = this.dedupPlanItems();
+      if (dups) {
+        setTimeout(() => {
+          try { window.UI && window.UI.toast("已清理 " + dups + " 条重复的空白计划项 ✓"); } catch (e) {}
+        }, 1500);
+      }
 
       // 自检：累计答题数若被异常放大（历史「求和合并」导致的翻倍残留），自动清零并提示
       const bad = this.absurdCounts();
@@ -352,6 +363,41 @@
         const text = meta && meta.text ? meta.text : (label + (module ? "·" + module : ""));
         this.addPlanItem(this.today(), { module: module || "", type: type, text: text, meta: meta || null, done: true });
       } catch (e) {}
+    },
+
+    /* ===== 每日计划去重：清理重复创建的空白专注项 =====
+       病根：刷题模式暂停时 render 曾重复执行 startLaunched()，每次都新建一条同文本 focus 项，
+       导致「1 条真正完成的 + N 条空白重复」。同一天同文本出现多条时：
+       保留「已完成 > 有答题记录 > 时长更多 > 创建更早」的那条；其余【未完成且无答题记录】的
+       focus 项删除。正被计时器绑定的项绝不动（防止误删进行中的任务）。 */
+    dedupPlanItems() {
+      if (!state || !state.dailyPlan) return 0;
+      const activePlanId = (state.taskTimer && state.taskTimer.planId) || null;
+      let removed = 0;
+      for (const d in state.dailyPlan) {
+        const plan = state.dailyPlan[d];
+        if (!plan || !Array.isArray(plan.items) || plan.items.length < 2) continue;
+        const groups = {};
+        plan.items.forEach(it => { const k = String((it && it.text) || ""); (groups[k] = groups[k] || []).push(it); });
+        const drop = new Set();
+        for (const k in groups) {
+          const g = groups[k];
+          if (g.length < 2) continue;
+          const score = (it) => ((it.done ? 1000 : 0) + (it.count != null ? 500 : 0) + Math.min(it.minutes || 0, 400));
+          const sorted = g.slice().sort((a, b) => (score(b) - score(a)) || ((a.createdAt || 0) - (b.createdAt || 0)));
+          for (let i = 1; i < sorted.length; i++) {
+            const dup = sorted[i];
+            if (!dup || dup.id === activePlanId) continue;               // 计时中，绝不动
+            if (dup.type === "focus" && !dup.done && dup.count == null && !dup.combo) drop.add(dup);
+          }
+        }
+        if (drop.size) {
+          plan.items = plan.items.filter(it => !drop.has(it));
+          removed += drop.size;
+        }
+      }
+      if (removed) this.save();
+      return removed;
     },
 
     /* ===== 上岸计时器 ===== */
@@ -615,6 +661,16 @@
 
       // 时政记录：按 id 去重追加（云端同步 / 备份导入都不丢）
       out.currentAffairs = mergeArrById(out.currentAffairs, b.currentAffairs);
+      // 每日时政热点：按日期合并（同一天以「内容更全的一份」为准，取题量较大的那份）
+      out.dailyHot = out.dailyHot || {};
+      const dh = b.dailyHot || {};
+      for (const d in dh) {
+        const cur = out.dailyHot[d];
+        const inc = dh[d];
+        if (!cur) { out.dailyHot[d] = inc; continue; }
+        const len = (x) => ((x && x.verbal || []).length) + ((x && x.quiz || []).length) + ((x && x.news || []).length);
+        out.dailyHot[d] = len(inc) > len(cur) ? inc : cur;
+      }
       // 导入的网页（时事热点「导入网页」）：按 id 去重追加，跨设备一致
       out.hotspotsImports = mergeArrById(out.hotspotsImports, b.hotspotsImports);
 
@@ -952,6 +1008,7 @@
         const cloudNewer = !seen || cloudAt > seen + 2000;
         state = this.mergeStates(state, data, { cloudNewer });
         this.state = state;
+        this.dedupPlanItems();   // 云端合并后同样清理重复计划项（另一台设备的病根同步过来也会被清掉）
         if (cloudNewer) {
           const n = this._applyVault(data.vault);       // 还原 AI 密钥 / 服务商 / 字体 / 偏好等本机配置
           try { localStorage.setItem(this._cloudSeenKey(), String(cloudAt || Date.now())); } catch (e) {}

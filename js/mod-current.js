@@ -534,6 +534,92 @@
     recordHtml: recordHtml, subject: SUBJECT
   };
 
+  /* ================= 每日时政热点（每晚 20:00 自动生成并写入 DB.state.dailyHot） =================
+     数据结构：dailyHot['YYYY-MM-DD'] = { date, title, news:[{area,star,title,body}],
+                essay:{topic,paras,quotes}, verbal:[言语题 10], quiz:[时政题 20] }
+     页面层级：时政模块 → 「每日时政热点」方格 → 日期方格 → 当天页（材料+金句）→ 言语/时政题目页。
+     题目页走通用答题引擎（练题/背题、收藏、勾画、每题用时统计与其它模块完全一致）。 */
+  function hotNewsHtml(news) {
+    const byStar = {};
+    (news || []).forEach(n => { const s = n.star || 3; (byStar[s] = byStar[s] || []).push(n); });
+    const label = { 5: "★★★★★ 必考核心考点", 4: "★★★★ 高频常考考点", 3: "★★★ 常识积累考点", 2: "★★ 了解即可", 1: "★ 了解即可" };
+    let h = "";
+    [5, 4, 3, 2, 1].forEach(s => {
+      const arr = byStar[s];
+      if (!arr || !arr.length) return;
+      h += `<h4 style="margin:12px 0 6px">${label[s] || "★".repeat(s)}</h4><ol>`;
+      arr.forEach(n => { h += `<li><b>${esc(n.title || "")}</b>${n.body ? "：" + esc(n.body) : ""}</li>`; });
+      h += `</ol>`;
+    });
+    return h || `<div class="muted small">暂无</div>`;
+  }
+
+  function startHotQuiz(box, list, subject, title) {
+    const UI = window.UI;
+    const qs = (list || []).map(q => ({
+      q: q.q, options: (q.options || []).slice(), a: q.a, e: q.e || "",
+      multi: q.multi || (typeof q.a === "string" && q.a.length > 1 ? q.a : ""),
+      type: q.type || ""
+    }));
+    box.appendChild(UI.el(`<div class="card"><h3>✍ ${esc(title)}</h3>
+      <div class="muted small">练题 / 背题切换、收藏、勾画、每题用时统计与其它模块完全一致。</div></div>`));
+    const hostEl = document.createElement("div");
+    box.appendChild(hostEl);
+    try { window.Quiz.start(hostEl, qs, subject, {}); }
+    catch (e) { hostEl.innerHTML = `<div class="card empty">练习启动失败：${esc(e.message)}</div>`; }
+  }
+
+  function buildHotDay(box, date, parentRoute) {
+    const UI = window.UI, P = window.Pager;
+    const map = (window.DB && DB.state && DB.state.dailyHot) || {};
+    const d = map[date] || {};
+    const es = d.essay || {};
+    let h = `<div class="card"><h3>📅 ${esc(d.title || (date + " 时政"))}</h3>`;
+    h += hotNewsHtml(d.news);
+    if (es.topic || (es.paras || []).length || (es.quotes || []).length) {
+      h += `<h4 style="margin:14px 0 6px">✍ 今日申论时评 + 金句</h4>`;
+      if (es.topic) h += `<div><b>核心立意：</b>${esc(es.topic)}</div>`;
+      (es.paras || []).forEach(t => { h += `<p style="text-indent:2em;margin:6px 0;line-height:1.9">${esc(t)}</p>`; });
+      if ((es.quotes || []).length) {
+        h += `<div style="margin-top:6px"><b>必背金句</b></div><ol>`;
+        es.quotes.forEach(q => { h += `<li>${esc(q)}</li>`; });
+        h += `</ol>`;
+      }
+    }
+    h += `</div>`;
+    box.appendChild(UI.el(h));
+    if (!P) return;
+    const g = P.grid();
+    [["verbal", "🗣 言语理解 · " + (d.verbal || []).length + " 题", "言语理解"],
+     ["quiz", "📰 时政 · " + (d.quiz || []).length + " 题", "时政"]].forEach(it => {
+      const list = d[it[0]] || [];
+      if (!list.length) return;
+      const r = parentRoute + "/" + it[0];
+      P.define(r, { parent: parentRoute, title: it[1], build: (b2) => startHotQuiz(b2, list, it[2], it[1]) });
+      g.appendChild(P.tile(it[0] === "verbal" ? "🗣" : "📰", it[1], "#/" + r));
+    });
+    box.appendChild(g);
+  }
+
+  function mountDailyHot(host) {
+    const UI = window.UI, P = window.Pager;
+    const map = (window.DB && DB.state && DB.state.dailyHot) || {};
+    const days = Object.keys(map).sort().reverse();
+    host.innerHTML = "";
+    if (!days.length) {
+      host.appendChild(UI.el(`<div class="muted small">每晚 20:00 后自动生成当天内容：时政考点（星级分级）+ 申论时评与金句 + 言语理解 10 题 + 时政 20 题（15 单选 + 5 多选）。生成后这里会按日期列出，点日期即可查看与练题。</div>`));
+      return;
+    }
+    if (!P) { host.appendChild(UI.el(`<div class="muted small">已生成 ${days.length} 天，请刷新页面后查看。</div>`)); return; }
+    const grid = P.grid();
+    days.forEach((d, i) => {
+      const route = "current/hot/" + i;
+      P.define(route, { parent: "current", title: d + " 时政", build: (box) => buildHotDay(box, d, route) });
+      grid.appendChild(P.tile("📅", d + " 时政", "#/" + route));
+    });
+    host.appendChild(grid);
+  }
+
   window.MODULES.current = {
     title: "时政", icon: "current",
     render(body) {
@@ -1338,6 +1424,11 @@
       const pasteSec = UI.section("📝 粘贴时政材料", { open: false });
       pasteSec.querySelector(".kg-det-b").appendChild(card);
       body.appendChild(pasteSec);
+
+      /* =========== 每日时政热点（每晚 20:00 自动生成：材料 + 言语 10 题 + 时政 20 题） =========== */
+      const hotSec = UI.section("🔥 每日时政热点（每晚 20:00 自动生成）", { open: false });
+      body.appendChild(hotSec);
+      mountDailyHot(hotSec.querySelector(".kg-det-b"));
 
       const SAMPLE = [
         "第一部分：2026年9月12日公考标准时政汇总（星级重难点）",
