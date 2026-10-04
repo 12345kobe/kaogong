@@ -601,7 +601,42 @@
     box.appendChild(g);
   }
 
+  /* 合并每日热点：只补本地没有的日期（云端 / 静态源都不会覆盖本机已有的更全数据） */
+  function mergeDailyHot(target, src) {
+    let changed = false;
+    Object.keys(src || {}).forEach(d => { if (!target[d] && src[d]) { target[d] = src[d]; changed = true; } });
+    if (changed) { try { window.DB && DB.save && DB.save(); } catch (e) {} }
+    return changed;
+  }
+  let hotStaticTried = false;
+  /* 兜底载入：即便云端还没同步下来，也直接读仓库里的静态数据源 assets/data/daily_hot.js */
+  function ensureDailyHot(cb) {
+    const DB = window.DB;
+    DB.state.dailyHot = DB.state.dailyHot || {};
+    if (window.KG_DAILY_HOT) { mergeDailyHot(DB.state.dailyHot, window.KG_DAILY_HOT); cb(); return; }
+    if (hotStaticTried) { cb(); return; }
+    hotStaticTried = true;
+    fetch("assets/data/daily_hot.js?t=" + Date.now(), { cache: "no-store" })
+      .then(r => (r.ok ? r.text() : ""))
+      .then(txt => {
+        try {
+          const i = String(txt).indexOf("=");
+          if (i > 0) {
+            window.KG_DAILY_HOT = JSON.parse(String(txt).slice(i + 1).replace(/;\s*$/, ""));
+            mergeDailyHot(DB.state.dailyHot, window.KG_DAILY_HOT);
+          }
+        } catch (e) {}
+        cb();
+      })
+      .catch(() => cb());
+  }
+
   function mountDailyHot(host) {
+    host.innerHTML = `<div class="muted small">正在载入每日时政热点…</div>`;
+    ensureDailyHot(() => renderDailyHot(host));
+  }
+
+  function renderDailyHot(host) {
     const UI = window.UI, P = window.Pager;
     const map = (window.DB && DB.state && DB.state.dailyHot) || {};
     const days = Object.keys(map).sort().reverse();
