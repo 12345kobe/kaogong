@@ -730,9 +730,10 @@
         const a = txt.indexOf("{"), b = txt.lastIndexOf("}");
         if (a >= 0 && b > a) window.KG_DAILY_HOT = JSON.parse(txt.slice(a, b + 1));
       } catch (e) {}
-      // ② 云端同步
+      // ② 云端同步 + 把远端所有缺失日期并进来（不只今天）
       try { if (DB.pull) await DB.pull(); } catch (e) {}
       DB.state.dailyHot = DB.state.dailyHot || {};
+      if (window.KG_DAILY_HOT) mergeDailyHot(DB.state.dailyHot, window.KG_DAILY_HOT);
       const latest = (window.KG_DAILY_HOT || {})[date] || DB.state.dailyHot[date];
       if (latest) {
         DB.state.dailyHot[date] = latest;      // 只覆盖今天
@@ -742,7 +743,20 @@
         try { UI.toast("今日时政已刷新"); } catch (e) {}
         return;
       }
-      // ③ 今天还没有 → 用 AI 现场生成
+      // ③ 今天还没有内容：先看有没有今天的素材可供生成
+      const days = Object.keys(DB.state.dailyHot).sort().reverse();
+      const newest = days[0] || "";
+      const mat = todayHotMaterial(date);
+      if (!mat.length) {
+        // 刚过午夜 / 素材未就绪属正常情况：不算失败，安抚并说明
+        tip.textContent = "今天（" + date + "）的内容会在今晚 20:00 自动生成"
+          + (newest ? "；当前最新为 " + newest + "，可直接点开练习" : "")
+          + "。点刷新已帮你同步到最新。";
+        renderDailyHot(host);
+        try { UI.toast("已同步最新；今天的内容今晚 20:00 生成"); } catch (e) {}
+        return;
+      }
+      // ④ 有素材 → AI 现场生成今天
       tip.textContent = "今天还没生成，正在用 AI 现场生成…";
       const day = await genTodayByAI(date);
       DB.state.dailyHot[date] = day;
