@@ -685,8 +685,8 @@
           <div class="row" style="margin-top:10px;gap:8px;align-items:center">
             <label class="fld" style="margin:0">出题数量</label>
             <select id="kpN">
-              <option value="10" selected>10 题</option>
-              <option value="5">5 题</option>
+              <option value="5" selected>5 题</option>
+              <option value="10">10 题</option>
             </select>
           </div>
         </div>`);
@@ -698,7 +698,7 @@
               label: "查询并出题", cls: "primary", onClick: (m, c) => {
                 const nm = (box.querySelector("#kpName").value || "").trim();
                 if (!nm) { UI.toast("请输入知识点名称"); return; }
-                const n = parseInt((box.querySelector("#kpN") || {}).value || "10", 10) || 10;
+                const n = parseInt((box.querySelector("#kpN") || {}).value || "5", 10) || 5;
                 c();
                 runKpLookup(nm, n);
               }

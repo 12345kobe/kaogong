@@ -130,11 +130,18 @@
     const quizHost = host.querySelector(".aiq-host");
 
     function renderList() {
-      list.innerHTML = st.sets.map((s, i) => `
-        <div class="spread" style="padding:6px 0;border-bottom:1px dashed var(--line)">
-          <span>第 ${st.sets.length - i} 组 · ${UI.esc(s.date || "")} · ${s.n} 题${i === 0 ? ' <span class="tag">最新</span>' : ""}</span>
+      list.innerHTML = st.sets.map((s, i) => {
+        const title = (s.point && s.point.title) ? s.point.title : (s.subject || "AI 出题");
+        const meta = `第 ${st.sets.length - i} 组 · ${s.n} 题${i === 0 ? ' <span class="tag">最新</span>' : ""}`;
+        return `<div class="aiq-item">
+          <div class="aiq-main">
+            <div class="aiq-title">${UI.esc(title)}</div>
+            <div class="muted small">${meta}</div>
+          </div>
+          <span class="aiq-date">${UI.esc(s.date || "")}</span>
           <button class="btn sm primary" data-open="${s.id}">✍ 开始训练</button>
-        </div>`).join("");
+        </div>`;
+      }).join("");
       list.querySelectorAll("[data-open]").forEach(b => {
         b.onclick = () => start(b.dataset.open);
       });
@@ -201,14 +208,45 @@
         { onAgain: () => again(set) });
     }
 
+    /* 自动打开学习页：全屏弹层承载「考点卡 + 练题」，避免被 Pager 吸收成方格后内容不可见 */
+    function openStudyModal(set) {
+      const mask = UI.el(`<div class="modal-mask"><div class="modal" style="max-width:880px;max-height:92vh;overflow:auto">
+        ${set.point ? pointHtml(set.point) : ""}
+        <h3>📚 考点学习 · ${UI.esc(set.subject || "")} · ${set.n} 题</h3>
+        <div class="aiq-modal-quiz"></div>
+        <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn ghost aiq-close">收起</button></div>
+      </div></div>`);
+      document.body.appendChild(mask);
+      mask.querySelector(".aiq-close").onclick = () => mask.remove();
+      const qh = mask.querySelector(".aiq-modal-quiz");
+      const launch = () => {
+        try { window.Quiz.start(qh, set.questions.map(q => Object.assign({}, q)), set.subject || (m && m.title) || "AI出题", { onAgain: () => { mask.remove(); again(set); } }); }
+        catch (e) { console.error(e); mask.remove(); UI.toast("训练启动失败：" + e.message); }
+      };
+      if (set.point) {
+        const go = UI.el(`<div class="center" style="margin:14px 0">
+          <button class="btn primary" style="min-width:220px">✍ 看完考点，开始练题（${set.n} 题 · 可切背题）</button>
+          <div class="muted small" style="margin-top:4px">练题/背题可切换，支持收藏、勾画与每题用时统计</div>
+        </div>`);
+        qh.parentNode.insertBefore(go, qh);
+        go.querySelector("button").onclick = () => { go.remove(); launch(); };
+      } else {
+        launch();
+      }
+    }
+
     renderList();
 
-    // 自动打开（AI 出完题跳转过来时）
+    // 自动打开（AI 出完题跳转过来时）：直接弹出考点学习页，无需用户手动点
     try {
       const auto = window.__aiQuizAuto;
       if (auto && auto.mod === key) {
         window.__aiQuizAuto = null;
-        setTimeout(() => start(auto.setId), 120);
+        setTimeout(() => {
+          const set = st.sets.find(s => s.id === auto.setId);
+          if (set) openStudyModal(set);
+          else start(auto.setId);
+        }, 250);
       }
     } catch (e) {}
   }
