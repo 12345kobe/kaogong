@@ -1,0 +1,47 @@
+name: 每日时政热点（每晚20点自动生成）
+on:
+  schedule:
+    # 北京时间 20:30（UTC 12:30）——排在热点抓取（UTC 12:00）之后，素材最新
+    - cron: "30 12 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-hot
+  cancel-in-progress: false
+
+jobs:
+  gen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 配置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 生成今日时政与题目
+        env:
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          AI_API_BASE: ${{ secrets.AI_API_BASE }}
+          AI_MODEL: ${{ secrets.AI_MODEL }}
+        run: python tools/gen_daily_hot.py
+
+      - name: 提交静态数据源
+        run: |
+          git config user.name "daily-hot-bot"
+          git config user.email "bot@kaogong.local"
+          git add assets/data/daily_hot.js
+          if git diff --cached --quiet; then
+            echo "无变化，跳过提交"
+          else
+            git commit -m "chore: 每日时政热点自动更新 $(date +'%Y-%m-%d %H:%M')"
+            git pull --rebase origin main
+            git push || { sleep 3; git pull --rebase origin main && git push; }
+          fi

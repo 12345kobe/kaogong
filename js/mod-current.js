@@ -653,6 +653,106 @@
       grid.appendChild(P.tile("📅", d + " 时政", "#/" + route));
     });
     host.appendChild(grid);
+    host.appendChild(hotRefreshBar(host));
+  }
+
+  /* ===== 刷新今日时政（v20261005a）=====
+     只处理「今天」：有新版就覆盖今天；没有就用 AI 现场生成今天的（素材取本机已抓取的今日热点）。
+     **历史日期一律不动**。 */
+  function hotRefreshBar(host) {
+    const UI = window.UI;
+    const bar = UI.el(`<div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap;align-items:center">
+      <button class="btn sm primary" id="hotRefresh">🔄 刷新今日时政</button>
+      <span class="muted small" id="hotRefreshTip">只覆盖「今天」的内容，历史日期不会被改动</span>
+    </div>`);
+    setTimeout(() => {
+      const b = bar.querySelector("#hotRefresh");
+      if (b) b.onclick = () => refreshToday(host, bar);
+    }, 0);
+    return bar;
+  }
+
+  function todayHotMaterial(date) {
+    const out = [];
+    const grab = (arr) => {
+      (arr || []).forEach(x => {
+        if (!x) return;
+        const d = String(x.date || x.pubDate || x.day || "").slice(0, 10);
+        if (!d || d === date) {
+          const t = String(x.title || x.t || "").trim();
+          const bd = String(x.body || x.summary || x.desc || "").trim().slice(0, 140);
+          if (t) out.push(t + (bd ? "：" + bd : ""));
+        }
+      });
+    };
+    try { grab((window.DB && DB.state && DB.state.hotspotsImports) || []); } catch (e) {}
+    try { grab(window.KG_HOTSPOTS || []); } catch (e) {}
+    try { grab(((window.DB && DB.state && DB.state.dailyHot) || {})[date] && ((window.DB.state.dailyHot[date].news) || [])); } catch (e) {}
+    return out.slice(0, 16);
+  }
+
+  async function genTodayByAI(date) {
+    const mat = todayHotMaterial(date);
+    if (!mat.length) throw new Error("本机没有今日热点素材，请先到「时事热点」刷新一次");
+    if (!window.KGAI || !KGAI.chat) throw new Error("未配置 AI，请到「设置 → AI」填写密钥");
+    const spec = [
+      "你是公务员考试时政命题专家。下面是今天（" + date + "）的真实热点素材，请严格据此生成内容，禁止编造素材之外的事实。",
+      "【今日素材】\n" + mat.map((m, i) => (i + 1) + ". " + m).join("\n"),
+      "【输出要求】只输出一个 JSON 对象，不要任何说明文字、不要 markdown 代码块。结构如下：",
+      '{"news":[{"area":"领域","star":5,"title":"要点标题","body":"一句事实"} ×9（★★★★★3条、★★★★3条、★★★3条，用 star=5/4/3 表示）],',
+      '"essay":{"topic":"核心立意一句","paras":["申论段落1","申论段落2"],"quotes":["金句1","金句2","金句3","金句4"]},',
+      '"verbal":[10题：{"q":"题干100-150字，带时政背景引入","options":["A内容","B内容","C内容","D内容"],"a":0,"e":"【答案】A\\n【解析】…"}，a 为 0 基数字；题干以双空为主、单空用四字词；选项强迷惑],',
+      '"quiz":[20题：15 单选 + 5 多选。单选 {"q":"","options":[4项],"a":1,"e":"【答案】：B\\n【解析】…"}，a 为 0 基数字，答案 A:B:C:D 约 1:1:1:1，其中至少 2 道为计数型（①②③④⑤选正确数量，选项 A.5项 B.4项 C.3项 D.2项）；',
+      '多选 {"q":"（多选）…","options":[4项],"a":"ABC","type":"multi","multi":"ABC","e":"【答案】：ABC\\n【解析】…"}，a 为 2-4 个字母且 5 道之间组合不重复]}',
+      "【选项用词红线】错误选项只做政治词汇/领域/数字/主体的同义替换，句子仍来自素材原意；**不得出现消极、否定、负面评价或唱衰性表述**。解析要说明错在哪个词被替换。",
+      "【答案格式】单选写【答案】：A，多选写【答案】：ABC。"
+    ].join("\n");
+    const txt = await window.KGAI.chat([{ role: "user", content: spec }]);
+    const a = String(txt).indexOf("{"), b = String(txt).lastIndexOf("}");
+    if (a < 0 || b <= a) throw new Error("AI 返回内容不是有效 JSON");
+    const day = JSON.parse(String(txt).slice(a, b + 1));
+    if (!day || !Array.isArray(day.news) || !Array.isArray(day.verbal) || !Array.isArray(day.quiz)) throw new Error("AI 返回结构不完整");
+    day.date = date;
+    day.title = date + " 时政";
+    return day;
+  }
+
+  async function refreshToday(host, bar) {
+    const UI = window.UI, DB = window.DB;
+    const tip = bar.querySelector("#hotRefreshTip");
+    const date = DB.today();
+    try {
+      tip.textContent = "正在拉取最新数据…";
+      // ① 重拉静态兜底源
+      try {
+        const r = await fetch("assets/data/daily_hot.js?t=" + Date.now(), { cache: "no-store" });
+        const txt = r.ok ? await r.text() : "";
+        const a = txt.indexOf("{"), b = txt.lastIndexOf("}");
+        if (a >= 0 && b > a) window.KG_DAILY_HOT = JSON.parse(txt.slice(a, b + 1));
+      } catch (e) {}
+      // ② 云端同步
+      try { if (DB.pull) await DB.pull(); } catch (e) {}
+      DB.state.dailyHot = DB.state.dailyHot || {};
+      const latest = (window.KG_DAILY_HOT || {})[date] || DB.state.dailyHot[date];
+      if (latest) {
+        DB.state.dailyHot[date] = latest;      // 只覆盖今天
+        DB.save();
+        tip.textContent = "已用最新内容覆盖今天（" + date + "）";
+        renderDailyHot(host);
+        try { UI.toast("今日时政已刷新"); } catch (e) {}
+        return;
+      }
+      // ③ 今天还没有 → 用 AI 现场生成
+      tip.textContent = "今天还没生成，正在用 AI 现场生成…";
+      const day = await genTodayByAI(date);
+      DB.state.dailyHot[date] = day;
+      DB.save();
+      tip.textContent = "已生成并写入今天（" + date + "）";
+      renderDailyHot(host);
+      try { UI.toast("今日时政已现场生成"); } catch (e) {}
+    } catch (e) {
+      tip.textContent = "刷新失败：" + ((e && e.message) || e) + "（每晚 20:00 会自动生成）";
+    }
   }
 
   window.MODULES.current = {
