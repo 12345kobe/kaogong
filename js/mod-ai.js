@@ -523,15 +523,66 @@
         ].join("\n");
       }
 
+      /* 宽容 JSON 解析：处理 AI 输出常见问题（markdown 围栏 / 尾逗号 / 被截断），
+         截断时按括号配平抢救出已生成的部分。 */
+      function kpParseJSON(s) {
+        const tryP = (x) => { try { return JSON.parse(x); } catch (e) { return null; } };
+        let t = String(s || "").trim().replace(/^```(json)?/i, "").replace(/```\s*$/, "").trim();
+        const a0 = t.indexOf("{"), b0 = t.lastIndexOf("}");
+        if (a0 < 0) throw new Error("AI 返回内容不是 JSON");
+        const body = t.slice(a0, b0 + 1);
+        let o = tryP(body);
+        if (o) return o;
+        o = tryP(body.replace(/,\s*([}\]])/g, "$1"));
+        if (o) return o;
+        // 截断抢救：从最后一个 '}' 往前找，把括号配平后尝试解析
+        let cut = body.lastIndexOf("}");
+        while (cut > 0) {
+          const cand = body.slice(0, cut + 1);
+          const stack = [];
+          let inStr = false, esc = false, ok = true;
+          for (const ch of cand) {
+            if (inStr) {
+              if (esc) esc = false;
+              else if (ch === "\\") esc = true;
+              else if (ch === "\"") inStr = false;
+            } else if (ch === "\"") inStr = true;
+            else if (ch === "{" || ch === "[") stack.push(ch);
+            else if (ch === "}" || ch === "]") {
+              const want = ch === "}" ? "{" : "[";
+              if (stack[stack.length - 1] === want) stack.pop(); else { ok = false; break; }
+            }
+          }
+          if (ok && !inStr && stack.length) {
+            let fix = cand;
+            while (stack.length) fix += (stack.pop() === "{") ? "}" : "]";
+            o = tryP(fix.replace(/,\s*([}\]])/g, "$1"));
+            if (o && (o.questions || o.news || o.essay)) return o;
+          }
+          cut = body.lastIndexOf("}", cut - 1);
+        }
+        throw new Error("AI 返回的 JSON 无法解析（当前模型输出上限太小），请重试或换模型");
+      }
+
+      /* 知识点查询需要长输出：自动选当前服务商「输出上限最大」的文本模型
+         （如 GLM-4V-Flash 上限 1024 会被截断，glm-4-flash 可到 4095+） */
+      function pickLongOutModel() {
+        try {
+          const pid = getProviderId();
+          const prov = providerById(pid);
+          const cands = (prov.models || []).filter(m => !m.image);
+          let best = null;
+          cands.forEach(m => { if (!best || ((m.maxOut || 0) > (best.maxOut || 0))) best = m; });
+          return best ? best.id : undefined;
+        } catch (e) { return undefined; }
+      }
+
       async function runKpLookup(name, n) {
         const UI = window.UI;
         try {
           UI.toast("正在拆解知识点…");
-          const txt = await chat([{ role: "user", content: kpPrompt(name, n) }]);
-          const s = String(txt || "");
-          const a = s.indexOf("{"), b = s.lastIndexOf("}");
-          if (a < 0 || b <= a) throw new Error("AI 返回内容不是有效 JSON，请重试");
-          const data = JSON.parse(s.slice(a, b + 1));
+          const txt = await chat([{ role: "user", content: kpPrompt(name, n) }], { model: pickLongOutModel() });
+          const data = kpParseJSON(txt);
           const subject = String(data.subject || "").trim() || "常识";
           const K = window.KGAIQuiz;
           if (!K || !K.addSet) throw new Error("出题组件未就绪");
