@@ -173,12 +173,25 @@
         return;
       }
       quizHost.innerHTML = "";
-      // 有考点讲解：学习页先渲染「考点卡」，下面才是刷题区
+      // 有考点讲解：学习页 = 考点卡 + 「练题」按钮；点按钮才进入答题（先学后练）
       if (set.point) {
         const ph = document.createElement("div");
         ph.innerHTML = pointHtml(set.point);
         quizHost.appendChild(ph);
+        const go = UI.el(`<div class="center" style="margin:12px 0">
+          <button class="btn primary" style="min-width:200px">✍ 看完考点，开始练题（${set.n} 题 · 可切背题）</button>
+          <div class="muted small" style="margin-top:4px">练题/背题可切换，支持收藏、勾画与每题用时统计</div>
+        </div>`);
+        quizHost.appendChild(go);
+        go.querySelector("button").onclick = () => { go.remove(); launchQuiz(set); };
+        try { quizHost.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e) {}
+        try { window.scrollTo(0, 0); } catch (e) {}
+        return;
       }
+      launchQuiz(set);
+    }
+
+    function launchQuiz(set) {
       const c = document.createElement("div");
       quizHost.appendChild(c);
       try {

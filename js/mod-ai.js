@@ -496,30 +496,61 @@
       const filePdf = body.querySelector("#aiFilePdf");
       const kpBtn = body.querySelector("#aiKp");
 
-      /* ===== 📚 知识点查询（v20261006a）=====
-         输入知识点 → AI 判断科目 → 按「正确表述→经典例子→易混对比→命题陷阱→申论搭配」
-         拆解并出题 → 存入对应模块的 AI 出题（常识/言语/政治…）→ 自动跳转过去，
-         页面上是「考点卡 + 刷题区」，刷题走通用答题引擎（练题/背题、收藏、勾画、计时）。 */
-      function kpPrompt(name, n) {
+      /* ===== 📚 知识点查询（v20261006b 重构）=====
+         ① 科目判定：关键词规则优先（供给侧改革→政治理论这类 AI 常判错的直接纠正），AI 结果仅作参考；
+         ② 后台分批生成：页面顶部进度条实时显示，期间可自由使用其它模块；
+         ③ 全部完成后强制跳转对应模块并自动打开学习页（考点在上，点「练题」再开刷）。 */
+      const KP_RULES = [
+        { re: /成语|词语|实词|虚词|病句|阅读理解|主旨|逻辑填空|选词填空|语境|歧义|语句表达/, key: "verbal", label: "言语理解" },
+        { re: /供给侧|新发展理念|新质生产力|共同富裕|全过程人民民主|中国特色社会主义|党史|共产党|马克思主义|毛泽东思想|邓小平|三个代表|科学发展观|党的二十大|二十届|中全会|改革开放|一国两制|统一战线|群众路线|党的领导|新发展格局|中国式现代化/, key: "politics", label: "政治理论" },
+        { re: /排列组合|概率|行程问题|工程问题|方程|数列|几何|容斥|牛吃草|最值|数量关系/, key: "quantity", label: "数量关系" },
+        { re: /增长率|比重|基期|现期|同比|环比|翻番|资料分析/, key: "data", label: "资料分析" },
+        { re: /翻译推理|加强论证|削弱论证|三段论|朴素逻辑|图形推理|定义判断|类比推理|逻辑判断|真假话/, key: "logic", label: "逻辑判断" },
+        { re: /大作文|归纳概括|提出对策|综合分析|贯彻执行|申论/, key: "essay", label: "申论" },
+        { re: /逆向选择|道德风险|通货膨胀|通货紧缩|CPI|PPI|市场失灵|宏观调控|财政政策|货币政策|基尼系数|恩格尔系数|需求曲线|供给曲线|经济常识|汇率|GDP|柠檬市场/, key: "common", label: "常识（经济）" },
+        { re: /宪法|刑法|民法|行政法|劳动合同|法律|法条/, key: "common", label: "常识（法律）" },
+        { re: /历史|地理|科技|物理|化学|生物|文学|文化常识|节气|礼仪/, key: "common", label: "常识" },
+        { re: /不以为然|不以为意|差强人意|首当其冲|七月流火|炙手可热|危言危行|望其项背|无可非议|无可厚非|目无全牛|韦编三绝|侧目而视|耳提面命|师心自用|不刊之论|不易之论|鞭辟入里|管窥蠡测|上下其手|栉风沐雨|南北辐辏|口传心授|耳濡目染|潜移默化|浅尝辄止|囫囵吞枣|融会贯通/, key: "verbal", label: "言语理解" },
+        { re: /^[\u4e00-\u9fa5A-Za-z]{2,8}\s*(与|和|VS|vs|、)\s*[\u4e00-\u9fa5A-Za-z]{2,8}$/, key: "verbal", label: "言语理解" }
+      ];
+      function guessKpSubject(name) {
+        const s = String(name || "");
+        for (let i = 0; i < KP_RULES.length; i++) { if (KP_RULES[i].re.test(s)) return KP_RULES[i]; }
+        return { key: null, label: null };   // 无关键词命中 → 交给 AI 判断科目
+      }
+
+      function kpPointPrompt(name, label) {
+        const hint = label ? ("知识点「" + name + "」属于【" + label + "】。")
+                           : ("知识点「" + name + "」的科目由你判断，subject 只能取：常识/言语理解/政治理论/资料分析/数量关系/逻辑判断/申论。");
         return [
-          "你是公考名师。请就知识点「" + name + "」输出**严格 JSON**（不要 markdown 代码块、不要任何说明文字）：",
-          "{",
-          '  "subject":"常识|言语理解|政治理论|资料分析|数量关系|逻辑判断|申论",',
-          '  "title":"' + name + '",',
-          '  "brief":"一句话定义（含关键限定词）",',
-          '  "correct":["正确表述1","正确表述2"],',
-          '  "keywords":["核心关键词1","关键词2"],',
-          '  "examples":[{"name":"例子名","text":"例子说明"}],',
-          '  "compare":[{"a":"概念A","b":"概念B","diff":"二者关键区别"}],',
-          '  "traps":[{"right":"正确表述","wrong":"易错表述（常被用来替换挖坑）"}],',
-          '  "essay":["申论可用搭配1","搭配2"],',
-          '  "words":[{"term":"词语","def":"释义","similar":[{"w":"易混词","diff":"辨析区别"}]}],',
-          '  "questions":[{"q":"题干（带背景，100字左右）","options":["A内容","B内容","C内容","D内容"],"a":"B","e":"【答案】：B\\n【解析】…"}]',
-          "}",
-          "【讲解结构】按 正确表述（先记）→ 核心关键词 → 经典例子 → 易混对比 → 命题陷阱（正→误）→ 申论搭配 的顺序组织内容。",
-          "【言语理解专属】若该知识点属于言语理解，words 必须给出 ≥3 组「词语释义 + 易混词辨析」，并且**以这些词作为出题依据**出题；非言语知识点 words 给空数组。",
-          "【出题要求】共 " + n + " 道选择题，四选一，答案用字母（A/B/C/D；多选写 \"ABC\" 并加 \"type\":\"multi\"）；答案分布尽量均匀；选项强迷惑——错误项只做同义/领域/主体替换，**不得出现消极或负面评价表述**；每题附【答案】：X 与逐项解析。",
-          "【真实性】只写该知识点公认的结论，禁止编造事实。"
+          "你是公考名师。" + hint + "请输出**严格 JSON 对象**（无 markdown、无说明文字），不要包含 questions 字段：",
+          '{"subject":"' + label + '","title":"' + name + '","brief":"一句话定义（含关键限定词）",',
+          ' "correct":["正确表述1","正确表述2"],"keywords":["关键词1","关键词2"],',
+          ' "examples":[{"name":"例子名","text":"说明"}],',
+          ' "compare":[{"a":"概念A","b":"最易混概念","diff":"关键区别（如 事前/事后）"}],',
+          ' "traps":[{"right":"正确表述","wrong":"命题人常用替换挖坑"}],',
+          ' "essay":["申论可用搭配1","搭配2"],',
+          ' "words":[]}',
+          "【结构】正确表述（先记）→ 核心关键词 → 经典例子 → 易混对比 → 命题陷阱（正→误）→ 申论搭配。",
+          "【言语理解专属】若属于言语理解，words 必须给 ≥3 组 {term,def,similar:[{w,diff}]}「词语释义+易混词辨析」；否则 words 给空数组。",
+          "【真实性】只写公认结论，禁止编造。"
+        ].join("\n");
+      }
+
+      function kpQuestionsPrompt(name, label, count, point, avoid) {
+        const ctx = [
+          point.brief ? "一句话定义：" + point.brief : "",
+          (point.correct || []).length ? "正确表述：" + point.correct.join("；") : "",
+          (point.keywords || []).length ? "关键词：" + point.keywords.join("、") : "",
+          (point.compare || []).length ? "易混对比：" + point.compare.map(c => c.a + "≠" + c.b + "（" + c.diff + "）").join("；") : "",
+          (point.words || []).length ? "出题依据词语：" + point.words.map(w => w.term + "（" + (w.similar || []).map(s => s.w).join("/") + "）").join("；") : ""
+        ].filter(Boolean).join("\n");
+        return [
+          "你是公考命题专家。围绕知识点「" + name + "」（【" + label + "】）出 " + count + " 道单项选择题。",
+          "【考点内容（题目必须与此一致）】\n" + (ctx || "自行依据公认结论"),
+          (avoid && avoid.length ? "【避免与以下已有题干重复】\n" + avoid.map((x, i) => (i + 1) + ". " + x).join("\n") : ""),
+          '【输出】严格 JSON 对象：{"questions":[{"q":"题干带背景约100字","options":["A","B","C","D"],"a":"B","e":"【答案】：B\n【解析】逐项说明"}]}',
+          "【要求】a 用字母；答案分布尽量均匀；选项强迷惑——错误项只做同义/领域/主体/数字替换，句子仍出自考点原意，**不得出现消极或负面评价表述**；无 markdown、无说明文字。"
         ].join("\n");
       }
 
@@ -545,8 +576,8 @@
             if (inStr) {
               if (esc) esc = false;
               else if (ch === "\\") esc = true;
-              else if (ch === "\"") inStr = false;
-            } else if (ch === "\"") inStr = true;
+              else if (ch === '"') inStr = false;
+            } else if (ch === '"') inStr = true;
             else if (ch === "{" || ch === "[") stack.push(ch);
             else if (ch === "}" || ch === "]") {
               const want = ch === "}" ? "{" : "[";
@@ -577,25 +608,70 @@
         } catch (e) { return undefined; }
       }
 
+      /* 页面顶部进度条：出题期间常驻显示，用户可离开本页用其它模块 */
+      function kpShowProgress(text, pct) {
+        let el = document.getElementById("kgKpProgress");
+        if (!el) {
+          el = document.createElement("div");
+          el.id = "kgKpProgress";
+          el.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:10050;display:flex;align-items:center;gap:10px;" +
+            "padding:calc(env(safe-area-inset-top, 0px) + 8px) 14px 8px;background:linear-gradient(135deg,#12314a,#0d2438);" +
+            "color:#dff6ff;font-size:14px;font-weight:700;box-shadow:0 2px 10px rgba(0,0,0,.35)";
+          el.innerHTML = '<span id="kgKpText" style="flex:1;min-width:0"></span>' +
+            '<div style="width:110px;height:8px;border-radius:6px;background:rgba(255,255,255,.18);overflow:hidden">' +
+            '<div id="kgKpBar" style="height:100%;width:0;background:linear-gradient(90deg,#34e7e4,#9b6cff);transition:width .4s"></div></div>';
+          document.body.appendChild(el);
+        }
+        el.querySelector("#kgKpText").textContent = text;
+        el.querySelector("#kgKpBar").style.width = Math.max(4, Math.min(100, pct || 0)) + "%";
+      }
+      function kpHideProgress() {
+        const el = document.getElementById("kgKpProgress");
+        if (el) { el.style.opacity = "0"; el.style.transition = "opacity .5s"; setTimeout(() => { try { el.remove(); } catch (e) {} }, 600); }
+      }
+
+      let kpBusy = false;
       async function runKpLookup(name, n) {
         const UI = window.UI;
+        if (kpBusy) { UI.toast("正在生成中，请稍候…"); return; }
+        kpBusy = true;
+        const guess = guessKpSubject(name);
         try {
-          UI.toast("正在拆解知识点…");
-          const txt = await chat([{ role: "user", content: kpPrompt(name, n) }], { model: pickLongOutModel() });
-          const data = kpParseJSON(txt);
-          const subject = String(data.subject || "").trim() || "常识";
+          kpShowProgress("正在拆解「" + name + "」（判定为" + guess.label + "）…", 8);
+          const point = kpParseJSON(await chat([{ role: "user", content: kpPointPrompt(name, guess.label) }], { model: pickLongOutModel() }));
+          const subject = String(point.subject || "").trim() || guess.label;
           const K = window.KGAIQuiz;
           if (!K || !K.addSet) throw new Error("出题组件未就绪");
-          let modKey = K.moduleForSubject ? K.moduleForSubject(subject) : null;
-          if (!modKey) modKey = "common";
-          const qs = K.normalize ? K.normalize(data.questions || []) : (data.questions || []);
-          if (!qs.length) throw new Error("AI 没有生成可用题目，请重试");
-          const set = K.addSet(modKey, subject, qs, { point: Object.assign({ title: name, subject: subject }, data) });
+          // 关键词规则判定优先：AI 把「供给侧改革」判成言语这类错误直接纠正
+          const modKey = guess.key
+            || (K.moduleForSubject ? (K.moduleForSubject(subject) || (subject.indexOf("政治") >= 0 ? "politics" : null)) : null)
+            || "common";
+
+          const batch1 = Math.ceil(n / 2);
+          kpShowProgress("讲解完成，正在出题 1/" + n + "…", 35);
+          const qs1 = K.normalize(kpParseJSON(await chat([{ role: "user", content: kpQuestionsPrompt(name, subject, batch1, point) }], { model: pickLongOutModel() })).questions || []);
+          kpShowProgress("正在出题 " + Math.min(qs1.length + 1, n) + "/" + n + "…", 68);
+          const rest = n - qs1.length;
+          let qs2 = [];
+          if (rest > 0) {
+            const avoid = qs1.map(q => String(q.q || "").slice(0, 30));
+            qs2 = K.normalize(kpParseJSON(await chat([{ role: "user", content: kpQuestionsPrompt(name, subject, rest, point, avoid) }], { model: pickLongOutModel() })).questions || []);
+          }
+          const qs = qs1.concat(qs2);
+          if (!qs.length) throw new Error("没有生成可用题目，请重试");
+          const set = K.addSet(modKey, subject, qs, { point: Object.assign({ title: name, subject: subject }, point) });
           if (!set) throw new Error("保存到模块失败");
+          kpShowProgress("生成完成，正在打开学习页…", 100);
           window.__aiQuizAuto = { mod: modKey, setId: set.id };
-          UI.toast(`已生成「${name}」考点与 ${qs.length} 题，正在跳转到${subject}模块…`);
-          setTimeout(() => { location.hash = "#/" + modKey; }, 400);
+          UI.toast("已生成「" + name + "」" + qs.length + " 题，正在打开学习页…");
+          setTimeout(() => {
+            kpBusy = false;
+            kpHideProgress();
+            location.hash = "#/" + modKey;   // 强制跳转（无论用户此刻在哪个模块）
+          }, 600);
         } catch (e) {
+          kpBusy = false;
+          kpHideProgress();
           UI.toast("知识点查询失败：" + ((e && e.message) || e));
         }
       }
