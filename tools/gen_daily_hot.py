@@ -112,9 +112,20 @@ def call_ai(prompt):
     req = urllib.request.Request(base, data=data, method="POST")
     req.add_header("Content-Type", "application/json")
     req.add_header("Authorization", "Bearer " + key)
-    with urllib.request.urlopen(req, timeout=180) as r:
-        res = json.loads(r.read().decode("utf-8"))
-    return res["choices"][0]["message"]["content"]
+    last = None
+    for attempt in range(3):   # 生成 30 题耗时较长：超时 300 秒 + 最多 3 次
+        try:
+            req2 = urllib.request.Request(base, data=data, method="POST")
+            req2.add_header("Content-Type", "application/json")
+            req2.add_header("Authorization", "Bearer " + key)
+            with urllib.request.urlopen(req2, timeout=300) as r:
+                res = json.loads(r.read().decode("utf-8"))
+            return res["choices"][0]["message"]["content"]
+        except Exception as e:
+            last = e
+            print("AI 调用第 %d 次失败：%s，重试…" % (attempt + 1, e), file=sys.stderr)
+            time.sleep(5)
+    raise SystemExit("AI 调用失败（已重试 3 次）：%s" % last)
 
 
 def parse_json(txt):
@@ -151,10 +162,27 @@ def main():
     if not mat:
         raise SystemExit("没有可用的今日素材，跳过本次生成")
     print("素材 %d 条，日期 %s" % (len(mat), DATE))
-    txt = call_ai(SPEC_TMPL.format(date=DATE, mat="\n".join("%d. %s" % (i + 1, m) for i, m in enumerate(mat))))
-    day = parse_json(txt)
-    if not all(k in day for k in ("news", "essay", "verbal", "quiz")):
-        raise SystemExit("AI 返回结构不完整，跳过写入")
+    base_prompt = SPEC_TMPL.format(date=DATE, mat="\n".join("%d. %s" % (i + 1, m) for i, m in enumerate(mat)))
+    day = None
+    for attempt in range(3):
+        prompt = base_prompt
+        if attempt > 0:
+            prompt += ("\n\n【再次强调——上一稿数量不符，本次必须严格满足】"
+                       "verbal 恰好 10 题；quiz 恰好 20 题（15 单选 + 5 多选，多选 a 为 2-4 个字母且组合不重复）；"
+                       "单选答案 A:B:C:D 约 1:1:1:1。请重新输出完整 JSON。")
+        day = parse_json(call_ai(prompt))
+        if not all(k in day for k in ("news", "essay", "verbal", "quiz")):
+            day = None
+            continue
+        nv, nq = len(day.get("verbal") or []), len(day.get("quiz") or [])
+        if nv == 10 and nq == 20:
+            break
+        print("第 %d 次生成数量不符（言语 %d / 时政 %d），重试…" % (attempt + 1, nv, nq), file=sys.stderr)
+    if day is None or not all(k in day for k in ("news", "essay", "verbal", "quiz")):
+        raise SystemExit("多次生成仍未通过数量校验，跳过写入（避免污染数据）")
+    nv, nq = len(day.get("verbal") or []), len(day.get("quiz") or [])
+    if nv != 10 or nq != 20:
+        print("警告：数量仍为 言语 %d / 时政 %d（已达重试上限，仍写入，但建议人工复核）" % (nv, nq), file=sys.stderr)
     day["date"] = DATE
     day["title"] = DATE + " 时政"
     merge_static(day)
