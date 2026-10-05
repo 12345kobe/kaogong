@@ -476,6 +476,7 @@
             <div class="ai-dock-row">
               <button class="btn ghost sm" id="aiPickImg">🖼 图片</button>
               <button class="btn ghost sm" id="aiPickPdf">📄 PDF</button>
+              <button class="btn ghost sm" id="aiKp" title="输入知识点，AI 按公考结构拆解并出题">📚 知识点查询</button>
               <span class="ai-spacer"></span>
               <button id="aiBack" class="btn ghost sm ai-back-inline" style="display:none" title="返回来源题">← 返回</button>
               <button class="btn primary" id="aiSend">发送</button>
@@ -493,6 +494,92 @@
       const modelsBox = body.querySelector("#aiModels");
       const fileImg = body.querySelector("#aiFileImg");
       const filePdf = body.querySelector("#aiFilePdf");
+      const kpBtn = body.querySelector("#aiKp");
+
+      /* ===== 📚 知识点查询（v20261006a）=====
+         输入知识点 → AI 判断科目 → 按「正确表述→经典例子→易混对比→命题陷阱→申论搭配」
+         拆解并出题 → 存入对应模块的 AI 出题（常识/言语/政治…）→ 自动跳转过去，
+         页面上是「考点卡 + 刷题区」，刷题走通用答题引擎（练题/背题、收藏、勾画、计时）。 */
+      function kpPrompt(name, n) {
+        return [
+          "你是公考名师。请就知识点「" + name + "」输出**严格 JSON**（不要 markdown 代码块、不要任何说明文字）：",
+          "{",
+          '  "subject":"常识|言语理解|政治理论|资料分析|数量关系|逻辑判断|申论",',
+          '  "title":"' + name + '",',
+          '  "brief":"一句话定义（含关键限定词）",',
+          '  "correct":["正确表述1","正确表述2"],',
+          '  "keywords":["核心关键词1","关键词2"],',
+          '  "examples":[{"name":"例子名","text":"例子说明"}],',
+          '  "compare":[{"a":"概念A","b":"概念B","diff":"二者关键区别"}],',
+          '  "traps":[{"right":"正确表述","wrong":"易错表述（常被用来替换挖坑）"}],',
+          '  "essay":["申论可用搭配1","搭配2"],',
+          '  "words":[{"term":"词语","def":"释义","similar":[{"w":"易混词","diff":"辨析区别"}]}],',
+          '  "questions":[{"q":"题干（带背景，100字左右）","options":["A内容","B内容","C内容","D内容"],"a":"B","e":"【答案】：B\\n【解析】…"}]',
+          "}",
+          "【讲解结构】按 正确表述（先记）→ 核心关键词 → 经典例子 → 易混对比 → 命题陷阱（正→误）→ 申论搭配 的顺序组织内容。",
+          "【言语理解专属】若该知识点属于言语理解，words 必须给出 ≥3 组「词语释义 + 易混词辨析」，并且**以这些词作为出题依据**出题；非言语知识点 words 给空数组。",
+          "【出题要求】共 " + n + " 道选择题，四选一，答案用字母（A/B/C/D；多选写 \"ABC\" 并加 \"type\":\"multi\"）；答案分布尽量均匀；选项强迷惑——错误项只做同义/领域/主体替换，**不得出现消极或负面评价表述**；每题附【答案】：X 与逐项解析。",
+          "【真实性】只写该知识点公认的结论，禁止编造事实。"
+        ].join("\n");
+      }
+
+      async function runKpLookup(name, n) {
+        const UI = window.UI;
+        try {
+          UI.toast("正在拆解知识点…");
+          const txt = await chat([{ role: "user", content: kpPrompt(name, n) }]);
+          const s = String(txt || "");
+          const a = s.indexOf("{"), b = s.lastIndexOf("}");
+          if (a < 0 || b <= a) throw new Error("AI 返回内容不是有效 JSON，请重试");
+          const data = JSON.parse(s.slice(a, b + 1));
+          const subject = String(data.subject || "").trim() || "常识";
+          const K = window.KGAIQuiz;
+          if (!K || !K.addSet) throw new Error("出题组件未就绪");
+          let modKey = K.moduleForSubject ? K.moduleForSubject(subject) : null;
+          if (!modKey) modKey = "common";
+          const qs = K.normalize ? K.normalize(data.questions || []) : (data.questions || []);
+          if (!qs.length) throw new Error("AI 没有生成可用题目，请重试");
+          const set = K.addSet(modKey, subject, qs, { point: Object.assign({ title: name, subject: subject }, data) });
+          if (!set) throw new Error("保存到模块失败");
+          window.__aiQuizAuto = { mod: modKey, setId: set.id };
+          UI.toast(`已生成「${name}」考点与 ${qs.length} 题，正在跳转到${subject}模块…`);
+          setTimeout(() => { location.hash = "#/" + modKey; }, 400);
+        } catch (e) {
+          UI.toast("知识点查询失败：" + ((e && e.message) || e));
+        }
+      }
+
+      function openKpLookup() {
+        const UI = window.UI;
+        const box = UI.el(`<div>
+          <label class="fld">想查询的知识点</label>
+          <input id="kpName" class="full" placeholder="例如：逆向选择 / 供给侧结构性改革 / 不以为然 与 不以为意"/>
+          <div class="muted small" style="margin-top:6px">AI 会自动判断科目（常识 / 言语理解 / 政治理论…），按「正确表述 → 经典例子 → 易混对比 → 命题陷阱 → 申论搭配」拆解并出题，然后自动跳到对应模块的 AI 出题页（考点在上、刷题在下）。</div>
+          <div class="row" style="margin-top:10px;gap:8px;align-items:center">
+            <label class="fld" style="margin:0">出题数量</label>
+            <select id="kpN">
+              <option value="10" selected>10 题</option>
+              <option value="5">5 题</option>
+            </select>
+          </div>
+        </div>`);
+        UI.modal({
+          title: "📚 知识点查询", body: box, width: "520px",
+          actions: [
+            { label: "取消", cls: "ghost", onClick: (m, c) => c() },
+            {
+              label: "查询并出题", cls: "primary", onClick: (m, c) => {
+                const nm = (box.querySelector("#kpName").value || "").trim();
+                if (!nm) { UI.toast("请输入知识点名称"); return; }
+                const n = parseInt((box.querySelector("#kpN") || {}).value || "10", 10) || 10;
+                c();
+                runKpLookup(nm, n);
+              }
+            }
+          ]
+        });
+      }
+      if (kpBtn) kpBtn.onclick = openKpLookup;
 
       function renderModels() {
         const pid = getProviderId();

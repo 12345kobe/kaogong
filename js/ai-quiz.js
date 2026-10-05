@@ -50,7 +50,7 @@
     return out;
   }
 
-  function addSet(modKey, subject, questions) {
+  function addSet(modKey, subject, questions, opts) {
     const st = store(modKey);
     const qs = normalize(questions);
     if (!qs.length) return null;
@@ -62,10 +62,54 @@
       n: qs.length,
       questions: qs
     };
+    // 知识点查询写入的结构化考点讲解：学习页「先看考点 → 再刷题」
+    if (opts && opts.point) set.point = opts.point;
     st.sets.unshift(set);
     st.total += qs.length;
     try { DB.save(); } catch (e) {}
     return set;
+  }
+
+  /* 考点卡（v20261006a）：把 AI 拆解的知识点渲染成「先看考点」的学习区 */
+  function pointHtml(p) {
+    if (!p) return "";
+    const esc = (s) => (window.UI && UI.esc) ? UI.esc(s) : String(s == null ? "" : s);
+    let h = `<div class="card"><h3>📚 ${esc(p.title || "知识点")}${p.subject ? `　<span class="muted small">${esc(p.subject)}</span>` : ""}</h3>`;
+    if (p.brief) h += `<div><b>一句话：</b>${esc(p.brief)}</div>`;
+    if ((p.correct || []).length) {
+      h += `<h4 style="margin:12px 0 6px">✅ 正确表述（先记）</h4><ul>`;
+      (p.correct || []).forEach(x => { h += `<li>${esc(x)}</li>`; });
+      h += `</ul>`;
+    }
+    if ((p.keywords || []).length) h += `<div><b>核心关键词：</b>${esc((p.keywords || []).join("、"))}</div>`;
+    if ((p.examples || []).length) {
+      h += `<h4 style="margin:12px 0 6px">📌 经典例子</h4><ol>`;
+      (p.examples || []).forEach(x => { h += `<li><b>${esc(x.name || "")}</b>${x.text ? "：" + esc(x.text) : ""}</li>`; });
+      h += `</ol>`;
+    }
+    if ((p.compare || []).length) {
+      h += `<h4 style="margin:12px 0 6px">❗ 易混对比（必考挖坑）</h4>`;
+      (p.compare || []).forEach(c => { h += `<div style="margin:4px 0"><b>${esc(c.a || "")}</b> VS <b>${esc(c.b || "")}</b>：${esc(c.diff || "")}</div>`; });
+    }
+    if ((p.traps || []).length) {
+      h += `<h4 style="margin:12px 0 6px">⚠️ 命题陷阱（正 → 误）</h4>`;
+      (p.traps || []).forEach(t => { h += `<div style="margin:4px 0">✅ ${esc(t.right || "")}<br>❌ ${esc(t.wrong || "")}</div>`; });
+    }
+    if ((p.essay || []).length) {
+      h += `<h4 style="margin:12px 0 6px">✍ 申论可用搭配</h4><ul>`;
+      (p.essay || []).forEach(x => { h += `<li>${esc(x)}</li>`; });
+      h += `</ul>`;
+    }
+    if ((p.words || []).length) {
+      h += `<h4 style="margin:12px 0 6px">🔤 词语释义与易混辨析</h4>`;
+      (p.words || []).forEach(w => {
+        h += `<div style="margin:6px 0"><b>${esc(w.term || "")}</b>：${esc(w.def || "")}`;
+        (w.similar || []).forEach(s => { h += `<div class="muted small">· ${esc(s.w || "")}：${esc(s.diff || "")}</div>`; });
+        h += `</div>`;
+      });
+    }
+    h += `</div>`;
+    return h;
   }
 
   /* 模块页挂板块：标题如「言语理解AI出题」；列表显示每组的题量/日期 + 开始训练 */
@@ -115,6 +159,7 @@
       // 综合AI出题：AI 聊天页不放内嵌答题（避免题目「在页面底部出来」），改为弹窗全屏训练
       if (key === "ai") {
         const mask = UI.el(`<div class="modal-mask"><div class="modal" style="max-width:820px;max-height:90vh;overflow:auto">
+          ${set.point ? pointHtml(set.point) : ""}
           <h3>🤖 综合AI出题 · ${esc(set.subject || "综合")} · ${set.n} 题</h3>
           <div class="aiq-modal-quiz"></div>
           <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn ghost aiq-close">收起</button></div>
@@ -128,6 +173,12 @@
         return;
       }
       quizHost.innerHTML = "";
+      // 有考点讲解：学习页先渲染「考点卡」，下面才是刷题区
+      if (set.point) {
+        const ph = document.createElement("div");
+        ph.innerHTML = pointHtml(set.point);
+        quizHost.appendChild(ph);
+      }
       const c = document.createElement("div");
       quizHost.appendChild(c);
       try {
