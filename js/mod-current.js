@@ -725,6 +725,54 @@
     };
   }
 
+  /* 稳健 JSON 解析：剥 markdown 围栏 + 括号平衡救援（截断也能救回已完整部分） + 尾逗号清理 */
+  function hotParseJSON(txt) {
+    let t = String(txt || "").replace(/```[a-z]*\s*/g, "").replace(/```/g, "").trim();
+    const a = t.indexOf("{"), ar = t.indexOf("[");
+    const s0 = (ar >= 0 && (a < 0 || ar < a)) ? ar : a;
+    if (s0 < 0) throw new Error("AI 未返回 JSON");
+    const s = t.slice(s0);
+    const tryParse = (x) => { try { return JSON.parse(x); } catch (e) { return null; } };
+    let j = tryParse(s);
+    if (j) return j;
+    const open = s.charAt(0), close = (open === "{") ? "}" : "]";
+    let depth = 0, inStr = false, esc = false, end = -1;
+    for (let i = 0; i < s.length; i++) {
+      const c = s.charAt(i);
+      if (inStr) { if (esc) esc = false; else if (c === "\\") esc = true; else if (c === '"') inStr = false; continue; }
+      if (c === '"') inStr = true;
+      else if (c === open) depth++;
+      else if (c === close) { depth--; if (depth === 0) { end = i; break; } }
+    }
+    if (end > 0) { j = tryParse(s.slice(0, end + 1)); if (j) return j; }
+    j = tryParse(s.replace(/,\s*([}\]])/g, "$1"));
+    if (j) return j;
+    /* 数组被截断：裁到最后一个完整元素再闭合（少收几题好过全盘失败） */
+    if (open === "[") {
+      const lastObj = s.lastIndexOf("}");
+      if (lastObj > 0) { j = tryParse(s.slice(0, lastObj + 1) + "]"); if (j) return j; }
+    }
+    throw new Error("AI 返回的 JSON 无法解析（已自动重试仍失败）");
+  }
+
+  /* 单段生成：带一次自动重试（追加输出纪律），进度与流式思考喂给全局进度条 */
+  async function hotCall(prompt, label, pct, maxTok) {
+    for (let att = 0; att < 2; att++) {
+      try {
+        const p = att > 0 ? prompt + "\n\n【输出纪律】只输出 JSON 本体，禁止任何解释文字或 markdown 围栏；字符串务必精炼。" : prompt;
+        if (window.KGProgress) KGProgress.show(label + (att > 0 ? "（自动重试）" : ""), pct);
+        const txt = await window.KGAI.chat([{ role: "user", content: p }], {
+          maxTok: maxTok || 6000,
+          onDelta: (full) => { if (window.KGProgress) KGProgress.think(full); }
+        });
+        return hotParseJSON(txt);
+      } catch (e) {
+        if (att === 1) throw e;
+        console.warn("[时政] 分段生成失败，自动重试：", e);
+      }
+    }
+  }
+
   async function genTodayByAI(date) {
     const mat = todayHotMaterial(date);
     const hasMat = mat.list.length > 0;
@@ -733,28 +781,52 @@
     const head = hasMat
       ? "你是公务员考试时政命题专家。下面是最近的真实热点素材（最新日期 " + (mat.latest || date) + "，目标日期 " + date + "），请严格据此生成 " + date + " 的每日时政内容，禁止编造素材之外的事实。"
       : "你是公务员考试时政命题专家。热点抓取暂时不可用，没有素材可给。请基于你已掌握的、确定性高的近期全国时政要点（重大政策、会议、科技、民生等），生成 " + date + " 的每日时政内容。红线：只写你确信的事实，不得编造具体日期、数字、人名、职务；拿不准的细节一律用泛化表述（如「近日」「有关部门」）。";
-    const spec = [
-      head,
-      hasMat ? "【今日素材】\n" + mat.list.map((m, i) => (i + 1) + ". " + m).join("\n") : "【今日素材】（无，按上述红线自主生成）",
-      "【输出要求】只输出一个 JSON 对象，不要任何说明文字、不要 markdown 代码块。结构如下：",
-      '{"news":[{"area":"领域","star":5,"title":"要点标题","body":"一句事实"} ×9（★★★★★3条、★★★★3条、★★★3条，用 star=5/4/3 表示）],',
-      '"essay":{"topic":"核心立意一句","paras":["申论段落1","申论段落2"],"quotes":["金句1","金句2","金句3","金句4"]},',
-      '"verbal":[10题：{"q":"题干100-150字，带时政背景引入","options":["A内容","B内容","C内容","D内容"],"a":0,"e":"【答案】A\\n【解析】…"}，a 为 0 基数字；题干以双空为主、单空用四字词；选项强迷惑],',
-      '"quiz":[20题：15 单选 + 5 多选。单选 {"q":"","options":[4项],"a":1,"e":"【答案】：B\\n【解析】…"}，a 为 0 基数字，答案 A:B:C:D 约 1:1:1:1，其中至少 2 道为计数型（①②③④⑤选正确数量，选项 A.5项 B.4项 C.3项 D.2项）；',
-      '多选 {"q":"（多选）…","options":[4项],"a":"ABC","type":"multi","multi":"ABC","e":"【答案】：ABC\\n【解析】…"}，a 为 2-4 个字母且 5 道之间组合不重复]}',
-      "【选项用词红线】错误选项只做政治词汇/领域/数字/主体的同义替换，句子仍来自素材原意；**不得出现消极、否定、负面评价或唱衰性表述**。解析要说明错在哪个词被替换。",
-      "【答案格式】单选写【答案】：A，多选写【答案】：ABC。"
-    ].join("\n");
-    const txt = await window.KGAI.chat([{ role: "user", content: spec }], {
-      onDelta: (full) => { if (window.KGProgress) KGProgress.think(full); }
-    });
-    const a = String(txt).indexOf("{"), b = String(txt).lastIndexOf("}");
-    if (a < 0 || b <= a) throw new Error("AI 返回内容不是有效 JSON");
-    const day = JSON.parse(String(txt).slice(a, b + 1));
-    if (!day || !Array.isArray(day.news) || !Array.isArray(day.verbal) || !Array.isArray(day.quiz)) throw new Error("AI 返回结构不完整");
-    day.date = date;
-    day.title = date + " 时政";
-    return day;
+    const matTxt = hasMat
+      ? "【今日素材】\n" + mat.list.map((m, i) => (i + 1) + ". " + m).join("\n")
+      : "【今日素材】（无，按上述红线自主生成）";
+    const base = head + "\n" + matTxt;
+    const redline = "【选项用词红线】错误选项只做词汇/领域/数字/主体的同义替换，句子仍来自素材原意；不得出现消极、否定、负面评价或唱衰性表述。";
+
+    /* 分 4 段小 JSON 生成：单段被截断的风险大幅降低，且每段独立救援+重试 */
+    if (window.KGProgress) KGProgress.show("AI 正在生成今日时政（" + date + "）· 1/4 要点与申论…", 20);
+    const p1 = base +
+      "\n\n【输出要求】只输出一个 JSON 对象，不要任何说明文字、不要 markdown 代码块。结构：\n" +
+      '{"news":[{"area":"领域","star":5,"title":"要点标题","body":"一句事实"} ×9（★★★★★3条、★★★★3条、★★★3条，用 star=5/4/3 表示）],\n' +
+      '"essay":{"topic":"核心立意一句","paras":["申论段落1","申论段落2"],"quotes":["金句1","金句2","金句3","金句4"]}}';
+    const d1 = await hotCall(p1, "AI 生成时政要点与申论金句…", 22);
+
+    if (window.KGProgress) KGProgress.show("AI 生成言语理解 10 题 · 2/4…", 42);
+    const p2 = base +
+      "\n\n【输出要求】只输出一个 JSON 数组，恰好 10 道言语理解题，不要任何说明文字、不要 markdown 代码块。格式：\n" +
+      '[{"q":"题干100-150字，带时政背景引入","options":["A内容","B内容","C内容","D内容"],"a":0,"e":"【答案】A\\n【解析】…"}]，a 为 0 基数字；题干以双空为主、单空用四字词；选项强迷惑。' + redline;
+    const d2 = await hotCall(p2, "AI 生成言语理解 10 题…", 45, 6000);
+
+    if (window.KGProgress) KGProgress.show("AI 生成时政单选题 · 3/4…", 62);
+    const quizSpec =
+      " 单选 {\"q\":\"\",\"options\":[4项],\"a\":1,\"e\":\"【答案】：B\\n【解析】…\"}，a 为 0 基数字，答案 A:B:C:D 约 1:1:1:1；多选 {\"q\":\"（多选）…\",\"options\":[4项],\"a\":\"ABC\",\"type\":\"multi\",\"multi\":\"ABC\",\"e\":\"【答案】：ABC\\n【解析】…\"}。" + redline;
+    const p3 = base + "\n\n【输出要求】生成时政单选题第 1 批，恰好 10 道。只输出一个 JSON 数组，不要任何说明文字、不要 markdown 代码块。" + quizSpec;
+    const d3 = await hotCall(p3, "AI 生成时政单选题（1/2）…", 65);
+
+    const avoid = (Array.isArray(d3) ? d3 : []).map(q => String(q.q || "").slice(0, 24)).filter(Boolean).slice(0, 10).join("；");
+    if (window.KGProgress) KGProgress.show("AI 生成时政题（含多选） · 4/4…", 78);
+    const p4 = base +
+      "\n\n【输出要求】生成时政题第 2 批：恰好 5 道单选 + 5 道多选（多选 a 为 2-4 个字母、组合不重复），不要与这些题目重复：" + (avoid || "（无）") +
+      "。只输出一个 JSON 数组，不要任何说明文字、不要 markdown 代码块。" + quizSpec;
+    const d4 = await hotCall(p4, "AI 生成时政题（2/2，含多选）…", 82);
+
+    const verbal = Array.isArray(d2) ? d2 : [];
+    const quiz = (Array.isArray(d3) ? d3 : []).concat(Array.isArray(d4) ? d4 : []);
+    const news = (d1 && Array.isArray(d1.news)) ? d1.news : [];
+    if (news.length < 6 || verbal.length < 8 || quiz.length < 13)
+      throw new Error("AI 生成的部分内容不完整（要点 " + news.length + " / 言语 " + verbal.length + " / 时政 " + quiz.length + "），请再点一次刷新重试");
+    return {
+      date: date,
+      title: date + " 时政",
+      news: news,
+      essay: (d1 && d1.essay) || {},
+      verbal: verbal,
+      quiz: quiz
+    };
   }
 
   /* ===== 刷新今日时政（v20261006k）=====
@@ -794,8 +866,17 @@
       renderDailyHot(host);
       if (window.KGProgress) KGProgress.show("AI 正在生成今日时政（" + date + "）…约 1-2 分钟", 18);
       // ③ 无论几点：现场生成今天（用户手动触发即运转）；进度条常驻顶部，可离开本页
-      setTip("正在用 AI 生成今天（" + date + "）的时政…约需 1-2 分钟");
-      const day = await genTodayByAI(date);
+      setTip("正在用 AI 生成今天（" + date + "）的时政…约需 2-4 分钟");
+      let day = null;
+      try {
+        day = await genTodayByAI(date);
+      } catch (e1) {
+        console.warn("[时政] 第一次生成未成功，自动整跑重试一次", e1);
+        setTip("第一次生成未成功，自动再试一次…");
+        if (window.KGProgress) KGProgress.show("第一次未成功，自动整体重试一次…", 12);
+        await new Promise(r => setTimeout(r, 3000));
+        day = await genTodayByAI(date);
+      }
       if (window.KGProgress) KGProgress.show("生成完成，正在写入…", 92);
       day.manualAt = Date.now();   // 标记为本人手动版：云同步时优先保留（仅本账号可见）
       DB.state.dailyHot[date] = day;
