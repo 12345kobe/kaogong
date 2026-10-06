@@ -93,11 +93,6 @@
         <span class="qz-mhint">练题＝全部答完再交卷；背题＝选完立即看答案</span>
       </div>`);
       container.appendChild(modeBar);
-      // 整套题共用「总题干 / 背景材料」（AI 知识点出题时传入，顶部渲染一次）
-      if (opts.bg) {
-        const bgEl = UI.el(`<div class="q-bg quiz-set-bg"><div class="q-bg-t">📖 背景材料（本组共用）</div>${nl2br(opts.bg)}</div>`);
-        container.appendChild(bgEl);
-      }
       modeBar.querySelectorAll(".qm-chip").forEach(b => {
         b.classList.toggle("on", b.dataset.m === mode);
         b.onclick = () => {
@@ -143,11 +138,6 @@
       container.innerHTML = "";
       // 模式条重建（上面 innerHTML 清空会丢掉它）
       container.appendChild(modeBar);
-      // 共用总题干重建（切换模式时一并保留）
-      if (opts.bg) {
-        const bgEl = UI.el(`<div class="q-bg quiz-set-bg"><div class="q-bg-t">📖 背景材料（本组共用）</div>${nl2br(opts.bg)}</div>`);
-        container.appendChild(bgEl);
-      }
 
       // 计时条
       const timerBar = UI.el(`<div class="quiz-timer">
@@ -368,7 +358,7 @@
         card.querySelector(".star-btn").onclick = () => {
           const idx = favList.findIndex(f => f.qid === qid);
           if (idx >= 0) { favList.splice(idx, 1); UI.toast("已取消收藏"); }
-          else { favList.push({ qid, q: qq.q, options: qq.options.slice(), a: qq.a, e: qq.e || "", bg: opts.bg || "", subject, addedAt: Date.now() }); UI.toast("已收藏题目"); }
+          else { favList.push({ qid, q: qq.q, options: qq.options.slice(), a: qq.a, e: qq.e || "", subject, addedAt: Date.now() }); UI.toast("已收藏题目"); }
           DB.save(); refreshFavBtn();
         };
 
@@ -450,7 +440,7 @@
 
       function recordWrong(subject, qq, ua) {
         const arr = DB.state.wrongbook[subject] = DB.state.wrongbook[subject] || [];
-        arr.push({ id: DB.uid(), q: qq.q, options: qq.options.slice(), a: qq.a, ua: ua, date: DB.today(), e: qq.e || "", optInfo: qq.optInfo || null, note: "", img: qq.img || "", bg: opts.bg || "" });
+        arr.push({ id: DB.uid(), q: qq.q, options: qq.options.slice(), a: qq.a, ua: ua, date: DB.today(), e: qq.e || "", optInfo: qq.optInfo || null, note: "", img: qq.img || "" });
         DB.save();
         // 自动写入对应模块「待办事项」：X 错题 N 道（复盘后删去）
         autoTodoOnWrong(subject, qq);

@@ -538,26 +538,8 @@
         ].join("\n");
       }
 
-      /* 生成整套题共用的「总题干 / 背景材料」（纯文本，300-450 字） */
-      function kpBackgroundPrompt(name, label, point) {
-        const ctx = [
-          point.brief ? "一句话定义：" + point.brief : "",
-          (point.correct || []).length ? "正确表述：" + point.correct.join("；") : "",
-          (point.keywords || []).length ? "关键词：" + point.keywords.join("、") : "",
-          (point.compare || []).length ? "易混对比：" + point.compare.map(c => c.a + "≠" + c.b + "（" + c.diff + "）").join("；") : ""
-        ].filter(Boolean).join("\n");
-        return [
-          "你是公考命题专家。围绕知识点「" + name + "」（【" + label + "】），撰写一段用于出题的「总题干 / 背景材料」。",
-          "【知识点（材料须与此一致）】\n" + (ctx || "自行依据公认结论"),
-          "【要求】输出纯文本（不要 JSON、不要 markdown），长度 300-450 字。",
-          "这是一整段共享材料，本组所有题目都基于它来出——要像真题的「给定资料 / 阅读片段」那样，信息密度高、可读性强。",
-          "取材角度（紧贴该知识点，真实、正面）：①习近平总书记重要讲话 / 重要论述 / 指示批示（用「强调 / 指出 / 要求」等转述，不得编造领导人原话）；②党和国家重大政策文件 / 会议精神；③真实科学发现 / 科技事件 / 自然现象；④权威统计数据 / 社会现象 / 典型案例；⑤重大时政热点。",
-          "不得出现消极或负面评价表述；结尾自然留白，便于据此设问。"
-        ].join("\n");
-      }
-
-      /* 基于共用「总题干」出 N 道题（不再每题各自写背景） */
-      function kpQuestionsPrompt(name, label, count, point, bg, avoid) {
+      /* 基于考点出 N 道题：背景材料直接写进题干（题干变长），不单独成段 */
+      function kpQuestionsPrompt(name, label, count, point, avoid) {
         const ctx = [
           point.brief ? "一句话定义：" + point.brief : "",
           (point.correct || []).length ? "正确表述：" + point.correct.join("；") : "",
@@ -566,12 +548,13 @@
           (point.words || []).length ? "出题依据词语：" + point.words.map(w => w.term + "（" + (w.similar || []).map(s => s.w).join("/") + "）").join("；") : ""
         ].filter(Boolean).join("\n");
         return [
-          "你是公考命题专家。围绕知识点「" + name + "」（【" + label + "】）出 " + count + " 道单项选择题，全部基于下面这段【总题干】。",
-          "【总题干（本组所有题目共用，不要再写背景）】\n" + (bg || "（无总题干，请依据公认结论自出）"),
+          "你是公考命题专家。围绕知识点「" + name + "」（【" + label + "】）出 " + count + " 道单项选择题。",
           "【考点内容（题目必须与此一致）】\n" + (ctx || "自行依据公认结论"),
           (avoid && avoid.length ? "【避免与以下已有题干重复】\n" + avoid.map((x, i) => (i + 1) + ". " + x).join("\n") : ""),
-          '【输出】严格 JSON 对象：{"questions":[{"q":"基于总题干出的题干（可写「根据材料，…」）","options":["A","B","C","D"],"a":"B","e":"【答案】：B\\n【解析】逐项说明，并回扣总题干与考点"}]}',
-          "【要求】a 用字母；答案分布尽量均匀；选项强迷惑——错误项只做同义/领域/主体/数字替换，句子仍出自考点原意；无 markdown、无说明文字。"
+          "【题干要求】像公考真题一样，把背景材料自然写进题干开头：每题题干 120-260 字（背景 + 设问连成一段，黑色正文，不要任何标题/标签/分段标记）。",
+          "背景取材角度（紧贴考点，真实、正面）：①习近平总书记重要讲话/论述（用「强调/指出/要求」转述，不得编造原话）；②重大政策文件/会议精神；③真实科学发现/科技事件；④权威数据/社会现象/典型案例；⑤时政热点。背景之后紧跟设问。",
+          '【输出】严格 JSON 对象：{"questions":[{"q":"背景+设问连成一段的完整题干（120-260字）","options":["A","B","C","D"],"a":"B","e":"【答案】：B\\n【解析】逐项说明"}]}',
+          "【要求】a 用字母；答案分布尽量均匀；选项强迷惑——错误项只做同义/领域/主体/数字替换，句子仍出自考点原意，**不得出现消极或负面评价表述**；q 里禁止出现「背景材料」「根据材料」这类标签词；无 markdown、无说明文字。"
         ].join("\n");
       }
 
@@ -693,21 +676,18 @@
             || "common";
 
           const batch1 = Math.ceil(n / 2);
-          kpShowProgress("科目判定：" + subject + "，正在生成总题干…", 30);
-          const bgRaw = await chat([{ role: "user", content: kpBackgroundPrompt(name, subject, point) }], { model: pickLongOutModel() });
-          const bg = String(bgRaw || "").trim().replace(/^```(json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
-          kpShowProgress("总题干完成，正在出题 1/" + n + "…", 35);
-          const qs1 = K.normalize((await kpChatJSON([{ role: "user", content: kpQuestionsPrompt(name, subject, batch1, point, bg) }])).questions || []);
+          kpShowProgress("科目判定：" + subject + "，正在出题 1/" + n + "…", 35);
+          const qs1 = K.normalize((await kpChatJSON([{ role: "user", content: kpQuestionsPrompt(name, subject, batch1, point) }])).questions || []);
           kpShowProgress("正在出题 " + Math.min(qs1.length + 1, n) + "/" + n + "…", 68);
           const rest = n - qs1.length;
           let qs2 = [];
           if (rest > 0) {
             const avoid = qs1.map(q => String(q.q || "").slice(0, 30));
-            qs2 = K.normalize((await kpChatJSON([{ role: "user", content: kpQuestionsPrompt(name, subject, rest, point, bg, avoid) }])).questions || []);
+            qs2 = K.normalize((await kpChatJSON([{ role: "user", content: kpQuestionsPrompt(name, subject, rest, point, avoid) }])).questions || []);
           }
           const qs = qs1.concat(qs2);
           if (!qs.length) throw new Error("没有生成可用题目，请重试");
-          const set = K.addSet(modKey, subject, qs, { point: Object.assign({ title: name, subject: subject }, point), bg: bg });
+          const set = K.addSet(modKey, subject, qs, { point: Object.assign({ title: name, subject: subject }, point) });
           if (!set) throw new Error("保存到模块失败");
           kpShowProgress("生成完成，正在打开学习页…", 100);
           window.__aiQuizAuto = { mod: modKey, setId: set.id };
