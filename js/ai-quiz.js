@@ -45,7 +45,7 @@
         a = letters.length > 1 ? letters : (letters.charCodeAt(0) - 65);
       }
       if (typeof a !== "number" || a < 0 || a >= options.length) return;
-      out.push({ q: String(q.q).trim(), options: options, a: a, e: String(q.e || "").trim(), img: (q.img || null), bg: String(q.bg || "").trim() });
+      out.push({ q: String(q.q).trim(), options: options, a: a, e: String(q.e || "").trim(), img: (q.img || null) });
     });
     return out;
   }
@@ -64,6 +64,8 @@
     };
     // 知识点查询写入的结构化考点讲解：学习页「先看考点 → 再刷题」
     if (opts && opts.point) set.point = opts.point;
+    // 整套题共用的「总题干 / 背景材料」
+    if (opts && opts.bg) set.bg = opts.bg;
     st.sets.unshift(set);
     st.total += qs.length;
     try { DB.save(); } catch (e) {}
@@ -267,7 +269,7 @@
         mask.querySelector(".aiq-close").onclick = () => mask.remove();
         try {
           window.Quiz.start(mask.querySelector(".aiq-modal-quiz"), set.questions.map(q => Object.assign({}, q)), set.subject || "综合AI出题",
-            { onAgain: () => { mask.remove(); again(set); } });
+            { onAgain: () => { mask.remove(); again(set); }, bg: set.bg });
         } catch (e) { console.error(e); mask.remove(); UI.toast("训练启动失败：" + e.message); }
         return;
       }
@@ -297,8 +299,8 @@
       try {
         quizHost.scrollIntoView({ behavior: "smooth", block: "start" });
       } catch (e) {}
-      window.Quiz.start(c, set.questions.map(q => Object.assign({}, q)), set.subject || (m && m.title) || "AI出题",
-        { onAgain: () => again(set) });
+        window.Quiz.start(c, set.questions.map(q => Object.assign({}, q)), set.subject || (m && m.title) || "AI出题",
+          { onAgain: () => again(set), bg: set.bg });
     }
 
     /* 自动打开学习页：全屏弹层承载「考点卡 + 练题」，避免被 Pager 吸收成方格后内容不可见 */

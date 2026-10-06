@@ -506,6 +506,8 @@ body.light:not(.glass) .hw-palette{background:rgba(255,255,255,.98);border-color
 .aiq-modtag{font-size:13px;color:var(--txt)}
 .q-bg{margin:10px 0;padding:10px 12px;border-left:4px solid var(--accent,#9b6cff);background:rgba(155,108,255,.08);border-radius:8px;font-size:.95em;line-height:1.7;color:var(--txt)}
 .q-bg-t{font-weight:700;margin-bottom:4px;color:var(--accent,#9b6cff);font-size:.9em}
+/* 整套题共用的总题干：更醒目、占满题组顶部 */
+.quiz-set-bg{margin:0 0 10px;border-left-width:5px;background:rgba(155,108,255,.12)}
 
 /* ===== 闪卡连答提示 ===== */
 .fc-streak{font-size:12px;color:var(--txt-dim);margin:2px 0}
