@@ -316,7 +316,7 @@
       mask.querySelector(".aiq-close").onclick = () => mask.remove();
       const qh = mask.querySelector(".aiq-modal-quiz");
       const launch = () => {
-        try { window.Quiz.start(qh, set.questions.map(q => Object.assign({}, q)), set.subject || (m && m.title) || "AI出题", { onAgain: () => { mask.remove(); again(set); } }); }
+        try { window.Quiz.start(qh, set.questions.map(q => Object.assign({}, q)), set.subject || (m && m.title) || "AI出题", { onAgain: () => { mask.remove(); again(set); }, bg: set.bg }); }
         catch (e) { console.error(e); mask.remove(); UI.toast("训练启动失败：" + e.message); }
       };
       if (set.point) {
