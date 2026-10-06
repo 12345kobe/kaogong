@@ -717,6 +717,7 @@
         const UI = window.UI;
         try {
           const sh = fullSubject;
+          const rootId = (window.KGFolders && window.KGFolders.rootId(sh)) || "";
           const folders = (window.KGFolders && window.KGFolders.list(sh)) || [];
           const optsHtml = folders.map(f => `<option value="${esc(f.id)}">${esc((f.parentId ? "　" : "") + f.name)}</option>`).join("");
           const box = UI.el(`<div>
@@ -726,6 +727,7 @@
             <label class="fld" style="margin-top:10px">录入到文件夹</label>
             <select id="kpFolder" class="full">${optsHtml}<option value="__new__">➕ 新建文件夹…</option></select>
           </div>`);
+          try { box.querySelector("#kpFolder").value = rootId; } catch (e) {}
           UI.modal({
             title: "📥 录入知识点到文件夹", body: box, width: "520px",
             actions: [
