@@ -532,6 +532,7 @@
           ' "essay":["申论可用搭配1","搭配2"],',
           ' "words":[]}',
           "【结构】正确表述（先记）→ 核心关键词 → 经典例子 → 易混对比 → 命题陷阱（正→误）→ 申论搭配。",
+          "【精简】correct 2-4 条且每条≤30字，examples≤2 个（text≤40字），compare≤2 组，traps≤2 组，essay≤2 条且每条≤20字，整体 JSON 不超过 600 字。",
           "【言语理解专属】若属于言语理解，words 必须给 ≥3 组 {term,def,similar:[{w,diff}]}「词语释义+易混词辨析」；否则 words 给空数组。",
           "【真实性】只写公认结论，禁止编造。"
         ].join("\n");
@@ -608,11 +609,28 @@
             let fix = cand;
             while (stack.length) fix += (stack.pop() === "{") ? "}" : "]";
             o = tryP(fix.replace(/,\s*([}\]])/g, "$1"));
-            if (o && (o.questions || o.news || o.essay)) return o;
+            if (o && Object.keys(o).length) return o;   // 考点对象（subject/essay 等键）也算抢救成功
           }
           cut = body.lastIndexOf("}", cut - 1);
         }
-        throw new Error("AI 返回的 JSON 无法解析（当前模型输出上限太小），请重试或换模型");
+        console.warn("[KP] 原始返回前600字：", String(s || "").slice(0, 600));
+        throw new Error("AI 返回的 JSON 无法解析（已自动重试仍失败），请再试一次");
+      }
+
+      /* 带一次自动重试的 JSON 调用：首次失败后追加「精简输出」纪律再试，
+         大幅降低长 JSON 被模型输出上限截断的概率 */
+      async function kpChatJSON(messages) {
+        try {
+          return kpParseJSON(await chat(messages, { model: pickLongOutModel() }));
+        } catch (e) {
+          console.warn("[KP] JSON 解析失败，自动重试一次", e);
+          const retry = messages.map(m => Object.assign({}, m));
+          const last = retry[retry.length - 1];
+          retry[retry.length - 1] = Object.assign({}, last, {
+            content: last.content + "\n【输出纪律】只输出 JSON 本体，禁止任何解释文字或 markdown 围栏；所有字符串务必精炼，整个 JSON 总长控制在 700 字以内。"
+          });
+          return kpParseJSON(await chat(retry, { model: pickLongOutModel() }));
+        }
       }
 
       /* 知识点查询需要长输出：自动选当前服务商「输出上限最大」的文本模型
@@ -657,9 +675,16 @@
         kpBusy = true;
         const guess = guessKpSubject(name);
         try {
-          kpShowProgress("正在拆解「" + name + "」（判定为" + guess.label + "）…", 8);
-          const point = kpParseJSON(await chat([{ role: "user", content: kpPointPrompt(name, guess.label) }], { model: pickLongOutModel() }));
-          const subject = String(point.subject || "").trim() || guess.label;
+          kpShowProgress("正在拆解「" + name + "」（" + (guess.label || "AI 判定科目") + "）…", 8);
+          // 考点拆解：失败自动重试一次；仍失败则降级为「仅出题」，不让整个查询挂掉
+          let point;
+          try {
+            point = await kpChatJSON([{ role: "user", content: kpPointPrompt(name, guess.label) }]);
+          } catch (e1) {
+            console.warn("[KP] 考点拆解失败，降级为仅出题", e1);
+            point = { subject: guess.label || "", title: name, brief: "", correct: [], keywords: [], compare: [], words: [] };
+          }
+          const subject = String(point.subject || "").trim() || guess.label || "综合";
           const K = window.KGAIQuiz;
           if (!K || !K.addSet) throw new Error("出题组件未就绪");
           // 关键词规则判定优先：AI 把「供给侧改革」判成言语这类错误直接纠正
@@ -668,17 +693,17 @@
             || "common";
 
           const batch1 = Math.ceil(n / 2);
-          kpShowProgress("讲解完成，正在生成总题干…", 30);
+          kpShowProgress("科目判定：" + subject + "，正在生成总题干…", 30);
           const bgRaw = await chat([{ role: "user", content: kpBackgroundPrompt(name, subject, point) }], { model: pickLongOutModel() });
           const bg = String(bgRaw || "").trim().replace(/^```(json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
           kpShowProgress("总题干完成，正在出题 1/" + n + "…", 35);
-          const qs1 = K.normalize(kpParseJSON(await chat([{ role: "user", content: kpQuestionsPrompt(name, subject, batch1, point, bg) }], { model: pickLongOutModel() })).questions || []);
+          const qs1 = K.normalize((await kpChatJSON([{ role: "user", content: kpQuestionsPrompt(name, subject, batch1, point, bg) }])).questions || []);
           kpShowProgress("正在出题 " + Math.min(qs1.length + 1, n) + "/" + n + "…", 68);
           const rest = n - qs1.length;
           let qs2 = [];
           if (rest > 0) {
             const avoid = qs1.map(q => String(q.q || "").slice(0, 30));
-            qs2 = K.normalize(kpParseJSON(await chat([{ role: "user", content: kpQuestionsPrompt(name, subject, rest, point, bg, avoid) }], { model: pickLongOutModel() })).questions || []);
+            qs2 = K.normalize((await kpChatJSON([{ role: "user", content: kpQuestionsPrompt(name, subject, rest, point, bg, avoid) }])).questions || []);
           }
           const qs = qs1.concat(qs2);
           if (!qs.length) throw new Error("没有生成可用题目，请重试");
