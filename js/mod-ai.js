@@ -255,9 +255,60 @@
     if (key) headers["Authorization"] = "Bearer " + key;
     // max_tokens 按模型/服务商上限钳制（如智谱 GLM-4V-Flash 输出上限 1024，超了会报「max_tokens参数非法」）
     const outCap = modelInfo(pid, model).maxOut || p.maxTok || 2000;
+    const payload = { model: model, messages: messages, temperature: getTemp(), max_tokens: Math.min(o.maxTok || outCap, outCap) };
+    // 流式：传了 onDelta 就走 SSE，边生成边回调（全文累积值, 本次增量）
+    if (typeof o.onDelta === "function") {
+      payload.stream = true;
+      const resp = await fetch(o.baseUrl || p.base, {
+        method: "POST", headers: headers,
+        body: JSON.stringify(payload)
+      });
+      if (!resp.ok) {
+        let msg = "HTTP " + resp.status;
+        try { const j = await resp.json(); msg = (j.error && (j.error.message || j.error)) || (j.message) || msg; } catch (e) {}
+        throw new Error(msg);
+      }
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "", full = "";
+      const feed = (piece) => { if (!piece) return; full += piece; try { o.onDelta(full, piece); } catch (e) {} };
+      try {
+        while (true) {
+          const r = await reader.read();
+          if (r.done) break;
+          buf += dec.decode(r.value, { stream: true });
+          const lines = buf.split("\n");
+          buf = lines.pop() || "";
+          for (const ln of lines) {
+            const s = ln.trim();
+            if (!s || s.charAt(0) === ":") continue;
+            if (!s.startsWith("data:")) continue;
+            const data = s.slice(5).trim();
+            if (data === "[DONE]") continue;
+            try {
+              const j = JSON.parse(data);
+              const ch = j.choices && j.choices[0];
+              const piece = (ch && ch.delta && ch.delta.content) || (ch && ch.message && ch.message.content) || "";
+              feed(piece);
+            } catch (e) {}
+          }
+        }
+      } catch (e) {
+        if (!full) throw e;   // 一个字都没拿到才当失败；已收到部分就正常返回
+      }
+      if (full) return full;
+      // 服务商不支持流式（返回普通 JSON）：按非流式解析
+      buf += dec.decode();
+      try {
+        const j = JSON.parse(buf);
+        const c = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "（无内容）";
+        feed(c);
+        return full;
+      } catch (e) { return full || "（无内容）"; }
+    }
     const resp = await fetch(o.baseUrl || p.base, {
       method: "POST", headers: headers,
-      body: JSON.stringify({ model: model, messages: messages, temperature: getTemp(), max_tokens: Math.min(o.maxTok || outCap, outCap) })
+      body: JSON.stringify(payload)
     });
     if (!resp.ok) {
       let msg = "HTTP " + resp.status;
@@ -603,8 +654,9 @@
       /* 带一次自动重试的 JSON 调用：首次失败后追加「精简输出」纪律再试，
          大幅降低长 JSON 被模型输出上限截断的概率 */
       async function kpChatJSON(messages) {
+        const think = (full) => { if (window.KGProgress) KGProgress.think(full); };
         try {
-          return kpParseJSON(await chat(messages, { model: pickLongOutModel() }));
+          return kpParseJSON(await chat(messages, { model: pickLongOutModel(), onDelta: think }));
         } catch (e) {
           console.warn("[KP] JSON 解析失败，自动重试一次", e);
           const retry = messages.map(m => Object.assign({}, m));
@@ -612,7 +664,7 @@
           retry[retry.length - 1] = Object.assign({}, last, {
             content: last.content + "\n【输出纪律】只输出 JSON 本体，禁止任何解释文字或 markdown 围栏；所有字符串务必精炼，整个 JSON 总长控制在 700 字以内。"
           });
-          return kpParseJSON(await chat(retry, { model: pickLongOutModel() }));
+          return kpParseJSON(await chat(retry, { model: pickLongOutModel(), onDelta: think }));
         }
       }
 
@@ -629,26 +681,12 @@
         } catch (e) { return undefined; }
       }
 
-      /* 页面顶部进度条：出题期间常驻显示，用户可离开本页用其它模块 */
+      /* 页面顶部进度条：委托全局 KGProgress（常驻顶部、不挡返回按钮、跨模块可见） */
       function kpShowProgress(text, pct) {
-        let el = document.getElementById("kgKpProgress");
-        if (!el) {
-          el = document.createElement("div");
-          el.id = "kgKpProgress";
-          el.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:10050;display:flex;align-items:center;gap:10px;" +
-            "padding:calc(env(safe-area-inset-top, 0px) + 8px) 14px 8px;background:linear-gradient(135deg,#12314a,#0d2438);" +
-            "color:#dff6ff;font-size:14px;font-weight:700;box-shadow:0 2px 10px rgba(0,0,0,.35)";
-          el.innerHTML = '<span id="kgKpText" style="flex:1;min-width:0"></span>' +
-            '<div style="width:110px;height:8px;border-radius:6px;background:rgba(255,255,255,.18);overflow:hidden">' +
-            '<div id="kgKpBar" style="height:100%;width:0;background:linear-gradient(90deg,#34e7e4,#9b6cff);transition:width .4s"></div></div>';
-          document.body.appendChild(el);
-        }
-        el.querySelector("#kgKpText").textContent = text;
-        el.querySelector("#kgKpBar").style.width = Math.max(4, Math.min(100, pct || 0)) + "%";
+        if (window.KGProgress) KGProgress.show(text, pct);
       }
       function kpHideProgress() {
-        const el = document.getElementById("kgKpProgress");
-        if (el) { el.style.opacity = "0"; el.style.transition = "opacity .5s"; setTimeout(() => { try { el.remove(); } catch (e) {} }, 600); }
+        if (window.KGProgress) KGProgress.hide();
       }
 
       let kpBusy = false;

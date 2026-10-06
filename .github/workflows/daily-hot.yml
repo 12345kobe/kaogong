@@ -26,22 +26,35 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: 生成今日时政与题目
+      - name: 生成今日时政与题目（失败 60 秒后自动整跑重试一次）
         env:
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
           AI_API_BASE: ${{ secrets.AI_API_BASE }}
           AI_MODEL: ${{ secrets.AI_MODEL }}
-        run: python tools/gen_daily_hot.py
+        run: |
+          python tools/gen_daily_hot.py || {
+            echo "第一次生成失败，60 秒后自动重试…"
+            sleep 60
+            python tools/gen_daily_hot.py
+          }
 
-      - name: 提交静态数据源
+      - name: 提交静态数据源（始终基于最新远端重写，杜绝并发冲突）
         run: |
           git config user.name "daily-hot-bot"
           git config user.email "bot@kaogong.local"
-          git add assets/data/daily_hot.js
-          if git diff --cached --quiet; then
-            echo "无变化，跳过提交"
-          else
-            git commit -m "chore: 每日时政热点自动更新 $(date +'%Y-%m-%d %H:%M')"
-            git pull --rebase origin main
-            git push || { sleep 3; git pull --rebase origin main && git push; }
-          fi
+          ok=0
+          for i in 1 2 3 4; do
+            echo "第 $i 次尝试提交…"
+            git fetch origin main
+            git reset --hard origin/main
+            python tools/patch_daily_hot.py
+            git add assets/data/daily_hot.js
+            if git diff --cached --quiet; then
+              echo "无变化，跳过提交"
+              ok=1; break
+            fi
+            git commit -m "chore: 每日时政热点自动更新 $(TZ=Asia/Shanghai date +'%Y-%m-%d %H:%M')"
+            if git push; then ok=1; break; fi
+            sleep 10
+          done
+          [ "$ok" = "1" ] || { echo "四次提交尝试均失败"; exit 1; }

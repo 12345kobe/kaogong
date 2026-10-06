@@ -745,7 +745,9 @@
       "【选项用词红线】错误选项只做政治词汇/领域/数字/主体的同义替换，句子仍来自素材原意；**不得出现消极、否定、负面评价或唱衰性表述**。解析要说明错在哪个词被替换。",
       "【答案格式】单选写【答案】：A，多选写【答案】：ABC。"
     ].join("\n");
-    const txt = await window.KGAI.chat([{ role: "user", content: spec }]);
+    const txt = await window.KGAI.chat([{ role: "user", content: spec }], {
+      onDelta: (full) => { if (window.KGProgress) KGProgress.think(full); }
+    });
     const a = String(txt).indexOf("{"), b = String(txt).lastIndexOf("}");
     if (a < 0 || b <= a) throw new Error("AI 返回内容不是有效 JSON");
     const day = JSON.parse(String(txt).slice(a, b + 1));
@@ -770,6 +772,7 @@
     hotBusy = true;
     const date = DB.today();
     try {
+      if (window.KGProgress) KGProgress.show("正在准备生成今日时政（" + date + "）…", 6);
       setTip("正在同步最新数据…");
       // ① 拉热点素材（供现场生成用）
       try {
@@ -789,16 +792,21 @@
       DB.state.dailyHot = DB.state.dailyHot || {};
       if (window.KG_DAILY_HOT) mergeDailyHot(DB.state.dailyHot, window.KG_DAILY_HOT);
       renderDailyHot(host);
-      // ③ 无论几点：现场生成今天（用户手动触发即运转）
+      if (window.KGProgress) KGProgress.show("AI 正在生成今日时政（" + date + "）…约 1-2 分钟", 18);
+      // ③ 无论几点：现场生成今天（用户手动触发即运转）；进度条常驻顶部，可离开本页
       setTip("正在用 AI 生成今天（" + date + "）的时政…约需 1-2 分钟");
       const day = await genTodayByAI(date);
+      if (window.KGProgress) KGProgress.show("生成完成，正在写入…", 92);
       day.manualAt = Date.now();   // 标记为本人手动版：云同步时优先保留（仅本账号可见）
       DB.state.dailyHot[date] = day;
       DB.save();
+      if (window.KGProgress) KGProgress.show("今日时政已生成 ✓", 100);
+      setTimeout(() => { if (window.KGProgress) KGProgress.hide(); }, 1200);
       setTip("已生成今天（" + date + "），本机与你的账号云端已更新");
       renderDailyHot(host);
       try { UI.toast("今日时政已生成"); } catch (e) {}
     } catch (e) {
+      if (window.KGProgress) KGProgress.hide();
       setTip("生成失败：" + ((e && e.message) || e) + "，可稍后再试；每晚 20:00 也会自动生成");
       try { UI.toast("今日时政生成失败：" + ((e && e.message) || e)); } catch (err) {}
       renderDailyHot(host);   // 恢复列表（今天回到灰色占位）

@@ -156,6 +156,18 @@ def merge_static(day):
     print("静态源已写入：%s（累计 %d 天）" % (path, len(store)))
 
 
+def emit_day(day):
+    """把当天内容单独输出到 build/，供 workflow 提交步骤在 reset 到最新远端后由
+    patch_daily_hot.py 合并写入——彻底避免多 run 并发时的 rebase 冲突。"""
+    try:
+        os.makedirs("build", exist_ok=True)
+        with open(os.path.join("build", "daily_hot_day.json"), "w", encoding="utf-8") as f:
+            json.dump(day, f, ensure_ascii=False)
+        print("当日内容已输出：build/daily_hot_day.json")
+    except Exception as e:
+        print("输出 build/daily_hot_day.json 失败：%s" % e, file=sys.stderr)
+
+
 def main():
     mat = load_local_hotspots()
     if len(mat) < 6:
@@ -190,6 +202,7 @@ def main():
     day["date"] = DATE
     day["title"] = DATE + " 时政"
     merge_static(day)
+    emit_day(day)
     print("生成完成：言语 %d 题 / 时政 %d 题 / 要点 %d 条" % (
         len(day.get("verbal") or []), len(day.get("quiz") or []), len(day.get("news") or [])))
 

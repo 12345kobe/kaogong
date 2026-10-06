@@ -13,53 +13,65 @@
     title: "判断推理", icon: "logic",
     render(body) {
       const DB = window.DB, UI = window.UI, LH = window.LearnedHistory;
-      /* 合并「翻译推理核心知识精讲」（window.KG_TRANSLATION）与类比推理数据 */
-      const DATA = {
-        units: [].concat(
-          (window.ANALOGY && window.ANALOGY.units) || [],
-          (window.KG_TRANSLATION && window.KG_TRANSLATION.units) || []
-        )
-      };
-      const units = DATA.units || [];
+      /* 类比推理（手册数据）与翻译推理（精讲 PDF）分离：翻译推理与类比推理并列，不互相嵌套 */
+      const aUnits = (window.ANALOGY && window.ANALOGY.units) || [];
+      const tUnits = (window.KG_TRANSLATION && window.KG_TRANSLATION.units) || [];
+      const units = aUnits.concat(tUnits);   // 供 openStudy / startQuiz 查找
 
-      // 按 篇(chapter) 分组
+      // 类比推理：按 篇(chapter) 分组
       const chapters = [];
       const map = {};
-      units.forEach(u => {
+      aUnits.forEach(u => {
         if (!map[u.chapter]) { map[u.chapter] = []; chapters.push(u.chapter); }
         map[u.chapter].push(u);
+      });
+      // 翻译推理：按 chapter 分组（当前只有「翻译推理」一组，保持独立并列）
+      const tChapters = [];
+      const tMap = {};
+      tUnits.forEach(u => {
+        if (!tMap[u.chapter]) { tMap[u.chapter] = []; tChapters.push(u.chapter); }
+        tMap[u.chapter].push(u);
       });
 
       const totalLearned = LH.count(KEY);
 
+      function unitCard(u) {
+        const learned = LH.isLearned(KEY, u.id);
+        return `<div class="card allu-card" style="margin:0;cursor:pointer" data-unit="${esc(u.id)}">
+          <div class="row spread">
+            <b>${esc(u.topic)}</b>
+            ${learned ? '<span class="tag ok">已学</span>' : ''}
+          </div>
+          <div class="muted small" style="margin-top:4px">考点 ${u.points.length} · 题 ${u.questions.length}</div>
+          <div class="row" style="margin-top:8px;gap:6px">
+            <button class="btn xs" data-study="${esc(u.id)}">📖 学考点</button>
+            ${u.questions.length ? `<button class="btn xs primary" data-do="${esc(u.id)}">🎯 开始做题(${u.questions.length})</button>` : ''}
+          </div>
+        </div>`;
+      }
+
       function renderHome() {
         if (!units.length) {
-          body.innerHTML = `<div class="card empty">暂无类比数据。请把《类比常识积累手册.pdf》放入 essays_raw/ 后运行 tools/_gen_analogy.py。</div>`;
+          body.innerHTML = `<div class="card empty">暂无学习材料数据。</div>`;
           return;
         }
-        let html = `<div class="card">
-          <h3>🧠 判断推理</h3>
-          <div class="muted small">本模块含「类比推理板块」：${units.length} 个专题 / ${units.reduce((a, u) => a + u.points.length, 0)} 个考点 / ${units.reduce((a, u) => a + u.questions.length, 0)} 道真题自测。先学「考点直击」，再点「开始做题」巩固。</div>
-        </div>`;
-        // 必会对应关系：作为判断推理下的一个可折叠小板块（默认折叠，用户点开）
-        html += `<details class="kg-det"><summary class="kg-det-s"><span class="kg-det-t">📐 必会对应关系（类比推理·每日一题）</span><span class="kg-det-arrow">▸</span></summary><div class="kg-det-b" id="relSec"></div></details>`;
-        chapters.forEach(ch => {
-          html += `<details class="kg-det"><summary class="kg-det-s"><span class="kg-det-t">📘 ${esc(ch)}</span><span class="muted small" style="font-weight:400;color:var(--txt-dim)">${map[ch].length} 个专题</span><span class="kg-det-arrow">▸</span></summary>
-            <div class="kg-det-b"><div class="grid g2" style="margin-top:4px">`;
-          map[ch].forEach(u => {
-            const learned = LH.isLearned(KEY, u.id);
-            html += `<div class="card allu-card" style="margin:0;cursor:pointer" data-unit="${esc(u.id)}">
-              <div class="row spread">
-                <b>${esc(u.topic)}</b>
-                ${learned ? '<span class="tag ok">已学</span>' : ''}
-              </div>
-              <div class="muted small" style="margin-top:4px">考点 ${u.points.length} · 题 ${u.questions.length}</div>
-              <div class="row" style="margin-top:8px;gap:6px">
-                <button class="btn xs" data-study="${esc(u.id)}">📖 学考点</button>
-                ${u.questions.length ? `<button class="btn xs primary" data-do="${esc(u.id)}">🎯 开始做题(${u.questions.length})</button>` : ''}
-              </div>
-            </div>`;
+        let html = "";
+        /* 类比推理：收纳必会对应关系 + 各篇（用户点开这一个板块看全部） */
+        if (aUnits.length) {
+          html += `<details class="kg-det"><summary class="kg-det-s"><span class="kg-det-t">🧠 类比推理</span><span class="muted small" style="font-weight:400;color:var(--txt-dim)">${aUnits.length} 个专题 · ${aUnits.reduce((a, u) => a + u.questions.length, 0)} 道真题</span><span class="kg-det-arrow">▸</span></summary><div class="kg-det-b">`;
+          html += `<div class="muted small" style="margin-top:6px">先学「考点直击」，再点「开始做题」巩固。</div>`;
+          html += `<details class="kg-det" style="margin-top:8px"><summary class="kg-det-s"><span class="kg-det-t">📐 必会对应关系（类比推理·每日一题）</span><span class="kg-det-arrow">▸</span></summary><div class="kg-det-b" id="relSec"></div></details>`;
+          chapters.forEach(ch => {
+            html += `<div style="font-weight:700;margin:12px 0 6px">📘 ${esc(ch)}</div><div class="grid g2" style="margin-bottom:4px">`;
+            map[ch].forEach(u => { html += unitCard(u); });
+            html += `</div>`;
           });
+          html += `</div></details>`;
+        }
+        /* 翻译推理：与类比推理并列的独立板块 */
+        tChapters.forEach(ch => {
+          html += `<details class="kg-det"><summary class="kg-det-s"><span class="kg-det-t">📘 ${esc(ch)}</span><span class="muted small" style="font-weight:400;color:var(--txt-dim)">${tMap[ch].length} 个专题</span><span class="kg-det-arrow">▸</span></summary><div class="kg-det-b"><div class="grid g2" style="margin-top:4px">`;
+          tMap[ch].forEach(u => { html += unitCard(u); });
           html += `</div></div></details>`;
         });
         html += `<div class="card" style="margin-top:8px"><div class="muted small">💡 「学考点」按 PDF 原排版还原「考点直击」；「开始做题」走通用答题引擎，错题自动进入逻辑错题本。</div></div>`;
