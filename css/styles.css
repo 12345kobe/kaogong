@@ -502,6 +502,10 @@ body.light:not(.glass) .hw-palette{background:rgba(255,255,255,.98);border-color
 .aiq-main{flex:1;min-width:0}
 .aiq-title{font-weight:600;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .aiq-date{color:var(--txt-dim);font-size:12px;white-space:nowrap;flex:0 0 auto}
+.aiq-subject-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:4px 0 10px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--panel2)}
+.aiq-modtag{font-size:13px;color:var(--txt)}
+.q-bg{margin:10px 0;padding:10px 12px;border-left:4px solid var(--accent,#9b6cff);background:rgba(155,108,255,.08);border-radius:8px;font-size:.95em;line-height:1.7;color:var(--txt)}
+.q-bg-t{font-weight:700;margin-bottom:4px;color:var(--accent,#9b6cff);font-size:.9em}
 
 /* ===== 闪卡连答提示 ===== */
 .fc-streak{font-size:12px;color:var(--txt-dim);margin:2px 0}

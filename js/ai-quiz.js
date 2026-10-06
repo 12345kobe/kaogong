@@ -45,7 +45,7 @@
         a = letters.length > 1 ? letters : (letters.charCodeAt(0) - 65);
       }
       if (typeof a !== "number" || a < 0 || a >= options.length) return;
-      out.push({ q: String(q.q).trim(), options: options, a: a, e: String(q.e || "").trim(), img: (q.img || null) });
+      out.push({ q: String(q.q).trim(), options: options, a: a, e: String(q.e || "").trim(), img: (q.img || null), bg: String(q.bg || "").trim() });
     });
     return out;
   }
@@ -68,6 +68,97 @@
     st.total += qs.length;
     try { DB.save(); } catch (e) {}
     return set;
+  }
+
+  /* ===== 科目纠正（v20261006e）：AI 把知识点判错科目时，用户可手动改到正确模块 ===== */
+  const MODULES_LIST = [
+    { key: "verbal", label: "言语理解" },
+    { key: "common", label: "常识" },
+    { key: "politics", label: "政治理论" },
+    { key: "logic", label: "逻辑判断" },
+    { key: "data", label: "资料分析" },
+    { key: "quantity", label: "数量关系" },
+    { key: "essay", label: "申论" }
+  ];
+  function findSetAll(setId) {
+    const DB = window.DB;
+    const ai = DB.state.aiQuiz || {};
+    for (const k in ai) {
+      const st = ai[k];
+      if (st && st.sets) {
+        const idx = st.sets.findIndex(s => s.id === setId);
+        if (idx >= 0) return { mod: k, st: st, idx: idx, set: st.sets[idx] };
+      }
+    }
+    return null;
+  }
+  function currentModOf(setId) { const f = findSetAll(setId); return f ? f.mod : null; }
+  function moveSet(setId, newMod) {
+    const DB = window.DB;
+    const found = findSetAll(setId);
+    if (!found) return false;
+    if (found.mod === newMod) return true;
+    const set = found.set;
+    found.st.sets.splice(found.idx, 1);
+    const nst = store(newMod);
+    nst.sets.unshift(set);
+    const recompute = (m) => { const s = (DB.state.aiQuiz || {})[m]; if (s) s.total = s.sets.reduce((n, x) => n + (x.questions || []).length, 0); };
+    recompute(found.mod); recompute(newMod);
+    try { DB.save(); } catch (e) {}
+    return true;
+  }
+  function reassign(set, newMod) {
+    const label = (MODULES_LIST.find(m => m.key === newMod) || {}).label || newMod;
+    set.subject = label;       // 修正科目标签（与路由模块一致）
+    moveSet(set.id, newMod);
+  }
+  function bindLongPress(el, cb) {
+    if (!el) return;
+    let t = 0;
+    const cancel = () => { if (t) { clearTimeout(t); t = 0; } };
+    el.addEventListener("pointerdown", () => { t = setTimeout(() => { t = 0; cb(); }, 500); }, { passive: true });
+    el.addEventListener("pointerup", cancel);
+    el.addEventListener("pointerleave", cancel);
+    el.addEventListener("pointercancel", cancel);
+    el.addEventListener("contextmenu", e => { e.preventDefault(); cancel(); cb(); });
+  }
+  function openSubjectPicker(set, onPicked) {
+    const UI = window.UI;
+    const cur = currentModOf(set.id) || "";
+    const btns = MODULES_LIST.map(m =>
+      `<button class="btn sm ${m.key === cur ? "primary" : "ghost"}" data-mod="${m.key}">${m.label}</button>`
+    ).join("");
+    const box = UI.el(`<div>
+      <div style="font-weight:700;margin-bottom:8px">✎ 纠正科目</div>
+      <div class="muted small" style="margin-bottom:10px">AI 可能把「${UI.esc((set.point && set.point.title) || set.subject || "该知识点")}」判错了科目。请选择它真正所属的模块，提交后会移动到对应模块并修正科目标签。</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">${btns}</div>
+    </div>`);
+    const mask = UI.el(`<div class="modal-mask"><div class="modal" style="max-width:460px"></div></div>`);
+    mask.querySelector(".modal").appendChild(box);
+    document.body.appendChild(mask);
+    mask.addEventListener("click", e => { if (e.target === mask) mask.remove(); });
+    box.querySelectorAll("[data-mod]").forEach(b => {
+      b.onclick = () => { const mod = b.dataset.mod; mask.remove(); if (onPicked) onPicked(mod); };
+    });
+  }
+  /* 在学习页顶部插入「当前科目 + 纠正」一行，并支持长按知识点标题纠正 */
+  function injectSubjectControl(host, set) {
+    if (!host) return;
+    const UI = window.UI;
+    const cur = currentModOf(set.id) || "";
+    const lab = (MODULES_LIST.find(m => m.key === cur) || {}).label || (set.subject || "未分类");
+    const row = UI.el(`<div class="aiq-subject-row">
+      <span class="aiq-modtag">📂 当前科目：<b>${UI.esc(lab)}</b></span>
+      <button class="btn sm ghost aiq-fix">✎ 科目不对？纠正</button>
+    </div>`);
+    host.insertBefore(row, host.firstChild);
+    row.querySelector(".aiq-fix").onclick = () => openSubjectPicker(set, (newMod) => {
+      reassign(set, newMod);
+      const nl = (MODULES_LIST.find(m => m.key === newMod) || {}).label || newMod;
+      row.querySelector(".aiq-modtag").innerHTML = "📂 当前科目：<b>" + UI.esc(nl) + "</b>";
+      UI.toast("已移动到【" + nl + "】模块，下次在该模块可见");
+    });
+    bindLongPress(host.querySelector("h3"), () => row.querySelector(".aiq-fix").click());
   }
 
   /* 考点卡（v20261006a）：把 AI 拆解的知识点渲染成「先看考点」的学习区 */
@@ -172,6 +263,7 @@
           <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn ghost aiq-close">收起</button></div>
         </div></div>`);
         document.body.appendChild(mask);
+        injectSubjectControl(mask.querySelector(".modal"), set);
         mask.querySelector(".aiq-close").onclick = () => mask.remove();
         try {
           window.Quiz.start(mask.querySelector(".aiq-modal-quiz"), set.questions.map(q => Object.assign({}, q)), set.subject || "综合AI出题",
@@ -185,6 +277,7 @@
         const ph = document.createElement("div");
         ph.innerHTML = pointHtml(set.point);
         quizHost.appendChild(ph);
+        injectSubjectControl(quizHost, set);
         const go = UI.el(`<div class="center" style="margin:12px 0">
           <button class="btn primary" style="min-width:200px">✍ 看完考点，开始练题（${set.n} 题 · 可切背题）</button>
           <div class="muted small" style="margin-top:4px">练题/背题可切换，支持收藏、勾画与每题用时统计</div>
@@ -217,6 +310,7 @@
         <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn ghost aiq-close">收起</button></div>
       </div></div>`);
       document.body.appendChild(mask);
+      injectSubjectControl(mask.querySelector(".modal"), set);
       mask.querySelector(".aiq-close").onclick = () => mask.remove();
       const qh = mask.querySelector(".aiq-modal-quiz");
       const launch = () => {
