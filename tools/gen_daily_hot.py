@@ -114,7 +114,7 @@ def call_ai(prompt):
     req.add_header("Content-Type", "application/json")
     req.add_header("Authorization", "Bearer " + key)
     last = None
-    for attempt in range(3):   # 生成 30 题耗时较长：超时 300 秒 + 最多 3 次
+    for attempt in range(5):   # 生成 30 题耗时较长：超时 300 秒 + 最多 5 次（服务端 500 常见）
         try:
             req2 = urllib.request.Request(base, data=data, method="POST")
             req2.add_header("Content-Type", "application/json")
@@ -125,8 +125,8 @@ def call_ai(prompt):
         except Exception as e:
             last = e
             print("AI 调用第 %d 次失败：%s，重试…" % (attempt + 1, e), file=sys.stderr)
-            time.sleep(5)
-    raise SystemExit("AI 调用失败（已重试 3 次）：%s" % last)
+            time.sleep(10 * (attempt + 1))   # 服务端 500 多为过载，指数退避
+    raise SystemExit("AI 调用失败（已重试 5 次）：%s" % last)
 
 
 def parse_json(txt):
@@ -176,7 +176,10 @@ def main():
             day = None
             continue
         nv, nq = len(day.get("verbal") or []), len(day.get("quiz") or [])
-        if nv == 10 and nq == 20:
+        # 数量宽容：模型偶发多出/少出一两题，答题引擎本身不限题数；太离谱才重试（减少服务端压力）
+        if nv >= 8 and nq >= 15:
+            if nv != 10 or nq != 20:
+                print("警告：数量为 言语 %d / 时政 %d（非标准 10/20，按原样写入）" % (nv, nq), file=sys.stderr)
             break
         print("第 %d 次生成数量不符（言语 %d / 时政 %d），重试…" % (attempt + 1, nv, nq), file=sys.stderr)
     if day is None or not all(k in day for k in ("news", "essay", "verbal", "quiz")):
