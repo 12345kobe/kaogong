@@ -652,6 +652,153 @@
       }
 
       let kpBusy = false;
+
+      /* ============ 知识点落库到「题册文件夹」（不再写 AI 出题） ============ */
+      /* 科目归一：无论 AI 返回「常识 / 常识（经济）/ 常识判断」都并入同一学科文件夹树 */
+      function kpNormSubject(full) {
+        const s = String(full || "").trim();
+        const FULL = ["言语理解", "资料分析", "数量关系", "判断推理", "常识判断", "政治理论", "申论"];
+        if (FULL.indexOf(s) >= 0) return s;
+        const SH = window.KG_SUBJECT_SHORT || {};
+        for (const k in SH) if (SH[k] === s) return k;        // 短名 → 全名
+        if (/常识/.test(s)) return "常识判断";
+        if (/政治/.test(s)) return "政治理论";
+        if (/言语/.test(s)) return "言语理解";
+        if (/逻辑|判断/.test(s)) return "判断推理";
+        if (/资料|数据/.test(s)) return "资料分析";
+        if (/数量|数学/.test(s)) return "数量关系";
+        if (/申论/.test(s)) return "申论";
+        return "常识判断";
+      }
+      /* 题归一化（与 ai-quiz.normalize 一致，但本地实现，彻底解耦 AI 出题存储） */
+      function kpNorm(qs) {
+        const out = [];
+        (qs || []).forEach(q => {
+          if (!q || !q.q || !Array.isArray(q.options) || q.options.length < 2) return;
+          const options = q.options.slice(0, 4).map(o => String(o == null ? "" : o).trim().replace(/^\s*[A-Ja-j]\s*[\.、．:：]\s*/, ""));
+          while (options.length && !options[options.length - 1]) options.pop();
+          if (options.length < 2) return;
+          let a = q.a;
+          if (typeof a === "string") {
+            const letters = a.toUpperCase().replace(/[^A-E]/g, "");
+            if (!letters) return;
+            a = letters.length > 1 ? letters : (letters.charCodeAt(0) - 65);
+          } else if (typeof a === "number") {
+            if (a < 0 || a >= options.length) return;
+          } else return;
+          out.push({ q: String(q.q).trim(), options: options, a: a, e: String(q.e || "").trim(), img: (q.img || null) });
+        });
+        return out;
+      }
+      /* 把考点对象渲染成 theory 文本（复用题册 theoryToHtml 的【】小标题 + **加粗** 语法） */
+      function kpPointToTheory(point, name) {
+        const L = [];
+        L.push("【知识点】" + (name || (point && point.title) || ""));
+        const brief = point && point.brief;
+        if (brief) { L.push("【一句话定义】"); L.push(brief); }
+        const correct = (point && point.correct) || [];
+        if (correct.length) { L.push("【正确表述】"); correct.forEach(c => L.push("• " + c)); }
+        const keywords = (point && point.keywords) || [];
+        if (keywords.length) { L.push("【核心关键词】"); L.push(keywords.join("、")); }
+        const examples = (point && point.examples) || [];
+        if (examples.length) { L.push("【经典例子】"); examples.forEach(e => L.push((e.name ? "**" + e.name + "**：" : "") + (e.text || ""))); }
+        const compare = (point && point.compare) || [];
+        if (compare.length) { L.push("【易混对比】"); compare.forEach(c => L.push((c.a || "") + " ≠ " + (c.b || "") + "：" + (c.diff || ""))); }
+        const words = (point && point.words) || [];
+        if (words.length) { L.push("【词语辨析】"); words.forEach(w => { L.push("**" + (w.term || "") + "**：" + (w.def || "")); (w.similar || []).forEach(s => L.push("　↔ " + (s.w || "") + "：" + (s.diff || ""))); }); }
+        const traps = (point && point.traps) || [];
+        if (traps.length) { L.push("【命题陷阱】"); traps.forEach(t => L.push("✓ " + (t.right || "") + "　✗ " + (t.wrong || ""))); }
+        const essay = (point && point.essay) || [];
+        if (essay.length) { L.push("【申论搭配】"); essay.forEach(e => L.push("• " + e)); }
+        return L.join("\n");
+      }
+      /* 录入弹窗：科目只读显示（已自动判定）+ 文件夹下拉（默认文件夹 / 自建，可新建） */
+      function kpSaveAndStudy(name, fullSubject, point, qs) {
+        const UI = window.UI;
+        try {
+          const sh = fullSubject;
+          const folders = (window.KGFolders && window.KGFolders.list(sh)) || [];
+          const optsHtml = folders.map(f => `<option value="${esc(f.id)}">${esc((f.parentId ? "　" : "") + f.name)}</option>`).join("");
+          const box = UI.el(`<div>
+            <div class="muted small" style="margin-bottom:8px">「<b>${esc(name)}</b>」已生成 ${qs.length} 题 + 考点讲解，将录入到<b>${esc(sh)}</b>模块的文件夹里（与 AI录入题 / PDF录入题 同源，统一管理）。</div>
+            <label class="fld">科目（模块）</label>
+            <div style="padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg2);font-weight:700">${esc(sh)}</div>
+            <label class="fld" style="margin-top:10px">录入到文件夹</label>
+            <select id="kpFolder" class="full">${optsHtml}<option value="__new__">➕ 新建文件夹…</option></select>
+          </div>`);
+          UI.modal({
+            title: "📥 录入知识点到文件夹", body: box, width: "520px",
+            actions: [
+              { label: "取消", cls: "ghost", onClick: (m, c) => c() },
+              {
+                label: "录入并学习", cls: "primary", onClick: (m, c) => {
+                  let folderId;
+                  const sel = box.querySelector("#kpFolder");
+                  if (sel.value === "__new__") {
+                    const nm = window.prompt ? prompt("新建文件夹名称：", "新建文件夹") : "";
+                    if (nm) { const f = window.KGFolders.add({ subject: sh, name: nm }); folderId = f.id; }
+                    else folderId = window.KGFolders.rootId(sh);
+                  } else {
+                    folderId = sel.value || window.KGFolders.rootId(sh);
+                  }
+                  c();
+                  try {
+                    const book = {
+                      subject: sh, name: name + " · 考点", folderId: folderId,
+                      sections: [
+                        { name: "📖 考点讲解", theory: kpPointToTheory(point, name), questions: [] },
+                        { name: "🎯 题目", theory: "", questions: qs }
+                      ]
+                    };
+                    const added = window.KGPdfBooks.add(book);
+                    UI.toast("已录入「" + name + "」到「" + sh + "」模块，正在打开学习页…");
+                    openKpStudyModal(added);
+                  } catch (e) { UI.toast("录入失败：" + ((e && e.message) || e)); }
+                }
+              }
+            ]
+          });
+        } catch (e) { UI.toast("打开录入框失败：" + ((e && e.message) || e)); }
+      }
+      /* 考点学习弹窗：先看考点讲解，点「开始练题」进入答题（与 AI 出题学习页同款体验） */
+      function openKpStudyModal(book) {
+        const UI = window.UI;
+        try {
+          const sec0 = (book.sections && book.sections[0]) || {};
+          const sec1 = (book.sections && book.sections[1]) || {};
+          const qs = (sec1.questions || []).filter(q => q && q.q && q.options && q.options.length >= 2);
+          const theoryHtml = (window.__pdfTheoryToHtml ? window.__pdfTheoryToHtml(sec0.theory || "") : "");
+          const mask = UI.el(`<div class="modal-mask"><div class="modal" style="max-width:880px;max-height:92vh;overflow:auto">
+            <h3>📚 考点学习 · ${UI.esc(book.name || "")}（${qs.length} 题）</h3>
+            <div class="allu-sec" style="max-height:46vh;overflow:auto">${theoryHtml}</div>
+            <div class="row" style="justify-content:center;margin:14px 0">
+              <button class="btn primary kp-go" style="min-width:220px">✍ 开始练题（${qs.length} 题 · 可切背题）</button>
+            </div>
+            <div class="kp-quiz"></div>
+            <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn ghost kp-close">收起</button></div>
+          </div></div>`);
+          document.body.appendChild(mask);
+          mask.querySelector(".kp-close").onclick = () => mask.remove();
+          const qh = mask.querySelector(".kp-quiz");
+          const launch = () => {
+            if (!qs.length) { UI.toast("没有可练习的题目"); return; }
+            try {
+              window.Quiz.start(qh, qs.map(q => {
+                const m = { q: q.q, options: q.options.slice(), a: (q.a >= 0 && q.a < q.options.length) ? q.a : -1, e: q.e || "", tag: book.name || "知识点" };
+                if (typeof q.a === "string" && /^[A-Ea-e]{1,6}$/.test(q.a)) { m.a = q.a.toUpperCase(); if (q.multi) m.multi = q.multi; if (q.type) m.type = q.type; }
+                if (q.img) m.img = q.img;
+                return m;
+              }), book.subject || "常识", {
+                onDone(r) { try { UI.toast(`完成：${r.correct}/${r.total} · 正确率 ${r.pct}%`); } catch (e) {} }
+              });
+            } catch (e) { console.error(e); mask.remove(); UI.toast("训练启动失败：" + e.message); }
+          };
+          const go = mask.querySelector(".kp-go");
+          if (go) go.onclick = () => { go.parentNode.removeChild(go); launch(); };
+          else launch();
+        } catch (e) { UI.toast("打开学习页失败：" + ((e && e.message) || e)); }
+      }
+
       async function runKpLookup(name, n) {
         const UI = window.UI;
         if (kpBusy) { UI.toast("正在生成中，请稍候…"); return; }
@@ -668,35 +815,26 @@
             point = { subject: guess.label || "", title: name, brief: "", correct: [], keywords: [], compare: [], words: [] };
           }
           const subject = String(point.subject || "").trim() || guess.label || "综合";
-          const K = window.KGAIQuiz;
-          if (!K || !K.addSet) throw new Error("出题组件未就绪");
-          // 关键词规则判定优先：AI 把「供给侧改革」判成言语这类错误直接纠正
-          const modKey = guess.key
-            || (K.moduleForSubject ? (K.moduleForSubject(subject) || (subject.indexOf("政治") >= 0 ? "politics" : null)) : null)
-            || "common";
+          // 关键词规则判定优先：AI 把「供给侧改革」判成言语这类错误直接纠正（仅用于落库模块，不再写 AI 出题）
+          const fullSubject = kpNormSubject(subject);
 
           const batch1 = Math.ceil(n / 2);
-          kpShowProgress("科目判定：" + subject + "，正在出题 1/" + n + "…", 35);
-          const qs1 = K.normalize((await kpChatJSON([{ role: "user", content: kpQuestionsPrompt(name, subject, batch1, point) }])).questions || []);
+          kpShowProgress("科目判定：" + fullSubject + "，正在出题 1/" + n + "…", 35);
+          const qs1 = kpNorm((await kpChatJSON([{ role: "user", content: kpQuestionsPrompt(name, subject, batch1, point) }])).questions || []);
           kpShowProgress("正在出题 " + Math.min(qs1.length + 1, n) + "/" + n + "…", 68);
           const rest = n - qs1.length;
           let qs2 = [];
           if (rest > 0) {
             const avoid = qs1.map(q => String(q.q || "").slice(0, 30));
-            qs2 = K.normalize((await kpChatJSON([{ role: "user", content: kpQuestionsPrompt(name, subject, rest, point, avoid) }])).questions || []);
+            qs2 = kpNorm((await kpChatJSON([{ role: "user", content: kpQuestionsPrompt(name, subject, rest, point, avoid) }])).questions || []);
           }
           const qs = qs1.concat(qs2);
           if (!qs.length) throw new Error("没有生成可用题目，请重试");
-          const set = K.addSet(modKey, subject, qs, { point: Object.assign({ title: name, subject: subject }, point) });
-          if (!set) throw new Error("保存到模块失败");
-          kpShowProgress("生成完成，正在打开学习页…", 100);
-          window.__aiQuizAuto = { mod: modKey, setId: set.id };
-          UI.toast("已生成「" + name + "」" + qs.length + " 题，正在打开学习页…");
-          setTimeout(() => {
-            kpBusy = false;
-            kpHideProgress();
-            location.hash = "#/" + modKey;   // 强制跳转（无论用户此刻在哪个模块）
-          }, 600);
+          kpShowProgress("生成完成，正在整理知识点…", 100);
+          kpBusy = false;
+          kpHideProgress();
+          // 不再写入 AI 出题：改为录入到对应模块的题册文件夹（与 AI录入题 / PDF录入题 同源）
+          kpSaveAndStudy(name, fullSubject, point, qs);
         } catch (e) {
           kpBusy = false;
           kpHideProgress();
@@ -709,7 +847,7 @@
         const box = UI.el(`<div>
           <label class="fld">想查询的知识点</label>
           <input id="kpName" class="full" placeholder="例如：逆向选择 / 供给侧结构性改革 / 不以为然 与 不以为意"/>
-          <div class="muted small" style="margin-top:6px">AI 会自动判断科目（常识 / 言语理解 / 政治理论…），按「正确表述 → 经典例子 → 易混对比 → 命题陷阱 → 申论搭配」拆解并出题，然后自动跳到对应模块的 AI 出题页（考点在上、刷题在下）。</div>
+          <div class="muted small" style="margin-top:6px">AI 会自动判断科目（常识 / 言语理解 / 政治理论…），按「正确表述 → 经典例子 → 易混对比 → 命题陷阱 → 申论搭配」拆解并出题，生成后让你选择录入到对应模块的文件夹（与 AI录入题 / PDF录入题 同源，统一管理），并直接打开学习页（先看考点、再刷题）。</div>
           <div class="row" style="margin-top:10px;gap:8px;align-items:center">
             <label class="fld" style="margin:0">出题数量</label>
             <select id="kpN">

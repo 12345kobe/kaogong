@@ -2878,6 +2878,135 @@ h1{font-size:22px;text-align:center;border-bottom:2px solid #333;padding-bottom:
       /* 供各模块的「我导入的题册」页复用（多选导出） */
       window.KGPdfExportItems = exportItemsPdf;
 
+      /* ================= 多选导出 ZIP（纯前端 store 打包，离线 / iOS 友好） ================= */
+      function zipSafeName(s) {
+        return String(s || "").replace(/[\/\\:*\?"<>|]/g, "_").replace(/\s+/g, " ").replace(/^\.+/, "").slice(0, 50) || "项";
+      }
+      /* CRC32（标准多项式 0xEDB88320） */
+      function zipCrc32(buf) {
+        let table = zipCrc32._t;
+        if (!table) {
+          table = [];
+          for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); table[n] = c >>> 0; }
+          zipCrc32._t = table;
+        }
+        let crc = 0xFFFFFFFF;
+        for (let i = 0; i < buf.length; i++) crc = (crc >>> 8) ^ table[(crc ^ buf[i]) & 0xFF];
+        return (crc ^ 0xFFFFFFFF) >>> 0;
+      }
+      /* 纯前端构造 ZIP（method=store，无压缩）：files = [{name, data:Uint8Array}] → Blob */
+      function buildZip(files) {
+        const enc = new TextEncoder();
+        const chunks = [], central = [];
+        let offset = 0; const UTF8 = 0x0800;
+        files.forEach(f => {
+          const nameBytes = enc.encode(f.name);
+          const data = f.data;
+          const crc = zipCrc32(data);
+          const lh = new DataView(new ArrayBuffer(30));
+          lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, UTF8, true);
+          lh.setUint16(8, 0, true); lh.setUint16(10, 0, true); lh.setUint16(12, 0, true);
+          lh.setUint32(14, crc, true); lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true);
+          lh.setUint16(26, nameBytes.length, true); lh.setUint16(28, 0, true);
+          chunks.push(new Uint8Array(lh.buffer), nameBytes, data);
+          const ch = new DataView(new ArrayBuffer(46));
+          ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, UTF8, true);
+          ch.setUint16(10, 0, true); ch.setUint16(12, 0, true); ch.setUint16(14, 0, true);
+          ch.setUint32(16, crc, true); ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true);
+          ch.setUint16(28, nameBytes.length, true); ch.setUint16(30, 0, true); ch.setUint16(32, 0, true);
+          ch.setUint16(34, 0, true); ch.setUint16(36, 0, true); ch.setUint32(38, 0, true); ch.setUint32(42, offset, true);
+          central.push({ header: new Uint8Array(ch.buffer), name: nameBytes });
+          offset += 30 + nameBytes.length + data.length;
+        });
+        const centralSize = central.reduce((n, c) => n + c.header.length + c.name.length, 0);
+        const out = chunks.slice();
+        central.forEach(c => { out.push(c.header); out.push(c.name); });
+        const eo = new DataView(new ArrayBuffer(22));
+        eo.setUint32(0, 0x06054b50, true); eo.setUint16(4, 0, true); eo.setUint16(6, 0, true);
+        eo.setUint16(8, files.length, true); eo.setUint16(10, files.length, true);
+        eo.setUint32(12, centralSize, true); eo.setUint32(16, offset, true); eo.setUint16(20, 0, true);
+        out.push(new Uint8Array(eo.buffer));
+        return new Blob(out, { type: "application/zip" });
+      }
+      /* 把选中项渲染成 Markdown（考点 + 题目 + 答案 + 解析），供 ZIP 内每个文件一份 */
+      function itemsToMarkdown(items) {
+        let md = "";
+        items.forEach(it => {
+          if (it.type === "book") {
+            const b = it.ref;
+            md += "# 📚 " + (b.name || "题册") + "（" + (subjectLabel(b.subject) || b.subject) + "）\n\n";
+            (b.sections || []).forEach(s => {
+              if (s.name) md += "## " + s.name + "\n\n";
+              if (s.theory && String(s.theory).trim()) md += String(s.theory).trim() + "\n\n";
+              (s.questions || []).forEach((q, i) => {
+                md += "**" + (i + 1) + ". " + (q.q || "") + "**\n\n";
+                (q.options || []).forEach((o, oi) => { md += String.fromCharCode(65 + oi) + ". " + o + "\n"; });
+                md += "\n";
+                const aLet = (typeof q.a === "string" && /^[A-Ea-e]{1,6}$/.test(q.a)) ? q.a.toUpperCase()
+                  : ((typeof q.a === "number" && q.a >= 0 && q.a < (q.options || []).length) ? String.fromCharCode(65 + q.a) : "");
+                md += "答案：" + (aLet || "（待校对）") + "\n";
+                if (q.e) md += "解析：" + q.e + "\n";
+                md += "\n---\n\n";
+              });
+            });
+          } else {
+            const a = it.ref; const d = a.data || {};
+            md += "# 📰 " + (a.title || a.date || "时政材料") + "\n\n";
+            if (d.news) md += "## 时政新闻\n\n" + d.news + "\n\n";
+            if (d.essay) md += "## 申论时评 / 金句\n\n" + d.essay + "\n\n";
+            if (d.words) md += "## 词语释义\n\n" + d.words + "\n\n";
+            if (d.verbal && d.verbal.length) {
+              md += "## 言语真题\n\n";
+              (d.verbal || []).forEach(v => { md += "**" + v.q + "**\n\n" + (v.options || []).map((o, oi) => String.fromCharCode(65 + oi) + ". " + o).join("\n") + "\n\n" + (v.a != null ? ("答案：" + String.fromCharCode(65 + v.a) + "\n\n") : ""); });
+            }
+            if (d.quiz && d.quiz.length) {
+              md += "## 时政单选\n\n";
+              (d.quiz || []).forEach(v => { md += "**" + v.q + "**\n\n" + (v.options || []).map((o, oi) => String.fromCharCode(65 + oi) + ". " + o).join("\n") + "\n\n" + (v.a != null ? ("答案：" + String.fromCharCode(65 + v.a) + "\n\n") : ""); });
+            }
+          }
+        });
+        return md;
+      }
+      /* 多选导出 ZIP：每项一个 .md（考点 + 题目 + 答案），整体打成压缩包下载；iOS 退化为新窗口展示 */
+      function exportItemsZip(items) {
+        if (!items.length) { UI.toast("请先勾选要导出的项"); return; }
+        const enc = new TextEncoder();
+        const used = {}; const files = [];
+        items.forEach((it, idx) => {
+          const base = zipSafeName((it.ref && (it.ref.name || it.ref.title || it.ref.date)) || ("项" + (idx + 1)));
+          let name = base + ".md"; let k = 1;
+          while (used[name]) name = base + "_" + (k++) + ".md";
+          used[name] = 1;
+          files.push({ name: name, data: enc.encode(itemsToMarkdown([it])) });
+        });
+        let blob;
+        try { blob = buildZip(files); } catch (e) { UI.toast("打包失败：" + e.message); return; }
+        const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+        if (isIOS) {
+          const w = window.open("", "_blank");
+          if (w) { w.document.open(); w.document.write("<!doctype html><meta charset=utf-8><title>考公知识点导出</title><pre style='white-space:pre-wrap;word-break:break-word;font-size:14px;padding:12px;line-height:1.7'>" + esc(itemsToMarkdown(items)) + "</pre>"); w.document.close(); }
+          else UI.toast("导出失败：请允许弹窗后重试");
+          try { multiSel.clear(); multiOn = false; renderBooks(); } catch (e) {}
+          UI.toast("iOS 暂不支持直接下载 ZIP，已在新窗口展示合并文本（可复制）");
+          return;
+        }
+        try {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url; a.download = "考公知识点_" + (db().today() || "") + ".zip";
+          document.body.appendChild(a); a.click();
+          setTimeout(() => { try { a.remove(); URL.revokeObjectURL(url); } catch (e) {} }, 2000);
+          try { multiSel.clear(); multiOn = false; renderBooks(); } catch (e) {}
+          UI.toast("已导出 " + files.length + " 项为 ZIP，本次勾选已清空");
+        } catch (e) {
+          const w = window.open("", "_blank");
+          if (w) { w.document.open(); w.document.write("<!doctype html><meta charset=utf-8><title>考公知识点导出</title><pre style='white-space:pre-wrap;word-break:break-word;font-size:14px;padding:12px'>" + esc(itemsToMarkdown(items)) + "</pre>"); w.document.close(); }
+          else UI.toast("导出失败：" + e.message);
+          try { multiSel.clear(); multiOn = false; renderBooks(); } catch (e2) {}
+        }
+      }
+      window.KGPdfExportItemsZip = exportItemsZip;
+
       // 多选工具条：切换 / 批量移动 / 批量删除 / 导出 PDF
       let multiBar = null;
       function syncMultiBar() {
@@ -2911,6 +3040,7 @@ h1{font-size:22px;text-align:center;border-bottom:2px solid #333;padding-bottom:
               <select id="multiMove"><option value="">移动到文件夹…</option>${window.KGFolders.list(subjShortName(ftsSubject)).map(f => `<option value="${esc(f.id)}">${esc((f.parentId ? "　" : "") + f.name)}</option>`).join("")}</select>
               <button class="btn sm" id="multiDel">批量删除</button>
               <button class="btn sm primary" id="multiExp">导出PDF</button>
+              <button class="btn sm primary" id="multiZip">📦 导出ZIP</button>
               <button class="btn sm ghost" id="multiClear">取消选择</button>
             </span>` : ""}
           </div>`);
@@ -2936,6 +3066,7 @@ h1{font-size:22px;text-align:center;border-bottom:2px solid #333;padding-bottom:
             };
             bar.querySelector("#multiQuiz").onclick = () => startMultiQuiz();
             bar.querySelector("#multiExp").onclick = () => { exportItemsPdf(gatherSelected()); };
+            bar.querySelector("#multiZip").onclick = () => { exportItemsZip(gatherSelected()); };
             bar.querySelector("#multiClear").onclick = () => { multiSel.clear(); renderBooks(); };
           }
           const FT_SUBJECTS = (window.KG_SUBJECTS || []).concat(["时政"]);
