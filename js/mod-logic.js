@@ -13,7 +13,13 @@
     title: "判断推理", icon: "logic",
     render(body) {
       const DB = window.DB, UI = window.UI, LH = window.LearnedHistory;
-      const DATA = window.ANALOGY || { units: [] };
+      /* 合并「翻译推理核心知识精讲」（window.KG_TRANSLATION）与类比推理数据 */
+      const DATA = {
+        units: [].concat(
+          (window.ANALOGY && window.ANALOGY.units) || [],
+          (window.KG_TRANSLATION && window.KG_TRANSLATION.units) || []
+        )
+      };
       const units = DATA.units || [];
 
       // 按 篇(chapter) 分组
