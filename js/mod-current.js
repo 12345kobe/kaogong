@@ -601,10 +601,20 @@
     box.appendChild(g);
   }
 
-  /* 合并每日热点：只补本地没有的日期（云端 / 静态源都不会覆盖本机已有的更全数据） */
+  /* 合并每日热点：只补本地没有的日期；「今天」按 pickDailyHot 取舍
+     （晚8点自动版会覆盖白天手动版；20点后用户手动重生成版则保留本人版本） */
   function mergeDailyHot(target, src) {
     let changed = false;
-    Object.keys(src || {}).forEach(d => { if (!target[d] && src[d]) { target[d] = src[d]; changed = true; } });
+    const pick = (window.DB && DB.pickDailyHot) || null;
+    Object.keys(src || {}).forEach(d => {
+      const inc = src[d];
+      if (!inc) return;
+      if (!target[d]) { target[d] = inc; changed = true; return; }
+      if (pick) {
+        const win = pick(target[d], inc);
+        if (win && win !== target[d]) { target[d] = win; changed = true; }
+      }
+    });
     if (changed) { try { window.DB && DB.save && DB.save(); } catch (e) {} }
     return changed;
   }
@@ -639,7 +649,10 @@
   function renderDailyHot(host) {
     const UI = window.UI, P = window.Pager;
     const map = (window.DB && DB.state && DB.state.dailyHot) || {};
+    const today = (window.DB && DB.today && DB.today()) || "";
     const days = Object.keys(map).sort().reverse();
+    /* 今天还没生成 → 也要占一位，显示灰色按钮（点击可立即生成） */
+    if (today && !map[today]) days.unshift(today);
     host.innerHTML = "";
     if (!days.length) {
       host.appendChild(UI.el(`<div class="muted small">每晚 20:00 后自动生成当天内容：时政考点（星级分级）+ 申论时评与金句 + 言语理解 10 题 + 时政 20 题（15 单选 + 5 多选）。生成后这里会按日期列出，点日期即可查看与练题。</div>`));
@@ -648,6 +661,23 @@
     if (!P) { host.appendChild(UI.el(`<div class="muted small">已生成 ${days.length} 天，请刷新页面后查看。</div>`)); return; }
     const grid = P.grid();
     days.forEach((d, i) => {
+      if (!map[d]) {
+        /* 灰色占位按钮：今天的内容还没生成 */
+        const g = document.createElement("div");
+        g.className = "kg-tile";
+        g.style.opacity = ".55";
+        g.style.filter = "grayscale(.92)";
+        g.innerHTML = '<span class="kg-tile-ico">⏳</span>' +
+          '<span class="kg-tile-t">' + esc(d + " 时政") + '</span>' +
+          '<span class="kg-tile-arrow">…</span>';
+        g.title = "今天的内容还没生成，点一下立即生成";
+        g.onclick = () => {
+          try { UI.toast("正在生成今天（" + d + "）的时政…"); } catch (e) {}
+          refreshToday(host, null);
+        };
+        grid.appendChild(g);
+        return;
+      }
       const route = "current/hot/" + i;
       P.define(route, { parent: "current", title: d + " 时政", build: (box) => buildHotDay(box, d, route) });
       grid.appendChild(P.tile("📅", d + " 时政", "#/" + route));
@@ -663,7 +693,7 @@
     const UI = window.UI;
     const bar = UI.el(`<div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap;align-items:center">
       <button class="btn sm primary" id="hotRefresh">🔄 刷新今日时政</button>
-      <span class="muted small" id="hotRefreshTip">只覆盖「今天」的内容，历史日期不会被改动</span>
+      <span class="muted small" id="hotRefreshTip">任意时间点击都会现场生成今天的内容（重生成只覆盖你自己的账号）；每晚 20:00 自动版会覆盖白天版本，历史日期不会被改动</span>
     </div>`);
     setTimeout(() => {
       const b = bar.querySelector("#hotRefresh");
@@ -678,26 +708,30 @@
       (arr || []).forEach(x => {
         if (!x) return;
         const d = String(x.date || x.pubDate || x.day || "").slice(0, 10);
-        if (!d || d === date) {
-          const t = String(x.title || x.t || "").trim();
-          const bd = String(x.body || x.summary || x.desc || "").trim().slice(0, 140);
-          if (t) out.push(t + (bd ? "：" + bd : ""));
-        }
+        const t = String(x.title || x.t || "").trim();
+        const bd = String(x.body || x.summary || x.desc || "").trim().slice(0, 140);
+        if (t) out.push({ d: d, s: t + (bd ? "：" + bd : "") });
       });
     };
     try { grab((window.DB && DB.state && DB.state.hotspotsImports) || []); } catch (e) {}
     try { grab(window.KG_HOTSPOTS || []); } catch (e) {}
-    try { grab(((window.DB && DB.state && DB.state.dailyHot) || {})[date] && ((window.DB.state.dailyHot[date].news) || [])); } catch (e) {}
-    return out.slice(0, 16);
+    try { grab(((window.DB && DB.state && DB.state.dailyHot) || {})[date] && ((DB.state.dailyHot[date].news) || [])); } catch (e) {}
+    /* 优先取今天及最近的素材（≤ 今天、按日期新→旧）；没有带日期的就用全部 */
+    const recent = out.filter(x => x.d && x.d <= date).sort((a, b) => (a.d < b.d ? 1 : -1));
+    const pool = recent.length ? recent : out.filter(x => !x.d);
+    return {
+      list: pool.slice(0, 16).map(x => x.s),
+      latest: pool.length ? (pool[0].d || "") : ""
+    };
   }
 
   async function genTodayByAI(date) {
     const mat = todayHotMaterial(date);
-    if (!mat.length) throw new Error("本机没有今日热点素材，请先到「时事热点」刷新一次");
+    if (!mat.list.length) throw new Error("本机没有热点素材，请先到「时事热点」刷新一次");
     if (!window.KGAI || !KGAI.chat) throw new Error("未配置 AI，请到「设置 → AI」填写密钥");
     const spec = [
-      "你是公务员考试时政命题专家。下面是今天（" + date + "）的真实热点素材，请严格据此生成内容，禁止编造素材之外的事实。",
-      "【今日素材】\n" + mat.map((m, i) => (i + 1) + ". " + m).join("\n"),
+      "你是公务员考试时政命题专家。下面是最近的真实热点素材（最新日期 " + (mat.latest || date) + "，目标日期 " + date + "），请严格据此生成 " + date + " 的每日时政内容，禁止编造素材之外的事实。",
+      "【今日素材】\n" + mat.list.map((m, i) => (i + 1) + ". " + m).join("\n"),
       "【输出要求】只输出一个 JSON 对象，不要任何说明文字、不要 markdown 代码块。结构如下：",
       '{"news":[{"area":"领域","star":5,"title":"要点标题","body":"一句事实"} ×9（★★★★★3条、★★★★3条、★★★3条，用 star=5/4/3 表示）],',
       '"essay":{"topic":"核心立意一句","paras":["申论段落1","申论段落2"],"quotes":["金句1","金句2","金句3","金句4"]},',
@@ -717,55 +751,55 @@
     return day;
   }
 
+  /* ===== 刷新今日时政（v20261006k）=====
+     任意时间点击都触发运转：同步静态源/云端后，用 AI 现场生成「今天」。
+     - 生成版带 manualAt（用户手动版），只写入本机 + 本账号云端（userdata），不影响全局静态通道。
+     - 晚 20:00 自动化生成的版本会覆盖白天的手动版；20 点后用户再点刷新重生成，
+       则自己的版本优先保留（pickDailyHot：20点后手动版最高优先）。
+     - **历史日期一律不动**。 */
+  let hotBusy = false;
   async function refreshToday(host, bar) {
     const UI = window.UI, DB = window.DB;
-    const tip = bar.querySelector("#hotRefreshTip");
+    const tip = bar ? bar.querySelector("#hotRefreshTip") : null;
+    const setTip = (t) => { if (tip) tip.textContent = t; };
+    if (hotBusy) { try { UI.toast("今天的时政正在生成中，请稍候…"); } catch (e) {} return; }
+    hotBusy = true;
     const date = DB.today();
     try {
-      tip.textContent = "正在拉取最新数据…";
-      // ① 重拉静态兜底源
+      setTip("正在同步最新数据…");
+      // ① 拉热点素材（供现场生成用）
+      try {
+        const r = await fetch("assets/data/hotspots.js?t=" + Date.now(), { cache: "no-store" });
+        const txt = r.ok ? await r.text() : "";
+        const m = txt.indexOf("=");
+        if (m > 0) window.KG_HOTSPOTS = JSON.parse(txt.slice(m + 1).replace(/;\s*$/, ""));
+      } catch (e) {}
+      // ② 重拉静态时政源 + 云端（历史新日期会自动并入；今天按手动版优先规则取舍）
       try {
         const r = await fetch("assets/data/daily_hot.js?t=" + Date.now(), { cache: "no-store" });
         const txt = r.ok ? await r.text() : "";
         const a = txt.indexOf("{"), b = txt.lastIndexOf("}");
         if (a >= 0 && b > a) window.KG_DAILY_HOT = JSON.parse(txt.slice(a, b + 1));
       } catch (e) {}
-      // ② 云端同步 + 把远端所有缺失日期并进来（不只今天）
       try { if (DB.pull) await DB.pull(); } catch (e) {}
       DB.state.dailyHot = DB.state.dailyHot || {};
       if (window.KG_DAILY_HOT) mergeDailyHot(DB.state.dailyHot, window.KG_DAILY_HOT);
-      const latest = (window.KG_DAILY_HOT || {})[date] || DB.state.dailyHot[date];
-      if (latest) {
-        DB.state.dailyHot[date] = latest;      // 只覆盖今天
-        DB.save();
-        tip.textContent = "已用最新内容覆盖今天（" + date + "）";
-        renderDailyHot(host);
-        try { UI.toast("今日时政已刷新"); } catch (e) {}
-        return;
-      }
-      // ③ 今天还没有内容：先看有没有今天的素材可供生成
-      const days = Object.keys(DB.state.dailyHot).sort().reverse();
-      const newest = days[0] || "";
-      const mat = todayHotMaterial(date);
-      if (!mat.length) {
-        // 刚过午夜 / 素材未就绪属正常情况：不算失败，安抚并说明
-        tip.textContent = "今天（" + date + "）的内容会在今晚 20:00 自动生成"
-          + (newest ? "；当前最新为 " + newest + "，可直接点开练习" : "")
-          + "。点刷新已帮你同步到最新。";
-        renderDailyHot(host);
-        try { UI.toast("已同步最新；今天的内容今晚 20:00 生成"); } catch (e) {}
-        return;
-      }
-      // ④ 有素材 → AI 现场生成今天
-      tip.textContent = "今天还没生成，正在用 AI 现场生成…";
+      renderDailyHot(host);
+      // ③ 无论几点：现场生成今天（用户手动触发即运转）
+      setTip("正在用 AI 生成今天（" + date + "）的时政…约需 1-2 分钟");
       const day = await genTodayByAI(date);
+      day.manualAt = Date.now();   // 标记为本人手动版：云同步时优先保留（仅本账号可见）
       DB.state.dailyHot[date] = day;
       DB.save();
-      tip.textContent = "已生成并写入今天（" + date + "）";
+      setTip("已生成今天（" + date + "），本机与你的账号云端已更新");
       renderDailyHot(host);
-      try { UI.toast("今日时政已现场生成"); } catch (e) {}
+      try { UI.toast("今日时政已生成"); } catch (e) {}
     } catch (e) {
-      tip.textContent = "刷新失败：" + ((e && e.message) || e) + "（每晚 20:00 会自动生成）";
+      setTip("生成失败：" + ((e && e.message) || e) + "，可稍后再试；每晚 20:00 也会自动生成");
+      try { UI.toast("今日时政生成失败：" + ((e && e.message) || e)); } catch (err) {}
+      renderDailyHot(host);   // 恢复列表（今天回到灰色占位）
+    } finally {
+      hotBusy = false;
     }
   }
 

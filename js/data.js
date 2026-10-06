@@ -115,6 +115,21 @@
     return base;
   }
 
+  /* 每日时政热点：同一天两份内容的取舍。
+     优先级：「20点后手动重生成版」（用户明确要保留的自己版本）> 「更新的手动版」> 自动版（按其日期 20:00 计）> 更全的一份。
+     manualAt：用户点「刷新今日时政」现场生成时写入的时间戳；自动版（云端/静态源）无此字段。 */
+  function pickDailyHot(cur, inc) {
+    if (!cur) return inc;
+    const cut = (x) => { try { const t = new Date(((x && x.date) || "") + "T20:00:00").getTime(); return isNaN(t) ? 0 : t; } catch (e) { return 0; } };
+    const mC = (cur && cur.manualAt) || 0, mI = (inc && inc.manualAt) || 0;
+    const kC = (mC && mC >= cut(cur)) ? mC : 0, kI = (mI && mI >= cut(inc)) ? mI : 0;
+    if (kC !== kI) return kI > kC ? inc : cur;        // 20点后手动版最高优先（只随本人账号走）
+    const eC = mC || cut(cur), eI = mI || cut(inc);   // 自动版生效时间按其日期 20:00 计 → 晚8点自动版覆盖白天手动版
+    if (eC !== eI) return eI > eC ? inc : cur;
+    const len = (x) => ((x && x.verbal || []).length) + ((x && x.quiz || []).length) + ((x && x.news || []).length);
+    return len(inc) > len(cur) ? inc : cur;
+  }
+
   const DB = {
     SYNC_API_URL,
     state: null,
@@ -661,15 +676,11 @@
 
       // 时政记录：按 id 去重追加（云端同步 / 备份导入都不丢）
       out.currentAffairs = mergeArrById(out.currentAffairs, b.currentAffairs);
-      // 每日时政热点：按日期合并（同一天以「内容更全的一份」为准，取题量较大的那份）
+      // 每日时政热点：按日期合并（手动重生成版优先，其余按 pickDailyHot 取舍）
       out.dailyHot = out.dailyHot || {};
       const dh = b.dailyHot || {};
       for (const d in dh) {
-        const cur = out.dailyHot[d];
-        const inc = dh[d];
-        if (!cur) { out.dailyHot[d] = inc; continue; }
-        const len = (x) => ((x && x.verbal || []).length) + ((x && x.quiz || []).length) + ((x && x.news || []).length);
-        out.dailyHot[d] = len(inc) > len(cur) ? inc : cur;
+        out.dailyHot[d] = pickDailyHot(out.dailyHot[d], dh[d]);
       }
       // 导入的网页（时事热点「导入网页」）：按 id 去重追加，跨设备一致
       out.hotspotsImports = mergeArrById(out.hotspotsImports, b.hotspotsImports);
@@ -1089,4 +1100,5 @@
   DB._lastCloudSha = null;
 
   window.DB = DB;
+  DB.pickDailyHot = pickDailyHot;   /* 供 mod-current.js 静态源合并复用 */
 })();
