@@ -30,8 +30,15 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: 抓取时事热点
-        run: python tools/crawl_hotspots.py
+      - name: 抓取时事热点（失败自动重试 3 次）
+        run: |
+          ok=0
+          for i in 1 2 3; do
+            echo "第 $i 次尝试抓取…"
+            if python tools/crawl_hotspots.py; then ok=1; break; fi
+            sleep 20
+          done
+          [ "$ok" = "1" ] || { echo "三次抓取均失败"; exit 1; }
 
       - name: 提交并更新站点
         run: |

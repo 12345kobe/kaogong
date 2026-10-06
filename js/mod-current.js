@@ -727,11 +727,15 @@
 
   async function genTodayByAI(date) {
     const mat = todayHotMaterial(date);
-    if (!mat.list.length) throw new Error("本机没有热点素材，请先到「时事热点」刷新一次");
+    const hasMat = mat.list.length > 0;
     if (!window.KGAI || !KGAI.chat) throw new Error("未配置 AI，请到「设置 → AI」填写密钥");
+    /* 有素材 → 严格按素材；没素材（抓取失败等）→ AI 兜底，但禁止编造具体细节 */
+    const head = hasMat
+      ? "你是公务员考试时政命题专家。下面是最近的真实热点素材（最新日期 " + (mat.latest || date) + "，目标日期 " + date + "），请严格据此生成 " + date + " 的每日时政内容，禁止编造素材之外的事实。"
+      : "你是公务员考试时政命题专家。热点抓取暂时不可用，没有素材可给。请基于你已掌握的、确定性高的近期全国时政要点（重大政策、会议、科技、民生等），生成 " + date + " 的每日时政内容。红线：只写你确信的事实，不得编造具体日期、数字、人名、职务；拿不准的细节一律用泛化表述（如「近日」「有关部门」）。";
     const spec = [
-      "你是公务员考试时政命题专家。下面是最近的真实热点素材（最新日期 " + (mat.latest || date) + "，目标日期 " + date + "），请严格据此生成 " + date + " 的每日时政内容，禁止编造素材之外的事实。",
-      "【今日素材】\n" + mat.list.map((m, i) => (i + 1) + ". " + m).join("\n"),
+      head,
+      hasMat ? "【今日素材】\n" + mat.list.map((m, i) => (i + 1) + ". " + m).join("\n") : "【今日素材】（无，按上述红线自主生成）",
       "【输出要求】只输出一个 JSON 对象，不要任何说明文字、不要 markdown 代码块。结构如下：",
       '{"news":[{"area":"领域","star":5,"title":"要点标题","body":"一句事实"} ×9（★★★★★3条、★★★★3条、★★★3条，用 star=5/4/3 表示）],',
       '"essay":{"topic":"核心立意一句","paras":["申论段落1","申论段落2"],"quotes":["金句1","金句2","金句3","金句4"]},',

@@ -101,8 +101,9 @@ def call_ai(prompt):
     key = os.environ.get("AI_API_KEY", "").strip()
     if not key:
         raise SystemExit("缺少 AI_API_KEY（请在仓库 Settings → Secrets and variables → Actions 里配置）")
-    base = os.environ.get("AI_API_BASE", "https://open.bigmodel.cn/api/paas/v4/chat/completions").strip()
-    model = os.environ.get("AI_MODEL", "glm-4-flash").strip()
+    # workflow 里 secret 未配置时 env 是空字符串而非缺失，必须用 or 兜底，否则 base='' 直接炸
+    base = (os.environ.get("AI_API_BASE") or "https://open.bigmodel.cn/api/paas/v4/chat/completions").strip()
+    model = (os.environ.get("AI_MODEL") or "glm-4-flash").strip()
     body = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
