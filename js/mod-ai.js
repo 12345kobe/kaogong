@@ -374,6 +374,27 @@
     const leanNote = lowCap ? "\n注意：输出务必精炼——题干、选项简明扼要，每题解析不超过50字。" : "";
     // 通用出题风格 / 配图指令
     const styleInstr = `\n4) 只要求「考查的考点相同」，不要照搬原题：题干的背景材料、情境、事例、数据一律由你自行设计（可以是不同场景、不同主体、不同数据）；严禁沿用原题的背景/例子/数字，也不要写出与原题题干雷同的句子。保持题型与难度一致即可，不必复刻原题的写法或背景引入。`;
+    /* 知识库统一注入（v20261008）：出题时带上内置政治理论知识点原文，
+       让 AI 出的题在表述、考点、风格上与知识库保持一致，也更稳定。 */
+    function kpContext(text, n) {
+      const K = window.POLITICS_KP;
+      if (!K || !Array.isArray(K.points) || !K.points.length) return "";
+      const t = String(text || "");
+      const ptxt = (p) => String(p.l1 || "") + String(p.l2 || "") + String(p.title || "") + String(p.body || "");
+      const words = (t.match(/[\u4e00-\u9fff]{2,4}/g) || []).slice(0, 80);
+      if (!words.length) return "";
+      const scored = K.points.map((p) => {
+        const s = ptxt(p);
+        let sc = 0;
+        words.forEach((w) => { if (s.indexOf(w) >= 0) sc += 1; });
+        return { p: p, sc: sc };
+      }).filter((x) => x.sc > 0).sort((a, b) => b.sc - a.sc);
+      if (!scored.length) return "";
+      const top = scored.slice(0, n || 4).map((x) => x.p);
+      return "\n\n【内置知识点（出题须以这些原文表述为准，保持风格一致）】\n" +
+        top.map((p, i) => (i + 1) + ". 【" + String(p.l1 || "") + "·" + String(p.l2 || "") + "】" +
+          String(p.body || p.title || "").slice(0, 180)).join("\n");
+    }
     function buildPrompt(cnt, extra) {
       let p;
       if (isQuestion && qCtx.q) {
@@ -385,7 +406,7 @@
         const topic = (qCtx && qCtx.subject) ? qCtx.subject : (o.subject || (modTitle !== "综合" ? modTitle : "公务员考试相关知识点"));
         p = `你是公务员考试命题专家。根据以下内容所涉及的「${topic}」知识点，出 ${cnt} 道考查该知识点、难度相近的单项选择题。\n要求：\n1) 每题必须包含题干、4个选项、正确答案、详细解析；\n2) 紧扣该知识点，从常见考点、易错点角度命题；\n3) 只输出 JSON 数组，禁止输出 markdown 代码块标记或任何其他文字。格式：[{"q":"题干","options":["A内容","B内容","C内容","D内容"],"a":"B","e":"解析"}]，其中 "a" 是正确选项字母。\n${styleInstr}\n\n【参考内容】\n${ctx}`;
       }
-      return p + leanNote + (extra || "");
+      return p + kpContext(p) + leanNote + (extra || "");
     }
     const prog = (typeof o.onProgress === "function") ? o.onProgress : null;
     // 分批调用：低输出上限的模型靠多轮合并凑够题量

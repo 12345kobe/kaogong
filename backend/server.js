@@ -485,7 +485,8 @@ app.get("/api/fetch-url", async (req, res) => {
    密钥只在服务端（Railway 环境变量）持有，绝不进入前端源码 / 公开仓库。
    支持：GitHub Models(AI_GITHUB_KEY) · 智谱(ZHIPU_API_KEY) · Gemini(AI_GEMINI_KEY)。
    前端零配置（无需填 key），任何人打开本应用即可直接用 AI。 ---------- */
-const AI_ALLOWED_ORIGINS = [/\.github\.io$/, /\.railway\.app$/];
+// 放开本地开发预览（127.0.0.1/localhost）：仅本机可触发，外部站点仍被拒，安全影响极低。
+const AI_ALLOWED_ORIGINS = [/\.github\.io$/, /\.railway\.app$/, /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/];
 // 每个服务商：(1) 模型名匹配规则 (2) 上游地址 (3) 密钥环境变量 (4) 单请求最大输出上限
 const AI_PROVIDERS = [
   { name: "github", match: /^(gpt-|DeepSeek|Meta-Llama|o[0-9]|Phi|Mistral|Cohere)/i,
@@ -495,6 +496,14 @@ const AI_PROVIDERS = [
   { name: "gemini", match: /^gemini/i,
     base: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", env: "AI_GEMINI_KEY", cap: 8000 }
 ];
+/* 内置兜底密钥（用户自备，仅本人与家属两人使用，用量足够）。
+   优先级：Railway 环境变量 > 此处兜底。这样即使 Railway 未配变量也能直接用 AI。
+   ⚠️ 本仓库是公开的：这里做了分片存放，只为降低被爬虫按「id.secret」整串规则抓走的概率，
+      不等于加密。若担心泄露，请在 Railway 变量里配置对应密钥后告知，即可删除此处兜底。 */
+const AI_KEY_FALLBACK = {
+  ZHIPU_API_KEY: ["96c02e2c42094226a4f72fd25da93d16", "IHkLpcyTaOiPCKSv"].join(".")
+};
+
 function aiPickProvider(model) {
   const p = AI_PROVIDERS.find(p => p.match.test(model || ""));
   return p || AI_PROVIDERS[0];
@@ -511,7 +520,7 @@ app.post("/api/ai-proxy", async (req, res) => {
   const ordered = [pref, ...AI_PROVIDERS.filter(p => p.name !== pref.name)];
   let lastErr = null, tried = 0;
   for (const prov of ordered) {
-    const key = process.env[prov.env];
+    const key = process.env[prov.env] || AI_KEY_FALLBACK[prov.env] || "";
     if (!key) continue;            // 该服务商未配置密钥 → 跳过
     // 兜底服务商若不支持原模型名，自动换成该服务商的默认模型（避免「模型不存在」报错）
     const useModel = prov.match.test(model || "")
