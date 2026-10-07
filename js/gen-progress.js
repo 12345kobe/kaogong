@@ -52,8 +52,8 @@
   }
 
   /* ================= 进度条本体 ================= */
-  let el = null, hideT = null, collapsed = false;
-  let lastTitle = "", lastPct = 50;
+  let el = null, hideT = null, collapsed = false, active = false;
+  let lastTitle = "", lastPct = 50, lastThink = "";
   let miniPos = (() => { try { return JSON.parse(localStorage.getItem("kgGenProgMini") || "null") || null; } catch (e) { return null; } })();
   let headRow, thinkRow, titleEl, barEl, thinkEl, foldBtn, miniEl;
 
@@ -75,7 +75,7 @@
         '<span id="kgGenThink" style="flex:1;min-width:0;font-size:12px;opacity:.72;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></span>' +
         '<span id="kgGenFold" title="折叠成小圆（可拖动）" style="flex:0 0 auto;font-size:11px;opacity:.85;border:1px solid rgba(255,255,255,.35);border-radius:8px;padding:1px 7px;cursor:pointer">折叠</span>' +
       '</div>' +
-      '<div id="kgGenMini" style="display:none;font-size:12px;font-weight:800;line-height:1.1">…</div>';
+      '<div id="kgGenMini" style="display:none;font-size:12px;font-weight:800;line-height:1.1;text-align:center;margin-top:16px;letter-spacing:-.5px">…</div>';
     document.body.appendChild(el);
     headRow = el.querySelector("#kgGenHead");
     thinkRow = el.querySelector("#kgGenThinkRow");
@@ -88,9 +88,20 @@
     return el;
   }
 
+  function safeTopOffset() {
+    /* 读取真实 safe-area：env() 无法从 getComputedStyle 拿到，用探针元素量一次 */
+    try {
+      const probe = document.createElement("div");
+      probe.style.cssText = "position:fixed;top:env(safe-area-inset-top,0px);visibility:hidden;pointer-events:none";
+      document.body.appendChild(probe);
+      const v = probe.getBoundingClientRect().top;
+      probe.remove();
+      if (v > 0) return v;
+    } catch (e) {}
+    return 0;
+  }
   function miniDefaultPos() {
-    const st = 54 + (parseInt(getComputedStyle(document.documentElement).getPropertyValue("env(safe-area-inset-top)") || "0", 10) || 0);
-    return { x: Math.max(0, window.innerWidth - 46 - 12), y: st };
+    return { x: Math.max(0, window.innerWidth - 46 - 10), y: safeTopOffset() + 54 };
   }
   function applyMode() {
     if (!el) return;
@@ -117,7 +128,8 @@
   function show(title, pct) {
     const e = ensure();
     if (hideT) { clearTimeout(hideT); hideT = null; }
-    if (collapsed) setCollapsed(false);       // 新任务/新阶段：恢复完整条
+    if (!active) { active = true; collapsed = true; }   // 新任务默认折叠成小圆
+    applyMode();   // 每次都校正展开/折叠布局，修复上一次拖动小圆残留的 left/top 导致整条偏移
     e.style.display = "block";
     e.style.opacity = "1";
     e.style.transition = "none";
@@ -134,7 +146,8 @@
     const t = String(text || "").replace(/\s+/g, " ").trim();
     if (!t) return;
     const tail = t.length > 88 ? t.slice(-88) : t;
-    if (thinkEl) thinkEl.textContent = "思考中：" + tail;
+    lastThink = "思考中：" + tail;
+    if (thinkEl) thinkEl.textContent = lastThink;
   }
 
   function hide() {
@@ -146,7 +159,9 @@
         el.style.display = "none";
         el.style.opacity = "1";
         if (thinkEl) thinkEl.textContent = "";
-        setCollapsed(false);
+        lastThink = "";
+        active = false;
+        collapsed = false;
       }
     }, 600);
   }
@@ -157,7 +172,7 @@
   function wireMini() {
     ensure();
     makeDraggable(el, "kgGenProgMini", () => collapsed, () => {
-      if (collapsed) { collapsed = false; applyMode(); if (lastTitle) show(lastTitle, lastPct); }
+      if (collapsed) { collapsed = false; applyMode(); if (titleEl) titleEl.textContent = lastTitle; if (thinkEl) thinkEl.textContent = lastThink; }
     });
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", wireMini);
