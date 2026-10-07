@@ -118,13 +118,23 @@
           listHtml = items.map(it => {
             const dim = it.done ? " style=\"opacity:.5;text-decoration:line-through\"" : "";
             const meta = [];
-            if (it.type === "quiz") {
-              if (it.count != null) {
-                const pct2 = (it.correct != null && it.count) ? Math.round(it.correct / it.count * 100) : null;
-                meta.push(`刷题 ${it.count} 道 · 对 ${it.correct != null ? it.correct : "?"} 道${pct2 != null ? "（正确率 " + pct2 + "%）" : ""}`);
-              } else if (it.meta && it.meta.pct != null) meta.push(`正确率 ${it.meta.pct}%`);
+            // 正确率：只要记了 count/correct 就展示（刷题模式记的是 focus 类型，也要显示）
+            if (it.count != null) {
+              const pct2 = (it.correct != null && it.count) ? Math.round(it.correct / it.count * 100) : null;
+              meta.push(`刷题 ${it.count} 道 · 对 ${it.correct != null ? it.correct : "?"} 道${pct2 != null ? "（正确率 " + pct2 + "%）" : ""}`);
+            } else if (it.type === "quiz" && it.meta && it.meta.pct != null) meta.push(`正确率 ${it.meta.pct}%`);
+            // 综合刷题：逐模块正确率
+            if (Array.isArray(it.combo)) {
+              it.combo.forEach(c => {
+                if (c && c.count) {
+                  const p = Math.round((c.correct || 0) / c.count * 100);
+                  meta.push(`${c.subject} 对 ${c.correct != null ? c.correct : "?"}/${c.count}（${p}%）`);
+                }
+              });
             }
             if (it.minutes) meta.push("专注 " + fmt(it.minutes * 60));
+            // 超时：限时刷题超出计划时限的部分
+            if (it.overtime) meta.push("⏰ 超时 " + fmt(it.overtime));
             const metaStr = meta.length ? `<span class="muted small">· ${meta.join(" · ")}</span>` : "";
             const focusBtn = ((it.focusMin && !it.done) || (it.type === "quiz" && !it.done))
               ? `<button class="btn xs" data-focus="${it.id}" style="margin-left:6px">${it.type === "quiz" ? "📱 进入刷题" : "⏱ 开始专注"}</button>`

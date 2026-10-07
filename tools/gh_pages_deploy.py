@@ -46,8 +46,9 @@ def api(method, path, data=None, retries=4):
                 last = (e.code, json.loads(body))
             except Exception:
                 last = (e.code, {"message": body[:200]})
-            # 4xx（除 429）一般是参数/权限问题，重试无意义
-            if 400 <= e.code < 500 and e.code != 429:
+            # 真正的权限/参数错误（401/403/404/422）重试无意义，直接返回；
+            # 其余 4xx（尤其 400 "malformed request"）多为本沙箱代理把请求体截断所致，必须重试
+            if e.code in (401, 403, 404, 422):
                 return last
         except Exception as e:
             last = (0, {"message": str(e)})
