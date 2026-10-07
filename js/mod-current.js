@@ -969,6 +969,13 @@
       if (!q || !Array.isArray(q.options) || q.options.length < 3) { bad.push(qi); return; }
       const letterOpt = q.options.filter(o => /^[ABCD]{2,4}$/.test(String(o || "").trim())).length;
       if (/〔\s*\d{2,4}\s*〕\s*\d{2,6}\s*号/.test(String(q.q || ""))) { bad.push(qi); return; } // ★题干含文号=废题
+      /* ★选项字母占位拦截（用户 01:44 截图：选项渲染成 A. A / B. B / C. C / D. D）。
+         AI 偷懒时会把 options 写成 ["A","B","C","D"]，旧校验只拦多字母组合没拦单字母。
+         「1项/2项」这类数量辨析选项是合法短选项，用白名单放行。 */
+      const TRIVIAL = /^([1-4]\s*项|[一二三四]\s*项|对|错)$/;
+      const bare = q.options.filter(o => /^\s*[ABCD]\s*[.、．]?\s*$/.test(String(o || ""))).length;
+      const weak = q.options.filter(o => { const s = String(o || "").trim(); return Array.from(s).length < 3 && !TRIVIAL.test(s); }).length;
+      if (bare >= 2 || weak >= 2) { bad.push(qi); return; } // 占位/空洞选项=废题
       if (letterOpt >= 3) { bad.push(qi); return; }                        // 字母组合当选项
       if (q.type === "multi" && !q.multi) { bad.push(qi); return; }
       // ★修正：旧版取「前 20 字」做去重键，而规则要求长引子前置 → 多题开头雷同被误判重复
@@ -1076,6 +1083,7 @@
       "\n\n【JSON 格式】单选 {\"q\":\"（今日时政一两句作背景引入，不写背景标签）…\\n设问句\",\"options\":[4项],\"a\":1,\"e\":\"【答案】B\\n【解析】…\"}，a 为 0 基数字；" +
       "数量辨析题也是单选：{\"q\":\"…\\n下列表述正确的有几项？\\n①…\\n②…\\n③…\\n④…\",\"options\":[\"1项\",\"2项\",\"3项\",\"4项\"],\"a\":1,\"e\":\"【答案】B\\n【解析】①对…②错（把××偷换成××）…\"}；" +
       "多选 {\"q\":\"（今日时政一两句作背景引入）…\\n（多选）下列表述符合政治理论原文的有\",\"options\":[4项独立知识表述],\"a\":\"ABC\",\"type\":\"multi\",\"multi\":\"ABC\",\"e\":\"【答案】ABC\\n【解析】…\"}，a 为 2-4 个字母、组合不重复。" +
+      "★★选项内容红线（用户 01:44 抓到现行）：每个选项必须是完整、具体、有实质内容的一句话或一个词组，严禁偷懒只写 \"A\" \"B\" \"C\" \"D\" 字母占位，严禁写「以上都对」「以上都不对」这类空洞选项——数量辨析题的 \"1项/2项/3项/4项\" 除外。" +
       "★多选选项红线：A/B/C/D 每个选项必须是【一句独立的知识表述】，严禁把答案字母组合（如 ABC、ABD）当成选项内容，严禁选项只写字母——考生要能点选多个后确认。" +
       redline;
     const p3 = base + kpBlock +
