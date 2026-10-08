@@ -265,13 +265,13 @@ def main():
     # ★分段生成（v20261008l）：一次要「要点+金句+言语5+时政10」的整包太大，
     #   弱模型必然截断 → parse_json 救援也救不回来（10-07 连续两次失败即此因）。
     #   改为分段小请求，各自独立重试，最后拼装；某段失败不影响其它段。
-    def gen_segment(field, want, tries=3):
+    def gen_segment(field, want, tries=3, note=""):
         """只让模型输出某一个字段，输出量小 → 截断概率大幅下降。"""
         for t in range(tries):
             p = base_prompt + (
                 "\n\n【本次只输出 %s 字段】只输出一个 JSON 对象，形如 {\"%s\": [...]}，"
                 "其余字段（news/essay/verbal/quiz 中本次不要求的）一律不要输出，也不要任何说明文字。"
-                "%s 恰好 %s 项。" % (field, field, field, want))
+                "%s 恰好 %s 项。%s" % (field, field, field, want, note))
             if t > 0:
                 p += "\n【上一次输出不是合法 JSON 或数量不足，请重新完整输出，不要截断、不要 markdown 围栏。】"
             try:
@@ -289,7 +289,25 @@ def main():
     news = gen_segment("news", 9)
     essay = gen_segment("essay", 1)
     verbal = gen_segment("verbal", 5)
-    quiz = gen_segment("quiz", 10)
+    quiz = gen_segment("quiz", 10, note=(
+        "★题型构成必须严格为 7 道单选 + 3 道多选：多选必须带 \"type\":\"multi\"，a 为 2-4 个字母"
+        "（如 \"ABC\"），且必须同时有 \"multi\":\"ABC\" 字段与 a 完全相同；"
+        "缺少多选或缺少 type/multi 字段视为本次失败，必须重写。"))
+    # 兜底：多选不足 3 道时单独补生成多选题，最后规整为「7 单选 + 3 多选」
+    def is_multi(q):
+        return (q.get("type") == "multi") or bool(q.get("multi"))
+
+    singles = [q for q in (quiz or []) if not is_multi(q)]
+    multis = [q for q in (quiz or []) if is_multi(q)]
+    if len(multis) < 3:
+        need = 3 - len(multis)
+        more = gen_segment("quiz", need, note=(
+            "★本次全部输出【多选题】，共 %d 道：每题必须带 \"type\":\"multi\"，a 为 2-4 个字母（如 \"ABC\"），"
+            "且必须有 \"multi\" 字段与 a 完全相同；四个选项必须各自是一句独立完整的知识表述。" % need))
+        for q in (more or []):
+            if is_multi(q):
+                multis.append(q)
+    quiz = singles[:7] + multis[:3]
     day = {"news": news or [], "essay": essay or {}, "verbal": verbal or [], "quiz": quiz or []}
     day["verbal"] = enforce_answers(day["verbal"])
     day["quiz"] = enforce_answers(day["quiz"])
