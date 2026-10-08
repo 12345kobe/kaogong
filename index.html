@@ -34,7 +34,7 @@
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.cn/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;700&family=Noto+Sans+SC:wght@400;700&family=ZCOOL+XiaoWei&display=swap" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css" />
-<link rel="stylesheet" href="css/styles.css?v=20261008h" />
+<link rel="stylesheet" href="css/styles.css?v=20261008i" />
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -175,7 +175,7 @@
 <script src="js/mod-stats.js?v=20261008d"></script>
 <script src="js/voice.js?v=20261008d"></script>
 <script src="js/drills-data.js?v=20261008d"></script>
-<script src="js/mod-current.js?v=20261008h"></script>
+<script src="js/mod-current.js?v=20261008i"></script>
 <script src="js/mod-pdfimport.js?v=20261008d"></script>
 <script src="js/mod-ai.js?v=20261008d"></script>
 <script src="js/ai-quiz.js?v=20261008d"></script>
@@ -187,10 +187,23 @@
 <script src="js/mod-contacts.js?v=20261008d"></script>
 <script src="js/app.js?v=20261008d"></script>
 <script>
-/* Service Worker：网络优先，保证主屏 PWA 每次打开都拉到最新版 */
+/* Service Worker：网络优先，保证主屏 PWA 每次打开都拉到最新版。
+ * ★v20261008i 强制自更新（用户死命令：不想重装 PWA 也要拿到新版）：
+ *   1) 注册脚本带 ?v= 版本号 → 每次发版都强制重新拉取 sw.js，破解 HTTP 缓存死锁；
+ *   2) 监听 controllerchange → 新 SW 接管后立即刷新页面，无需手动刷新/重装；
+ *   3) 后台每 60s 调一次 reg.update() → 治 iOS 主屏 App 常驻后台不触发导航的更新盲区。 */
 if ("serviceWorker" in navigator) {
+  var KG_APP_V = "20261008i";
   window.addEventListener("load", function () {
-    navigator.serviceWorker.register("./sw.js").catch(function () {});
+    navigator.serviceWorker.register("./sw.js?v=" + KG_APP_V).then(function (reg) {
+      if (reg) {
+        reg.update().catch(function () {});
+        setInterval(function () { reg.update().catch(function () {}); }, 60000);
+      }
+    }).catch(function () {});
+    navigator.serviceWorker.addEventListener("controllerchange", function () {
+      window.location.reload();
+    });
   });
 }
 </script>
