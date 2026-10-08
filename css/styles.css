@@ -1169,6 +1169,17 @@ mark.kw{background:rgba(255,206,0,.38);color:inherit;padding:0 2px;border-radius
 .hs-date-b[hidden]{display:none}
 .hs-date-b .hot-item{margin-bottom:10px}
 
+/* 多选勾选 + 选中态 + 导出工具条（v=20261008f） */
+.hot-sel{display:inline-flex;align-items:center;gap:5px;margin:0 0 6px;cursor:pointer;font-size:12px;color:var(--txt-dim);user-select:none}
+.hot-sel input{width:16px;height:16px;accent-color:var(--cyan);cursor:pointer}
+.hot-sel-t{font-weight:700;letter-spacing:.5px}
+.hot-item.sel{border-color:var(--cyan);box-shadow:0 0 0 2px rgba(0,200,255,.28);background:linear-gradient(135deg,rgba(0,200,255,.07),var(--bg2))}
+.hs-selbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 12px;margin-bottom:8px;border:1px solid var(--cyan);border-radius:10px;background:rgba(0,200,255,.08)}
+.hs-selbar[hidden]{display:none}
+.hot-sel-all{display:inline-flex;align-items:center;gap:5px;font-size:13px;color:var(--txt);cursor:pointer}
+.hot-sel-all input{width:16px;height:16px;accent-color:var(--cyan);cursor:pointer}
+#hsSelCnt{font-size:13px;color:var(--txt-dim)}
+
 /* 历史时政：年-月 → 日 两级归档 */
 .hist-month{margin-bottom:6px}
 .hist-month-h{display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;user-select:none;font-size:15px;font-weight:700;color:var(--txt);background:var(--panel2);border-radius:10px}

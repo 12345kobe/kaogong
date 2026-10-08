@@ -554,13 +554,51 @@
     return h || `<div class="muted small">暂无</div>`;
   }
 
+  /* ================= 死校验：任何来源（AI生成/云端合并/静态稿/手动版）的每日题都必经 =================
+     彻底根治「一个空配两个词」「选项字母占位」「选项重复」「选项数≠4」等坏题。
+     在渲染入口 startHotQuiz 强制过滤，宁可少题也不放坏题上线。 */
+  function sanitizeHotQuiz(list, subject) {
+    const isVerbal = (subject || "").indexOf("言语") >= 0;
+    const TRIVIAL = /^([1-4]\s*项|[一二三四]\s*项|对|错)$/;
+    const kept = [];
+    (list || []).forEach((q) => {
+      if (!q || !Array.isArray(q.options)) return;
+      const optRaw = q.options.map(o => String(o == null ? "" : o));
+      const optClean = optRaw.map(s => s.trim());
+      if (optClean.length !== 4) return; // ① 选项必须恰好 4 个
+      const bare = optClean.filter(s => /^\s*[ABCD]\s*[.、．]?\s*$/.test(s)).length;
+      const weak = optClean.filter(s => { const n = Array.from(s).length; return n > 0 && n < 3 && !TRIVIAL.test(s); }).length;
+      if (bare >= 2 || weak >= 2) return; // ② 字母占位 / 空洞选项（≥2 个整题废）
+      if (new Set(optClean.filter(s => s.length)).size < 4) return; // ③ 选项两两重复整题废
+      const ans = q.a;
+      const aIdx = (typeof ans === "number") ? ans
+                 : (typeof ans === "string" && /^[A-D]$/.test(ans.trim())) ? "ABCD".indexOf(ans.trim())
+                 : -1;
+      if (aIdx < 0 || aIdx > 3) return; // ④ 答案索引必须落在 0..3
+      if (isVerbal) { // ⑤ 言语题：空数必须 = 每选项词数（核心根治点）
+        const qt = String(q.q || "");
+        const blanks = (qt.match(/_{2,}/g) || []).length;
+        if (!blanks) return;
+        const perOpt = optClean.map(s => s.split(/[／/；;、\s]+/).map(x => x.trim()).filter(Boolean));
+        if (!perOpt.length || perOpt.some(w => w.length !== perOpt[0].length)) return;
+        if (perOpt[0].length !== blanks) return; // ★一个空配两个词 → 直接废
+      }
+      kept.push({
+        q: q.q, options: optRaw.slice(), a: aIdx, e: q.e || "",
+        multi: q.multi || (typeof q.a === "string" && q.a.length > 1 ? q.a : ""),
+        type: q.type || ""
+      });
+    });
+    return kept;
+  }
+
   function startHotQuiz(box, list, subject, title) {
     const UI = window.UI;
-    const qs = (list || []).map(q => ({
-      q: q.q, options: (q.options || []).slice(), a: q.a, e: q.e || "",
-      multi: q.multi || (typeof q.a === "string" && q.a.length > 1 ? q.a : ""),
-      type: q.type || ""
-    }));
+    const qs = sanitizeHotQuiz(list, subject); // ★死校验：所有来源都过
+    if (!qs.length) {
+      box.appendChild(UI.el(`<div class="card empty">本题库暂无可用的规范题目（已自动剔除空数/词数错配、选项重复、字母占位等坏题）。</div>`));
+      return;
+    }
     box.appendChild(UI.el(`<div class="card"><h3>✍ ${esc(title)}</h3>
       <div class="muted small">练题 / 背题切换、收藏、勾画、每题用时统计与其它模块完全一致。</div></div>`));
     const hostEl = document.createElement("div");
@@ -1265,6 +1303,12 @@
           <span class="muted small" id="hsUpdated"></span>
           <span class="muted small" id="hsNote"></span>
         </div>
+        <div class="hs-selbar" id="hsSelbar" hidden>
+          <label class="hot-sel-all"><input type="checkbox" id="hsSelAll"/> 全选本区</label>
+          <span class="muted small" id="hsSelCnt">已选 0 条</span>
+          <button class="btn sm primary" id="hsExportSel">⬇ 导出选中为PDF</button>
+          <button class="btn sm ghost" id="hsClearSel">清除选择</button>
+        </div>
         <div id="hsList"></div>`;
       const hsList = hsBody.querySelector("#hsList");
       const hsUpdated = hsBody.querySelector("#hsUpdated");
@@ -1312,6 +1356,7 @@
         const edit = (DB.state.hotspotsEdits && DB.state.hotspotsEdits[it.id]) || {};
         const summary = edit.summary != null ? edit.summary : (it.summary || (it.body ? it.body.slice(0, 160) : ""));
         return `<div class="hot-item" data-i="${i}">
+          <label class="hot-sel"><input type="checkbox" class="hs-check"/> <span class="hot-sel-t">选</span></label>
           <div class="hot-item-h">
             <span class="hot-badge ${it.region === "广东" ? "gd" : "cn"}">${regionOf(it)}</span>
             <span class="hot-src">${esc(it.source || "")}</span>
@@ -1392,8 +1437,53 @@
           const v = el.querySelector(".hs-view"); if (v) v.onclick = () => openHotspot(it, false);
           const e = el.querySelector(".hs-edit"); if (e) e.onclick = () => openHotspot(it, true);
           const p = el.querySelector(".hs-pdf");  if (p) p.onclick = () => exportHotspot(it, (DB.state.hotspotsEdits || {})[it.id]);
+          const ck = el.querySelector(".hs-check");
+          if (ck) {
+            ck.onchange = () => { el.classList.toggle("sel", ck.checked); updateHsSel(); };
+            // 渲染后恢复已选态（跨搜索/切区保留选择）
+            ck.checked = !!HS.selSet.has(it.id);
+            el.classList.toggle("sel", ck.checked);
+          }
         });
+        updateHsSel();
       }
+
+      /* ---- 多选导出 PDF ---- */
+      const hsSelbar = hsBody.querySelector("#hsSelbar");
+      const hsSelCnt = hsBody.querySelector("#hsSelCnt");
+      const hsSelAll = hsBody.querySelector("#hsSelAll");
+      HS.selSet = HS.selSet || new Set();
+      function selectedItems() {
+        return HS.all.filter(it => HS.selSet.has(it.id));
+      }
+      function updateHsSel() {
+        const n = HS.selSet.size;
+        if (hsSelCnt) hsSelCnt.textContent = "已选 " + n + " 条";
+        if (hsSelbar) hsSelbar.hidden = n === 0;
+        // 全选框状态：本区可见条目是否全部选中
+        const cur = (HS.all.filter(it => regionOf(it) === HS.region) || []);
+        if (hsSelAll) hsSelAll.checked = cur.length > 0 && cur.every(it => HS.selSet.has(it.id));
+      }
+      hsSelAll.onchange = () => {
+        const cur = HS.all.filter(it => regionOf(it) === HS.region);
+        if (hsSelAll.checked) cur.forEach(it => HS.selSet.add(it.id));
+        else cur.forEach(it => HS.selSet.delete(it.id));
+        hsList.querySelectorAll(".hot-item").forEach(el => {
+          const it = HS.all[+el.dataset.i];
+          if (it && regionOf(it) === HS.region) { const c = el.querySelector(".hs-check"); if (c) { c.checked = hsSelAll.checked; el.classList.toggle("sel", hsSelAll.checked); } }
+        });
+        updateHsSel();
+      };
+      hsBody.querySelector("#hsClearSel").onclick = () => {
+        HS.selSet.clear();
+        hsList.querySelectorAll(".hot-item").forEach(el => { const c = el.querySelector(".hs-check"); if (c) { c.checked = false; el.classList.remove("sel"); } });
+        updateHsSel();
+      };
+      hsBody.querySelector("#hsExportSel").onclick = () => {
+        const items = selectedItems();
+        if (!items.length) { UI.toast("请先勾选要导出的热点"); return; }
+        exportHotspots(items, (DB.state.hotspotsEdits || {}));
+      };
 
       // 地区切换
       hsBody.querySelectorAll(".hs-tab").forEach(b => {
@@ -1473,6 +1563,34 @@
         }
         html += UI.Attachments.toHtml("时事热点", "hs_" + it.id);
         window.PDF.exportHtml(title, html);
+        UI.toast("已生成PDF，请在打印窗口选择「另存为 PDF」");
+      }
+
+      /* 多选导出：把勾选的多条热点合并成一份 PDF（一条也可） */
+      function exportHotspots(items, edits) {
+        const editsMap = edits || {};
+        const today = new Date();
+        const p2 = (n) => String(n).padStart(2, "0");
+        const ds = today.getFullYear() + "-" + p2(today.getMonth() + 1) + "-" + p2(today.getDate());
+        const sorted = items.slice().sort((a, b) => (b.date || "") < (a.date || "") ? -1 : (b.date || "") > (a.date || "") ? 1 : 0);
+        let html = `<h1 class="sec">📌 时政热点精选（${sorted.length} 条）</h1>`;
+        html += `<p class="muted">导出日期 ${ds} · 来源：时事热点模块</p>`;
+        html += `<hr/>`;
+        sorted.forEach((it, i) => {
+          const ed = editsMap[it.id] || {};
+          const title = ed.title != null ? ed.title : it.title;
+          const body = stripFooterLines(ed.body != null ? ed.body : (it.body || it.summary || ""));
+          const imgs = ed.imgs || it.imgs || [];
+          html += `<div style="margin:14px 0;page-break-inside:avoid">`;
+          html += `<h3>${i + 1}. ${esc(title)}</h3>`;
+          html += `<p class="muted">${esc(it.source || "")} · ${esc(it.date || "近日")}${it.region === "广东" ? " · 广东" : " · 全国"}</p>`;
+          html += `<p>${esc(body).replace(/\n/g, "<br/>")}</p>`;
+          if (imgs.length) html += `<div>${imgs.map(u => `<img src="${esc(u)}" referrerpolicy="no-referrer" style="max-width:100%;margin:6px 0"/>`).join("")}</div>`;
+          html += UI.Attachments.toHtml("时事热点", "hs_" + it.id);
+          html += `</div>`;
+          if (i < sorted.length - 1) html += `<hr/>`;
+        });
+        window.PDF.exportHtml("时政热点精选（" + sorted.length + "条）", html);
         UI.toast("已生成PDF，请在打印窗口选择「另存为 PDF」");
       }
 
