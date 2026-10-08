@@ -27,6 +27,7 @@ jobs:
           python-version: "3.11"
 
       - name: 生成今日时政与题目（失败 60 秒后自动整跑重试一次）
+        continue-on-error: true   # 生成失败不再把整个 job 标红；后续提交步骤照常走（无变化会自动跳过）
         env:
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
           AI_API_BASE: ${{ secrets.AI_API_BASE }}

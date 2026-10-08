@@ -108,7 +108,8 @@ def call_ai(prompt):
     body = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.5,
+        "temperature": 0.3,          # ★降低随机性：减少跑偏与格式崩坏
+        "max_tokens": 8192,          # ★防截断：整包 15 题一次输出极易被截断（2026-10-07 两次失败即此因）
     }
     data = json.dumps(body, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(base, data=data, method="POST")
@@ -211,31 +212,56 @@ def main():
     if not mat:
         raise SystemExit("没有可用的今日素材，跳过本次生成")
     print("素材 %d 条，日期 %s" % (len(mat), DATE))
+    # ★保护：今天已经存在合格内容时直接跳过，绝不覆盖已人工/校验过的版本
+    #  （2026-10-08 用户手工重做的 5/10 内容曾被担心被夜间 AI 版冲掉）
+    try:
+        _txt = open("assets/data/daily_hot.js", "r", encoding="utf-8").read()
+        _a, _b = _txt.find("{"), _txt.rfind("}")
+        _store = json.loads(_txt[_a:_b + 1]) if (_a >= 0 and _b > _a) else {}
+        _old = _store.get(DATE) or {}
+        if len(_old.get("verbal") or []) >= 4 and len(_old.get("quiz") or []) >= 8:
+            print("今天（%s）已有合格内容（言语 %d / 时政 %d），跳过生成，不覆盖。"
+                  % (DATE, len(_old.get("verbal") or []), len(_old.get("quiz") or [])))
+            return
+    except Exception as e:
+        print("（跳过保护检查：%s）" % e, file=sys.stderr)
     base_prompt = SPEC_TMPL.replace("{date}", DATE).replace(
         "{mat}", "\n".join("%d. %s" % (i + 1, m) for i, m in enumerate(mat)))
-    day = None
-    for attempt in range(3):
-        prompt = base_prompt
-        if attempt > 0:
-            prompt += ("\n\n【再次强调——上一稿数量不符，本次必须严格满足】"
-                       "verbal 恰好 5 题；quiz 恰好 10 题（7 单选 + 3 多选，多选 a 为 2-4 个字母且组合不重复）；"
-                       "单选答案 A:B:C:D 约 1:1:1:1。请重新输出完整 JSON。")
-        day = parse_json(call_ai(prompt))
-        if not all(k in day for k in ("news", "essay", "verbal", "quiz")):
-            day = None
-            continue
-        nv, nq = len(day.get("verbal") or []), len(day.get("quiz") or [])
-        # 数量宽容：模型偶发多出/少出一两题，答题引擎本身不限题数；太离谱才重试（减少服务端压力）
-        if nv >= 4 and nq >= 8:
-            if nv != 10 or nq != 20:
-                print("警告：数量为 言语 %d / 时政 %d（非标准 10/20，按原样写入）" % (nv, nq), file=sys.stderr)
-            break
-        print("第 %d 次生成数量不符（言语 %d / 时政 %d），重试…" % (attempt + 1, nv, nq), file=sys.stderr)
-    if day is None or not all(k in day for k in ("news", "essay", "verbal", "quiz")):
-        raise SystemExit("多次生成仍未通过数量校验，跳过写入（避免污染数据）")
-    nv, nq = len(day.get("verbal") or []), len(day.get("quiz") or [])
-    if nv != 10 or nq != 20:
-        print("警告：数量仍为 言语 %d / 时政 %d（已达重试上限，仍写入，但建议人工复核）" % (nv, nq), file=sys.stderr)
+    # ★分段生成（v20261008l）：一次要「要点+金句+言语5+时政10」的整包太大，
+    #   弱模型必然截断 → parse_json 救援也救不回来（10-07 连续两次失败即此因）。
+    #   改为分段小请求，各自独立重试，最后拼装；某段失败不影响其它段。
+    def gen_segment(field, want, tries=3):
+        """只让模型输出某一个字段，输出量小 → 截断概率大幅下降。"""
+        for t in range(tries):
+            p = base_prompt + (
+                "\n\n【本次只输出 %s 字段】只输出一个 JSON 对象，形如 {\"%s\": [...]}，"
+                "其余字段（news/essay/verbal/quiz 中本次不要求的）一律不要输出，也不要任何说明文字。"
+                "%s 恰好 %s 项。" % (field, field, field, want))
+            if t > 0:
+                p += "\n【上一次输出不是合法 JSON 或数量不足，请重新完整输出，不要截断、不要 markdown 围栏。】"
+            try:
+                obj = parse_json(call_ai(p))
+                v = (obj or {}).get(field)
+                if v:
+                    return v
+            except SystemExit as e:
+                print("%s 第 %d 次生成失败：%s" % (field, t + 1, e), file=sys.stderr)
+            except Exception as e:
+                print("%s 第 %d 次异常：%s" % (field, t + 1, e), file=sys.stderr)
+            time.sleep(5)
+        return None
+
+    news = gen_segment("news", 9)
+    essay = gen_segment("essay", 1)
+    verbal = gen_segment("verbal", 5)
+    quiz = gen_segment("quiz", 10)
+    day = {"news": news or [], "essay": essay or {}, "verbal": verbal or [], "quiz": quiz or []}
+    nv, nq = len(day["verbal"]), len(day["quiz"])
+    nn = len(day["news"])
+    if nv < 4 or nq < 8 or nn < 6:
+        raise SystemExit("多次生成仍未通过数量校验（要点 %d / 言语 %d / 时政 %d），跳过写入（避免污染数据）"
+                         % (nn, nv, nq))
+    print("警告提示：要点 %d / 言语 %d / 时政 %d（标准 9/5/10，非标准则按原样写入）" % (nn, nv, nq), file=sys.stderr)
     day["date"] = DATE
     day["title"] = DATE + " 时政"
     day["generatedAt"] = int(time.time() * 1000)   # 每晚20:00自动版时间戳（前端灰色小字显示）
