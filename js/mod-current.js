@@ -540,18 +540,15 @@
      页面层级：时政模块 → 「每日时政热点」方格 → 日期方格 → 当天页（材料+金句）→ 言语/时政题目页。
      题目页走通用答题引擎（练题/背题、收藏、勾画、每题用时统计与其它模块完全一致）。 */
   function hotNewsHtml(news) {
-    const arr = (news || []).slice();
     const byStar = {};
-    arr.forEach((n, i) => { const s = n.star || 3; (byStar[s] = byStar[s] || []).push([i, n]); });
+    (news || []).forEach(n => { const s = n.star || 3; (byStar[s] = byStar[s] || []).push(n); });
     const label = { 5: "★★★★★ 必考核心考点", 4: "★★★★ 高频常考考点", 3: "★★★ 常识积累考点", 2: "★★ 了解即可", 1: "★ 了解即可" };
     let h = "";
     [5, 4, 3, 2, 1].forEach(s => {
-      const a = byStar[s];
-      if (!a || !a.length) return;
+      const arr = byStar[s];
+      if (!arr || !arr.length) return;
       h += `<h4 style="margin:12px 0 6px">${label[s] || "★".repeat(s)}</h4><ol>`;
-      a.forEach(([i, n]) => {
-        h += `<li><label class="dh-sel"><input type="checkbox" class="dh-check" data-i="${i}"/> <b>${esc(n.title || "")}</b>${n.body ? "：" + esc(n.body) : ""}</label></li>`;
-      });
+      arr.forEach(n => { h += `<li><b>${esc(n.title || "")}</b>${n.body ? "：" + esc(n.body) : ""}</li>`; });
       h += `</ol>`;
     });
     return h || `<div class="muted small">暂无</div>`;
@@ -574,10 +571,31 @@
       if (bare >= 2 || weak >= 2) return; // ② 字母占位 / 空洞选项（≥2 个整题废）
       if (new Set(optClean.filter(s => s.length)).size < 4) return; // ③ 选项两两重复整题废
       const ans = q.a;
-      const aIdx = (typeof ans === "number") ? ans
+      const isMultiPre = q.type === "multi" || q.multi || (typeof ans === "string" && ans.length > 1);
+      let aIdx = (typeof ans === "number") ? ans
                  : (typeof ans === "string" && /^[A-D]$/.test(ans.trim())) ? "ABCD".indexOf(ans.trim())
                  : -1;
-      if (aIdx < 0 || aIdx > 3) return; // ④ 答案索引必须落在 0..3
+      if (!isMultiPre && (aIdx < 0 || aIdx > 3)) return; // ④ 单选答案索引必须落在 0..3（多选是字母串，勿当非法下标压成-1）
+      /* ④.5 ★答案一致性（用户 23:06 实锤：解析写【答案】B、判分却按 a 字段判 C → 一大片错）。
+         从解析提取 AI 自己声明的答案字母，与 a 字段不一致时**以解析为准自动纠正 a**；
+         多选题跳过（多选看 multi 字段）。 */
+      const isMulti = isMultiPre;
+      if (!isMulti) {
+        const eTxt = String(q.e || "");
+        const cands = [];
+        let mm;
+        const r1 = /【\s*答案\s*】\s*[:：]?\s*([A-D])(?![A-D])/g;
+        while ((mm = r1.exec(eTxt))) cands.push(mm[1]);
+        const r2 = /(?:故本题选|本题选|故选|应选|故正确答案为|正确答案[是为]|正确选项[是为])\s*[:：]?\s*([A-D])(?![A-D])/g;
+        while ((mm = r2.exec(eTxt))) cands.push(mm[1]);
+        if (cands.length) {
+          const freq = {}; cands.forEach(c => { freq[c] = (freq[c] || 0) + 1; });
+          let best = cands[cands.length - 1], bn = 0;
+          Object.keys(freq).forEach(k => { if (freq[k] > bn) { bn = freq[k]; best = k; } });
+          const eIdx = "ABCD".indexOf(best);
+          if (eIdx >= 0 && eIdx !== aIdx) aIdx = eIdx;   // ★解析为准，自动纠正
+        }
+      }
       if (isVerbal) { // ⑤ 言语题：空数必须 = 每选项词数（核心根治点）
         const qt = String(q.q || "");
         const blanks = (qt.match(/_{2,}/g) || []).length;
@@ -587,7 +605,7 @@
         if (perOpt[0].length !== blanks) return; // ★一个空配两个词 → 直接废
       }
       kept.push({
-        q: q.q, options: optRaw.slice(), a: aIdx, e: q.e || "",
+        q: q.q, options: optRaw.slice(), a: isMulti ? ans : aIdx, e: q.e || "",
         multi: q.multi || (typeof q.a === "string" && q.a.length > 1 ? q.a : ""),
         type: q.type || ""
       });
@@ -636,44 +654,6 @@
     }
     h += `</div>`;
     box.appendChild(UI.el(h));
-    /* ★每日时政热点当天页：多选导出 PDF（用户 19:21 要求加在「每日时政热点」页，之前误加在时事热点列表） */
-    box.appendChild(UI.el(`<div id="dhSelbar" style="display:none;margin:10px 0;padding:10px;background:var(--glass);border-radius:10px;gap:10px;flex-wrap:wrap;align-items:center">
-      <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="dhSelAll"/> 全选本日</label>
-      <span id="dhSelCnt" class="muted small">已选 0 条</span>
-      <button class="btn sm primary" id="dhExport">⬇ 导出选中为PDF</button>
-      <button class="btn sm ghost" id="dhClear">清除选择</button>
-    </div>`));
-    setTimeout(() => {
-      const news = (d.news || []);
-      const checks = Array.prototype.slice.call(box.querySelectorAll(".dh-check"));
-      const selbar = box.querySelector("#dhSelbar");
-      const cnt = box.querySelector("#dhSelCnt");
-      const all = box.querySelector("#dhSelAll");
-      if (!checks.length || !selbar) return;
-      const upd = () => {
-        const sel = checks.filter(c => c.checked);
-        selbar.style.display = sel.length ? "flex" : "none";
-        cnt.textContent = "已选 " + sel.length + " 条";
-        if (all) all.checked = sel.length > 0 && sel.length === checks.length;
-      };
-      checks.forEach(c => { c.onchange = upd; });
-      if (all) all.onchange = () => { checks.forEach(c => { c.checked = all.checked; }); upd(); };
-      const ex = box.querySelector("#dhExport");
-      if (ex) ex.onclick = () => {
-        const sel = checks.filter(c => c.checked).map(c => news[+c.getAttribute("data-i")]).filter(Boolean);
-        if (!sel.length) { try { UI.toast("请先勾选要导出的时政"); } catch (e) {} return; }
-        let html = `<h1>📅 ${esc(d.title || date)} · 时政精选（${sel.length} 条）</h1><hr/>`;
-        sel.forEach((n, i) => {
-          html += `<div style="margin:12px 0;page-break-inside:avoid"><h3>${i + 1}. ${esc(n.title || "")}</h3>`;
-          if (n.body) html += `<p>${esc(n.body).replace(/\n/g, "<br/>")}</p>`;
-          html += `</div>` + (i < sel.length - 1 ? "<hr/>" : "");
-        });
-        if (window.PDF && window.PDF.exportHtml) window.PDF.exportHtml("时政精选（" + sel.length + "条）", html);
-        try { UI.toast("已生成PDF，请在打印窗口选择「另存为 PDF」"); } catch (e) {}
-      };
-      const cl = box.querySelector("#dhClear");
-      if (cl) cl.onclick = () => { checks.forEach(c => { c.checked = false; }); upd(); };
-    }, 0);
     if (!P) return;
     const g = P.grid();
     [["verbal", "🗣 言语理解 · " + (d.verbal || []).length + " 题", "言语理解"],
@@ -756,6 +736,8 @@
     }
     if (!P) { host.appendChild(UI.el(`<div class="muted small">已生成 ${days.length} 天，请刷新页面后查看。</div>`)); return; }
     const grid = P.grid();
+    /* ★日期级多选导出 PDF（用户 23:06 死命令：多选「一整个文件（整天）」下载，不是页内每小句） */
+    const dhSel = new Set();
     days.forEach((d, i) => {
       if (!map[d]) {
         /* 灰色占位按钮：今天的内容还没生成 */
@@ -781,9 +763,104 @@
       const stamp = genTimeLabel(map[d]);
       if (tSpan && stamp) tSpan.insertAdjacentHTML("beforeend",
         '<span style="display:block;font-weight:400;font-size:11px;color:var(--txt-dim);margin-top:3px">' + esc(stamp) + "</span>");
+      /* 日期勾选框（点击勾选不触发进入当天页） */
+      const chk = document.createElement("label");
+      chk.className = "dh-date-sel";
+      chk.style.cssText = "position:absolute;top:6px;right:8px;display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;z-index:2";
+      chk.innerHTML = '<input type="checkbox" class="dh-date-check" data-d="' + esc(d) + '"/> 选';
+      chk.onclick = (ev) => ev.stopPropagation();
+      chk.querySelector("input").onclick = (ev) => ev.stopPropagation();
+      chk.querySelector("input").onchange = (ev) => {
+        if (ev.target.checked) dhSel.add(d); else dhSel.delete(d);
+        updDhBar();
+      };
+      tEl.style.position = "relative";
+      tEl.appendChild(chk);
       grid.appendChild(tEl);
     });
     host.appendChild(grid);
+    /* 多选工具条：导出选中的「整天」内容为 PDF */
+    const dhBar = UI.el(`<div id="dhSelbar" style="display:none;margin:12px 0;padding:10px 12px;background:var(--glass,rgba(127,127,127,.12));border-radius:10px;gap:10px;flex-wrap:wrap;align-items:center">
+      <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="dhSelAll"/> 全选本页</label>
+      <span id="dhSelCnt" class="muted small">已选 0 天</span>
+      <button class="btn sm primary" id="dhExportDays">⬇ 导出选中日期为PDF</button>
+      <button class="btn sm ghost" id="dhClearDays">清除选择</button>
+      <span class="muted small">导出内容为整天的完整文件（时政考点 + 金句 + 题目）</span>
+    </div>`);
+    function dayHtml(date, day) {
+      const es = day.essay || {};
+      let h = `<h1>📅 ${esc(day.title || (date + " 时政"))}</h1><hr/>`;
+      h += hotNewsHtml(day.news).replace(/<ol>/g, '<ol style="padding-left:1.4em">');
+      if (es.topic || (es.paras || []).length || (es.quotes || []).length) {
+        h += `<h2 style="margin-top:14px">✍ 今日申论时评 + 金句</h2>`;
+        if (es.topic) h += `<p><b>核心立意：</b>${esc(es.topic)}</p>`;
+        (es.paras || []).forEach(t => { h += `<p style="text-indent:2em;line-height:1.9">${esc(t)}</p>`; });
+        if ((es.quotes || []).length) {
+          h += `<p><b>必背金句</b></p><ol style="padding-left:1.4em">`;
+          es.quotes.forEach(q => { h += `<li>${esc(q)}</li>`; });
+          h += `</ol>`;
+        }
+      }
+      const vq = (day.verbal || []);
+      if (vq.length) {
+        h += `<h2 style="margin-top:14px">🗣 言语理解（${vq.length} 题）</h2>`;
+        vq.forEach((q, i) => {
+          const L = "ABCD";
+          h += `<div style="margin:10px 0;page-break-inside:avoid"><p><b>${i + 1}. ${esc(q.q || "")}</b></p>`;
+          (q.options || []).forEach((o, k) => { h += `<p>${L[k]}. ${esc(o)}</p>`; });
+          const ai = (typeof q.a === "number") ? q.a : "ABCD".indexOf(String(q.a || "").trim());
+          const ml = q.multi || (typeof q.a === "string" && q.a.length > 1 ? q.a : "");
+          h += `<p><b>答案：${esc(ml || (ai >= 0 ? L[ai] : ""))}</b></p>`;
+          if (q.e) h += `<p style="color:#333">${esc(q.e).replace(/\n/g, "<br/>")}</p></div>`;
+        });
+      }
+      const qq = (day.quiz || []);
+      if (qq.length) {
+        h += `<h2 style="margin-top:14px">📰 时政题（${qq.length} 题）</h2>`;
+        qq.forEach((q, i) => {
+          const L = "ABCD";
+          h += `<div style="margin:10px 0;page-break-inside:avoid"><p><b>${i + 1}. ${esc(q.q || "")}</b></p>`;
+          (q.options || []).forEach((o, k) => { h += `<p>${L[k]}. ${esc(o)}</p>`; });
+          const ai = (typeof q.a === "number") ? q.a : "ABCD".indexOf(String(q.a || "").trim());
+          const ml = q.multi || (typeof q.a === "string" && q.a.length > 1 ? q.a : "");
+          h += `<p><b>答案：${esc(ml || (ai >= 0 ? L[ai] : ""))}</b></p>`;
+          if (q.e) h += `<p style="color:#333">${esc(q.e).replace(/\n/g, "<br/>")}</p></div>`;
+        });
+      }
+      return h;
+    }
+    function updDhBar() {
+      const bar = host.querySelector("#dhSelbar");
+      if (!bar) return;
+      bar.style.display = dhSel.size ? "flex" : "none";
+      const cnt = bar.querySelector("#dhSelCnt");
+      if (cnt) cnt.textContent = "已选 " + dhSel.size + " 天";
+      const all = bar.querySelector("#dhSelAll");
+      if (all) all.checked = dhSel.size > 0 && dhSel.size === days.filter(x => map[x]).length;
+    }
+    setTimeout(() => {
+      const bar = host.querySelector("#dhSelbar");
+      if (!bar) return;
+      const all = bar.querySelector("#dhSelAll");
+      if (all) all.onchange = () => {
+        dhSel.clear();
+        if (all.checked) host.querySelectorAll(".dh-date-check").forEach(c => { c.checked = true; dhSel.add(c.getAttribute("data-d")); });
+        else host.querySelectorAll(".dh-date-check").forEach(c => { c.checked = false; });
+        updDhBar();
+      };
+      const ex = bar.querySelector("#dhExportDays");
+      if (ex) ex.onclick = () => {
+        const ds = Array.from(dhSel).sort().reverse().filter(x => map[x]);
+        if (!ds.length) { try { UI.toast("请先勾选要导出的日期"); } catch (e) {} return; }
+        let html = `<h1 class="sec">📚 每日时政精选（${ds.length} 天）</h1><p class="muted">导出时间 ${new Date().toLocaleString("zh-CN")}</p><hr/>`;
+        ds.forEach((x, i) => { html += dayHtml(x, map[x]); if (i < ds.length - 1) html += `<hr style="margin:18px 0"/>`; });
+        if (window.PDF && window.PDF.exportHtml) window.PDF.exportHtml("每日时政精选（" + ds.length + "天）", html);
+        try { UI.toast("已生成PDF，请在打印窗口选择「另存为 PDF」"); } catch (e) {}
+      };
+      const cl = bar.querySelector("#dhClearDays");
+      if (cl) cl.onclick = () => { dhSel.clear(); host.querySelectorAll(".dh-date-check").forEach(c => { c.checked = false; }); updDhBar(); };
+    }, 0);
+    host.appendChild(dhBar);
     host.appendChild(hotRefreshBar(host));
   }
 
@@ -1175,6 +1252,24 @@
       const askingDetail = /多少|几[成亿元万%]|占比|比例是|规模是|金额是|是多少|如何进行|怎样进行|如何操作|怎样操作|怎么操作|操作方式|实施方式|采购方式/.test(askLine) || /如何进行|怎样进行|如何操作|操作方式/.test(qtxt);
       if (hitNum && (askingDetail || rightTxt.indexOf(hitNum) >= 0)) { bad.push(qi); return; }
       if (askingDetail && /\d/.test(rightTxt)) { bad.push(qi); return; }   // 问数字细节且正确项是数字=考新闻
+      /* ★★答案一致性（v20261008l）：解析声明的答案字母与 a 字段不一致 = 废题（用户 23:06 实锤：
+         解析写【答案】B、判分却判 C，一大片）。多选跳过（看 multi 字段）。 */
+      const isM = q.type === "multi" || q.multi || (typeof q.a === "string" && q.a.length > 1);
+      if (!isM && aIdx >= 0) {
+        const eT = String(q.e || "");
+        const cds = [];
+        let m2;
+        const ra = /【\s*答案\s*】\s*[:：]?\s*([A-D])(?![A-D])/g;
+        while ((m2 = ra.exec(eT))) cds.push(m2[1]);
+        const rb = /(?:故本题选|本题选|故选|应选|故正确答案为|正确答案[是为]|正确选项[是为])\s*[:：]?\s*([A-D])(?![A-D])/g;
+        while ((m2 = rb.exec(eT))) cds.push(m2[1]);
+        if (cds.length) {
+          const fq = {}; cds.forEach(c => { fq[c] = (fq[c] || 0) + 1; });
+          let bs = cds[cds.length - 1], bn2 = 0;
+          Object.keys(fq).forEach(k => { if (fq[k] > bn2) { bn2 = fq[k]; bs = k; } });
+          if ("ABCD".indexOf(bs) !== aIdx) { bad.push(qi); return; }   // 解析与字段不一致=废题
+        }
+      }
       // ★修正：旧版取「前 20 字」做去重键，而规则要求长引子前置 → 多题开头雷同被误判重复
       //       → 大批废题 → 题量不足 → 直接抛「内容不完整」= 生成失败。改为全文去重。
       const key = String(q.q || "").replace(/\s+/g, "");
@@ -1326,6 +1421,7 @@
       "多选 {\"q\":\"（今日时政一两句作背景引入）…\\n（多选）下列表述符合政治理论原文的有\",\"options\":[4项独立知识表述],\"a\":\"ABC\",\"type\":\"multi\",\"multi\":\"ABC\",\"e\":\"【答案】ABC\\n【解析】…\"}，a 为 2-4 个字母、组合不重复。" +
       "★★选项内容红线（用户 01:44 抓到现行）：每个选项必须是完整、具体、有实质内容的一句话或一个词组，严禁偷懒只写 \"A\" \"B\" \"C\" \"D\" 字母占位，严禁写「以上都对」「以上都不对」这类空洞选项——数量辨析题的 \"1项/2项/3项/4项\" 除外。" +
       "★多选选项红线：A/B/C/D 每个选项必须是【一句独立的知识表述】，严禁把答案字母组合（如 ABC、ABD）当成选项内容，严禁选项只写字母——考生要能点选多个后确认。" +
+      "★★★a 字段与解析绝对一致（最严重事故红线）：a 的 0 基索引换算出的字母，必须与 e 里【答案】X 和【解析】末尾「故本题选X」完全相同。写完每题必须自检一遍：a=1 就是 B，解析就必须写【答案】B、故本题选B；出现「解析说B但a指向C」= 本题作废且重写。" +
       "★★禁考新闻数字细节（用户 18:04 死命令，v20261008h）：严禁出「××为多少亿元」「将如何进行××操作」「占比是多少」这类整题都在考今天新闻数字/操作流程细节的题；今天的新闻数据（票房、金额、场次等）最多在背景引子里自然带过，设问和正确项必须落在政治理论知识上。" +
       redline;
     const p3 = base + kpFinal +
