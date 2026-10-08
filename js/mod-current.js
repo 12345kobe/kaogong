@@ -933,58 +933,38 @@
     return out.join("\n");
   }
 
-  /* ★★言语出题「先定组、再钉死选项」：从真题近义词组里为每题选定一组（双空选两组），
-     直接把四个选项词与正确答案序号写死注入 prompt，AI 只能围绕今日时政写一段能装进这组词的严谨文段。
-     生成后再逐项比对：选项词与钉死词集不一致 → 按同组重生成，杜绝「文不对题 / 选项跑题」。 */
-  function verbalPlan(seedText, date, n) {
+  /* ★★言语出题「语境优先」（v20261008h，用户死命令）：废除 v20261008g 的「先定组钉死选项」——
+     钉死组会强迫 AI 把正面文段硬塞进消极词组（如把「敷衍了事」钉成正确项配国庆票房成就语境），
+     文段装不下 → 大批废题 → 只剩1题。
+     新方向：AI 先写文段、按语境定一个最恰当的正确词；干扰项优先从该词所在近义组的其余词里取
+     （同组互为近义 → 天然强迷惑），凑不齐再从词库其它组取同字数词。
+     本函数只负责从 KG_KP_VERBAL 抽出「可选用词库」注入 prompt。 */
+  function verbalBank(seedText, date, nGroups) {
     const V = window.KG_KP_VERBAL;
     const gs = (V && V.nearGroups && V.nearGroups.length) ? V.nearGroups
       : (V && V.idiomGroups || []).map(function (g) { return { w: g.w }; });
-    if (!gs.length) return { specs: [], text: "" };
+    if (!gs.length) return "";
     const d = new Date();
-    const base = ((d.getMonth() * 31 + d.getDate()) * 7) % gs.length;
+    const base = ((d.getMonth() * 31 + d.getDate()) * 7 + (V.nearGroups ? 0 : 1)) % gs.length;
     const used = {};
-    function shuffle(arr) {
-      for (let i = arr.length - 1; i > 0; i--) {
-        const j = (base + i * 5 + arr.length) % (i + 1);
-        const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
-      }
-      return arr;
-    }
-    function pickGroup() {
+    const lines = [];
+    for (let i = 0; i < (nGroups || 12) && i < gs.length; i++) {
+      let idx = -1;
       for (let k = 0; k < gs.length; k++) {
-        const idx = (base + Object.keys(used).length * 13 + k * 7) % gs.length;
-        if (!used[idx] && gs[idx] && gs[idx].w && gs[idx].w.length === 4) { used[idx] = 1; return gs[idx]; }
+        const c = (base + i * 17 + k * 3) % gs.length;
+        if (!used[c] && gs[c] && gs[c].w && gs[c].w.length === 4) { idx = c; break; }
       }
-      const idx = (base + Object.keys(used).length) % gs.length; used[idx] = 1; return gs[idx];
+      if (idx < 0) idx = (base + i) % gs.length;
+      used[idx] = 1;
+      const w = gs[idx].w.slice(0, 4);
+      lines.push("· " + w.join("、"));
     }
-    const specs = [];
-    for (let i = 0; i < (n || 5); i++) {
-      const double = (i % 3 !== 0);  // 双空约占 2/3，单空约 1/3
-      if (double) {
-        const g1 = pickGroup(), g2 = pickGroup();
-        const opts = shuffle([0, 1, 2, 3].map(k => g1.w[k] + " " + g2.w[k]));
-        const answer = opts.indexOf(g1.w[0] + " " + g2.w[0]);
-        specs.push({ blanks: 2, groups: [g1.w.slice(), g2.w.slice()], options: opts, answer: answer });
-      } else {
-        const g = pickGroup();
-        const opts = shuffle(g.w.slice());
-        const answer = opts.indexOf(g.w[0]);
-        specs.push({ blanks: 1, groups: [g.w.slice()], options: opts, answer: answer });
-      }
+    let out = "【本次可选用词库（近义词组，正确词与干扰项都优先从这里选）】\n" + lines.join("\n");
+    if (V.exemplars && V.exemplars.length) {
+      const e = V.exemplars[(d.getMonth() * 31 + d.getDate()) % V.exemplars.length];
+      out += "\n【真题形制范本】（只学形制与题干风格，原书无答案）：" + String(e.q || "").slice(0, 200);
     }
-    const text = specs.map(function (s, idx) {
-      let h = "【第" + (idx + 1) + "题 · " + (s.blanks === 2 ? "双空逻辑填空" : "单空逻辑填空") + "】\n";
-      h += "· 空处候选词（必须从这些词里选，不得自造、不得替换）："
-        + (s.blanks === 2
-            ? ("空一：" + s.groups[0].join("、") + "；空二：" + s.groups[1].join("、"))
-            : (" " + s.groups[0].join("、")))
-        + "\n";
-      h += "· 四个选项（严格照抄以下文字，顺序不可改动；正确答案为第 " + (s.answer + 1) + " 项）：\n";
-      s.options.forEach(function (o, k) { h += "    " + (k + 1) + ". " + o + "\n"; });
-      return h;
-    }).join("\n");
-    return { specs: specs, text: text };
+    return out;
   }
 
   /* ★★时政出题「先判主题、再按主题配知识点」：把当天每条真新闻归类到 KP_TOPIC_KW 主题，
@@ -1044,16 +1024,16 @@
     "2. ★★题干硬指标（不满足=废题）：①正文 100-200 字（不含设问句）；②至少 3 个分句，逻辑链条清晰；③必须以今日中国时政作为背景材料展开成段（把今天的事件/政策/数据自然写进文段作为语境），严禁写成「为了改善民生，政府____加大了投入」这类三四十字的干巴句；④禁「背景：」「材料：」标签；国际新闻不作背景。\n" +
     "3. ★真题形制（对齐《逻辑填空800题》）：设空用 ____；题干末尾固定设问「依次填入画横线部分最恰当的一项是：」（单空题用「填入画横线部分最恰当的一项是：」）。\n" +
     "4. ★空与选项严格对应：设 N 个 ____（N=1/2/3，以 2 空为主）；单空=每选项 1 个词，N 空=每选项 N 个词（一个空格分隔）。空数必须等于选项词数，错配=废题。\n" +
-    "5. ★★用词来源（最重要）：空处只填【四字成语】或【两字实词】；每个空位的四个选项词必须取自上面【本次可选用的近义词组】中的同一组（组内互为近义 → 天然强迷惑）。★空处词必须与语境搭配成立（写完把句子读一遍：通顺、合逻辑；严禁出现「政府____加大了投入」配「各有千秋」这类驴唇不对马嘴的搭配）。严禁三字词、严禁动词+「了/着/过」、严禁自造词。\n" +
+    "5. ★★用词来源与定答案顺序（最重要，用户死命令）：★先写文段、后定词——先按今日时政把语境写顺，空处的正确词由语境决定（必须搭配成立：写完把句子读一遍，通顺、合逻辑；严禁「政府____加大了投入」配「各有千秋」这类驴唇不对马嘴的搭配），再从【本次可选用词库】里选最贴语境的词作正确项；干扰项优先取该正确词所在近义词组的其余词（同组互为近义 → 天然强迷惑），同组不足 4 个再从词库其它组补同字数、同词性的词。空处只填【四字成语】或【两字实词】；严禁三字词、严禁动词+「了/着/过」、严禁自造词、严禁词库外的生僻词。\n" +
     "6. ★同空同字数：同一空位四选项字数完全一致（同为四字或同为两字）。\n" +
     "7. ★选项设置（阿里木江挖坑套路反向运用）：四个词都「看似可行」，靠语境线索择优；干扰项在【搭配对象 / 抽象与实物 / 程度轻重 / 感情色彩 / 语义重复】上各有一处不匹配；正确项与语境线索严丝合缝。\n" +
     "8. ★解析必须按阿里木江两步法逐空书写：第一步【找语境线索】——①看搭配：横线词修饰对象、理清主谓宾，注意「A和B」并列结构；②找解释对应：逗号/冒号/破折号/「也就是说」「即」「这表明」之后对横线的解释；③找逻辑关联词：转折=语义相反、并列=近义或反义且词性一致、递进=方向一致程度前轻后重、因果=呼应、条件=匹配。第二步【辨析词语】——程度轻重、感情色彩（褒/贬/中性）、形象化表达（比喻前后对应，如「历史长河」配「乘风破浪」）、语法搭配（抽象/实物名词、动词/名词），并逐项指出三个干扰项各错在哪一处；点明「不选与原文语义重复的词」；最后附【文段出处】。\n" +
     "9. ★禁文号/序列号（用户死命令）：题干严禁出现文件文号、括号序号等公文琐碎信息（如「发改价格〔2009〕2879号」「〔2011〕2219号」「〔2015〕571号」这类一律禁止）；数字一律用自然语言融入句子。题干必须语句通顺、像一段正常人写的时政短文。\n" +
-    "10. ★空数与选项词数绝对匹配（错配=废题）：题干设 1 个空，每个选项就只许 1 个词；设 2 个空，每个选项就恰好 2 个词（空格分隔）。绝不允许「题干 1 空、选项 2 词」。\n" +
-    "11. 正确答案 A/B/C/D 分布尽量均匀。输出前逐题自检：正文 100-200 字？≥3 分句？今日时政背景写进文段了？空数=选项词数？空处搭配通顺？无「了」类词？无三字词？同空同字数？词来自给定近义词组？无文号序列号？任一不满足就重写该题。\n" +
-    "12. ★★语体铁律（用户死命令）：文段必须严格采用公务员考试真题的书面政论语体——客观、严谨、平实，杜绝一切口语化、网络化、感叹式、主观抒情表达（如「啥」「蛮」「贼」「真的」「咱们」「太…了」一律禁止）；保持《人民日报》/新华时评式的规范文风。\n" +
-    "13. ★★选项必须照抄：下方每题已给定【四个选项文字】与【正确答案序号】，你必须原样使用，严禁增删改字、严禁另写选项、严禁改动答案序号；你只负责写背景文段与逐空解析，使正确答案在语境中成立、其余三项因语境线索不成立。\n" +
-    "14. ★★解析必出（无解析=废题）：每题 e 字段必须按阿里木江两步法书写完整解析（第一步找语境线索、第二步辨析词语并逐项指出三个干扰项各错在哪一处），且长度≥120字；解析须明确回指本题四个选项中的具体词，严禁空泛套话。\n";
+    "10. ★空数与选项词数绝对匹配（错配=废题）：题干设 1 个空，每个选项就只许 1 个词；设 2 个空，每个选项就恰好 2 个词（空格分隔）。绝不允许「题干 1 空、选项 2 词」。每题必须恰好 4 个选项。\n" +
+    "11. ★★正确项感情色彩铁律（用户死命令，v20261008h）：正确项的感情色彩、语义方向必须与文段语境一致——文段讲成就、成效、向好趋势（如票房增长、经济发展、民生改善）时，正确项必须是积极/中性词，严禁把贬义词（敷衍了事、浮光掠影、避重就轻、挂一漏万、竭泽而渔、饮鸩止渴等）设为正确项；文段讲问题、教训、风险时才可让中性偏贬词作正确项。设干扰项时同理反向运用。每题写完后自检：把正确项代入横线读全句，语境不成立就换词重写。\n" +
+    "12. 正确答案 A/B/C/D 分布尽量均匀。输出前逐题自检：正文 100-200 字？≥3 分句？今日时政背景写进文段了？空数=选项词数？选项恰好4个？空处搭配通顺？正确项感情色彩与语境一致？无「了」类词？无三字词？同空同字数？无文号序列号？任一不满足就重写该题。\n" +
+    "13. ★★语体铁律（用户死命令）：文段必须严格采用公务员考试真题的书面政论语体——客观、严谨、平实，杜绝一切口语化、网络化、感叹式、主观抒情表达（如「啥」「蛮」「贼」「真的」「咱们」「太…了」一律禁止）；保持《人民日报》/新华时评式的规范文风。\n" +
+    "14. ★★解析必出且必须回指正确项（无解析=废题）：每题 e 字段必须按阿里木江两步法书写完整解析（第一步找语境线索、第二步辨析词语并逐项指出三个干扰项各错在哪一处），且长度≥120字；解析必须原样出现本题正确项的词语和三个干扰项的词语（逐一点名），严禁空泛套话。\n";
 
   /* ===== 时政客观题 硬性命题规则（公考真题范式，铁律）===== */
   const QUIZ_RULES =
@@ -1068,13 +1048,15 @@
     "8. ★禁文号/序列号：题干严禁出现「发改价格〔2009〕2879号」这类文号、括号序号等公文琐碎信息；引用文件直接用《文件名》。\n" +
     "9. ★解析：先引知识点原文说明正确项为何对，再逐条指出每个错误项偷换了哪个关键词/数字/主体，结尾「故本题选X。」禁止写「对应易错点第X条」。\n";
 
-  /* 校验言语题（v20261007g）：
-     ①题干≥50字；②空数=选项词数；③同一空位四选项字数一致；
-     ④禁动词+「了」；⑤★禁三字词（只许两字/四字） */
+  /* 校验言语题（v20261008h）：
+     ①题干≥100字；②空数=选项词数；③同一空位四选项字数一致；
+     ④禁动词+「了」；⑤禁三字词（只许两字/四字）；⑥选项恰好4个；
+     ⑦解析必须回指本题正确项与全部干扰项的词（阿里木江逐项辨析，防空泛套话） */
   function validateVerbal(list) {
     const bad = [];
     (list || []).forEach((q, qi) => {
       if (!q || !Array.isArray(q.options)) return;
+      if (q.options.length !== 4) { bad.push(qi); return; }              // ★必须恰好4个选项
       const qtxt = String(q.q || "");
       if (Array.from(qtxt).length < 100) { bad.push(qi); return; }        // ★题干太短（用户死命令：正文 100-200 字）
       const blanks = (qtxt.match(/_{2,}/g) || []).length;   // ★每个空位无论几个下划线都算 1 空
@@ -1090,8 +1072,18 @@
         const lens = perOpt.map(w => Array.from(w[i] || "").length);
         if (new Set(lens).size > 1) { bad.push(qi); break; }               // 同空混字数
       }
+      if (bad.indexOf(qi) >= 0) return;
+      const aIdx = (typeof q.a === "number") ? q.a
+        : (typeof q.a === "string" && /^[A-D]$/.test(String(q.a).trim())) ? "ABCD".indexOf(String(q.a).trim()) : -1;
+      if (aIdx < 0 || aIdx > 3) { bad.push(qi); return; }
       const e = String(q.e || "").replace(/\s/g, "");
       if (e.length < 60) { bad.push(qi); return; }   // ★解析必出（用户死命令：无解析/空泛=废题）
+      /* ★解析必须点名正确项与全部干扰项的词（阿里木江逐项辨析的硬校验） */
+      const rightWords = perOpt[aIdx] || [];
+      const allWords = [].concat.apply([], perOpt);
+      if (!rightWords.length || !rightWords.every(w => e.indexOf(w) >= 0)) { bad.push(qi); return; }
+      const pointed = allWords.filter(w => e.indexOf(w) >= 0).length;
+      if (pointed < allWords.length) { bad.push(qi); return; }           // 三个干扰项也必须逐一点名
     });
     return bad;
   }
@@ -1108,9 +1100,15 @@
     return bad;
   }
 
-  /* 校验时政题（v20261007g）：
-     ①选项是字母组合（如 ABC/ABD，AI 把答案组合当选项输出=废题）；②题目重复；③多选无 multi 标记 */
-  function validateQuiz(list) {
+  /* 校验时政题（v20261008h）：
+     ①选项是字母组合（如 ABC/ABD，AI 把答案组合当选项输出=废题）；②题目重复；③多选无 multi 标记；
+     ④★考「新闻数字细节/操作流程」=废题（用户死命令：时政只作背景引入，
+        严禁「票房为多少亿元」「如何进行买断式逆回购操作」这类整题考今天新闻本身的题） */
+  function validateQuiz(list, matText) {
+    /* 从今日素材提取具体数字 token（带单位，避免误伤知识点里的普通数字） */
+    const matNums = {};
+    String(matText || "").replace(/(\d[\d,.]*)\s*(亿|万|万亿|个百分点|%|元|米|平方公里|公里|吨|架|枚|艘|列|场|万千瓦|万元)/g,
+      function (m, n, u) { const t = n.replace(/[.,]$/, "") + u; if (t.length >= 3) matNums[t] = 1; return m; });
     const seen = {}, bad = [];
     (list || []).forEach((q, qi) => {
       if (!q || !Array.isArray(q.options) || q.options.length < 3) { bad.push(qi); return; }
@@ -1125,6 +1123,17 @@
       if (bare >= 2 || weak >= 2) { bad.push(qi); return; } // 占位/空洞选项=废题
       if (letterOpt >= 3) { bad.push(qi); return; }                        // 字母组合当选项
       if (q.type === "multi" && !q.multi) { bad.push(qi); return; }
+      /* ★★考新闻数字细节/操作流程 = 废题（v20261008h 用户死命令）：
+         题干出现素材里的具体数字且（正确项也是该数字 或 设问句在问「多少/如何操作」）→ 整题在考今天新闻本身 */
+      const qtxt = String(q.q || "");
+      const askLine = (qtxt.split(/\n/).filter(s => s.trim()).pop() || "");  // 设问句=最后一个非空段
+      const aIdx = (typeof q.a === "number") ? q.a
+        : (typeof q.a === "string" && /^[A-D]$/.test(q.a.trim())) ? "ABCD".indexOf(q.a.trim()) : -1;
+      const rightTxt = (aIdx >= 0 && aIdx < q.options.length) ? String(q.options[aIdx] || "") : "";
+      const hitNum = Object.keys(matNums).find(t => qtxt.indexOf(t) >= 0);
+      const askingDetail = /多少|几[成亿元万%]|占比|比例是|规模是|金额是|是多少|如何进行|怎样进行|如何操作|怎样操作|怎么操作|操作方式|实施方式|采购方式/.test(askLine) || /如何进行|怎样进行|如何操作|操作方式/.test(qtxt);
+      if (hitNum && (askingDetail || rightTxt.indexOf(hitNum) >= 0)) { bad.push(qi); return; }
+      if (askingDetail && /\d/.test(rightTxt)) { bad.push(qi); return; }   // 问数字细节且正确项是数字=考新闻
       // ★修正：旧版取「前 20 字」做去重键，而规则要求长引子前置 → 多题开头雷同被误判重复
       //       → 大批废题 → 题量不足 → 直接抛「内容不完整」= 生成失败。改为全文去重。
       const key = String(q.q || "").replace(/\s+/g, "");
@@ -1202,11 +1211,11 @@
       } catch (e) {}
     }
 
-    /* ★言语：先定组、钉死选项（vPlan.specs 为每题写死的选项与答案，杜绝文不对题）；
-       时政：先判主题、按主题把「同主题新闻 + 同主题政治理论知识点」配对（themeBlock）。 */
-    const vPlan = verbalPlan(matAll + date, date, 5);
-    const vPlanText = vPlan.text
-      ? "\n\n【★本题选项与正确答案已为你写死，必须原样照抄（见各题「四个选项」与「正确答案为第X项」），你只负责写背景文段与逐空解析，不得改动选项文字与答案序号】\n" + vPlan.text
+    /* ★言语「语境优先」（v20261008h）：只注入可选用词库，AI 先写文段按语境定正确词，
+       干扰项从同组近义词里挑；时政：先判主题、按主题把「同主题新闻 + 同主题政治理论知识点」配对（themeBlock）。 */
+    const vBankText = verbalBank(matAll + date, date, 12);
+    const vBankBlock = vBankText
+      ? "\n\n【★言语用词库（见下方 verbal 出题规则）：正确词由语境决定后从词库里选，干扰项优先取正确词同组近义词】\n" + vBankText
       : "";
     const themeBlock = news.length ? themePlanBlock(news) : "";
     const kpFinal = (themeBlock && themeBlock.length > 20) ? themeBlock
@@ -1214,54 +1223,58 @@
 
     /* 2/4 言语理解 5 题 */
     if (window.KGProgress) KGProgress.show("AI 生成言语理解 5 题 · 2/4…", 42);
-    const p2 = base +
+    const verbalSpec =
       "\n\n【输出要求】只输出一个 JSON 数组，恰好 5 道「言语理解·逻辑填空」题，不要任何说明文字、不要 markdown 代码块。" +
-      "双空题格式：{\"q\":\"长背景材料（100-200字、至少3个分句，公考书面政论语体）…____…____\",\"options\":[\"词一 词二\",\"词三 词四\",\"词五 词六\",\"词七 词八\"],\"a\":0,\"e\":\"逐空逐项解析（阿里木江两步法，≥120字）\"}；" +
+      "双空题格式：{\"q\":\"长背景材料（100-200字、至少3个分句，公考书面政论语体）…____…____\",\"options\":[\"词一 词二\",\"词三 词四\",\"词五 词六\",\"词七 词八\"],\"a\":0,\"e\":\"逐空逐项解析（阿里木江两步法，≥120字，原样点名全部四个选项的词）\"}；" +
       "单空题格式：{\"q\":\"长背景材料（100-200字、至少3个分句，公考书面政论语体）…____…\",\"options\":[\"词一\",\"词二\",\"词三\",\"词四\"],\"a\":0,\"e\":\"…\"}。" +
-      "空数必须与选项词数一致（1空对1词、2空对2词）。a 为正确选项 0 基数字。" +
-      vPlanText +
+      "空数必须与选项词数一致（1空对1词、2空对2词），每题恰好 4 个选项。a 为正确选项 0 基数字。" +
+      vBankBlock +
       VERBAL_RULES;
-    /* 把 AI 产出的选项/答案强制对齐到钉死的 vPlan（保证格式与答案零错误），再逐题校验 */
-    function alignVerbal(list) {
-      return (list || []).map(function (q, i) {
-        const s = vPlan.specs[i];
-        if (q && s) { q.options = s.options.slice(); q.a = s.answer; }
-        return q;
+    const p2 = base + verbalSpec;
+    function verbalDedupe(list) { // 生成后去重（按题干全文）
+      const seen = {}; const out = [];
+      (list || []).forEach(function (q) {
+        const k = String(q && q.q || "").replace(/\s+/g, "");
+        if (k && !seen[k]) { seen[k] = 1; out.push(q); }
       });
+      return out;
     }
-    function vPlanMatch(list) {
-      const bad = [];
-      (list || []).forEach(function (q, i) {
-        const s = vPlan.specs[i];
-        if (!q || !s) { bad.push(i); return; }
-        const toks = [].concat.apply([], q.options.map(function (o) {
-          return String(o).split(/[／/；;、\s]+/).map(function (x) { return x.trim(); }).filter(Boolean);
-        })).sort();
-        const want = [].concat.apply([], s.groups).sort();
-        if (JSON.stringify(toks) !== JSON.stringify(want)) bad.push(i);
-      });
-      return bad;
-    }
-    let verbal = alignVerbal(await genSeg(p2, "AI 生成言语理解 5 题…", 45, 5, 6000, 3));
+    let verbal = verbalDedupe(await genSeg(p2, "AI 生成言语理解 5 题…", 45, 5, 8000, 3));
+    /* 重试：带着「错在哪」再生成一次 */
     let vbad = validateVerbal(verbal);
     if (vbad.length) {
-      /* 字数/规则/选项未过：带着「错在哪」再生成一次（同一组词，保证题量） */
       try {
         const p2b = p2 +
-          "\n\n【上一稿校验失败】第 " + vbad.map(i => i + 1).join("、") + " 题违规（任一：正文不足100字或不足3个分句；空数与选项词数不匹配；选项含「了」类词；出现三字词；同一空位四选项字数不一致；用词不在钉死词集内；解析缺失或空泛）。必须重新输出完整 5 题。";
-        const d2b = alignVerbal(await genSeg(p2b, "言语题修正重生成…", 52, 5, 6000, 2));
-        if (d2b && d2b.length >= 5 && validateVerbal(d2b).length <= vbad.length) verbal = d2b;
+          "\n\n【上一稿校验失败】第 " + vbad.map(i => i + 1).join("、") + " 题违规（任一：正文不足100字或不足3个分句；空数与选项词数不匹配；选项不足4个；正确项感情色彩与语境矛盾（正面成就文段配了贬义正确项）；选项含「了」类词；出现三字词；同一空位四选项字数不一致；解析缺失/未逐项点名四个选项的词）。必须重新输出完整 5 题。";
+        const d2b = verbalDedupe(await genSeg(p2b, "言语题修正重生成…", 52, 5, 8000, 2));
+        const merged = verbalDedupe(verbal.concat(d2b));
+        if (validateVerbal(merged).length <= validateVerbal(verbal).length) verbal = merged;
       } catch (e) {}
-      /* 仍有个别废题：再补一轮（同组） */
-      if (validateVerbal(verbal).length) {
-        try {
-          const p2c = p2 +
-            "\n\n【仍有废题，必须补齐到完整 5 题且全部合规】；尤其保证 e 解析字段完整（≥120字、回指本题四个选项具体词）。";
-          const d2c = alignVerbal(await genSeg(p2c, "言语题二次修正…", 56, 5, 6000, 2));
-          if (d2c && d2c.length >= 5) verbal = d2c;
-        } catch (e) {}
-      }
     }
+    /* ★逐题补齐循环（用户死命令：不许只剩一两道题）：剔废题后不足 5 道，
+       就把已用题干列为「不得重复」继续补，最多 4 轮，直到凑满 5 道合规题。 */
+    for (let round = 0; round < 4 && validateVerbal(verbal).length; round++) {
+      const bs = new Set(validateVerbal(verbal));
+      verbal = verbal.filter((_, i) => !bs.has(i));
+      if (verbal.length >= 5) break;
+      const need = 5 - verbal.length;
+      const usedHeads = verbal.map(q => String(q.q || "").replace(/\s+/g, "").slice(0, 30)).filter(Boolean);
+      try {
+        const p2c = base + verbalSpec +
+          "\n\n【补齐任务】现在只缺 " + need + " 道合规题，请只输出 " + need + " 道全新的言语理解题（不要重复输出已有题目）。" +
+          "已用题干开头（严禁再写相同开头/相同主题文段）：" + (usedHeads.join("；") || "（无）") + "。";
+        const more = verbalDedupe(await genSeg(p2c, "言语题补齐（第 " + (round + 1) + " 轮）…", 56, Math.max(1, need - 1), 8000, 2));
+        verbal = verbalDedupe(verbal.concat(more));
+      } catch (e) { break; }
+    }
+    /* 最终剔废（此时通常已满 5 道合规题） */
+    (function () {
+      const vb = validateVerbal(verbal);
+      if (vb.length) {
+        const bs = new Set(vb);
+        verbal = verbal.filter((_, i) => !bs.has(i));
+      }
+    })();
 
     /* 3/4 时政单选 7 道 */
     if (window.KGProgress) KGProgress.show("AI 生成时政单选题 7 道 · 3/4…", 62);
@@ -1272,6 +1285,7 @@
       "多选 {\"q\":\"（今日时政一两句作背景引入）…\\n（多选）下列表述符合政治理论原文的有\",\"options\":[4项独立知识表述],\"a\":\"ABC\",\"type\":\"multi\",\"multi\":\"ABC\",\"e\":\"【答案】ABC\\n【解析】…\"}，a 为 2-4 个字母、组合不重复。" +
       "★★选项内容红线（用户 01:44 抓到现行）：每个选项必须是完整、具体、有实质内容的一句话或一个词组，严禁偷懒只写 \"A\" \"B\" \"C\" \"D\" 字母占位，严禁写「以上都对」「以上都不对」这类空洞选项——数量辨析题的 \"1项/2项/3项/4项\" 除外。" +
       "★多选选项红线：A/B/C/D 每个选项必须是【一句独立的知识表述】，严禁把答案字母组合（如 ABC、ABD）当成选项内容，严禁选项只写字母——考生要能点选多个后确认。" +
+      "★★禁考新闻数字细节（用户 18:04 死命令，v20261008h）：严禁出「××为多少亿元」「将如何进行××操作」「占比是多少」这类整题都在考今天新闻数字/操作流程细节的题；今天的新闻数据（票房、金额、场次等）最多在背景引子里自然带过，设问和正确项必须落在政治理论知识上。" +
       redline;
     const p3 = base + kpFinal +
       "\n\n【输出要求】生成时政【单选】题，恰好 7 道。★同主题强呼应（用户重点治理项）：每题必须从下方【主题：X】块中，选取「同一个主题」的一条新闻作一两句背景引入，并选取「该主题」的一个知识点设问——背景新闻与考察考点必须属于同一主题，严禁拿 A 主题的新闻配 B 主题的考点。真正设问与正确项必须取自该主题的知识点原文。" +
@@ -1288,19 +1302,30 @@
     let multi = [];
     try {
       multi = await genSeg(p4, "AI 生成时政多选题…", 82, 3, 6000, 3);
-    } catch (e) { console.warn("[时政] 多选生成失败，以单选题补足", e); }
+    } catch (e) { console.warn("[时政] 多选生成失败，自动重试补足", e); }
+    /* ★多选不足 3 道 → 补生成多选（用户铁律：7 单选 + 3 多选，绝不用单选顶替多选） */
+    multi = (Array.isArray(multi) ? multi : []).filter(q => q && q.type === "multi" && q.multi);
+    if (multi.length < 3) {
+      const need = 3 - multi.length;
+      const usedHeads = (Array.isArray(single) ? single : []).concat(multi)
+        .map(q => String(q && q.q || "").replace(/\s+/g, "").slice(0, 30)).filter(Boolean).slice(0, 10);
+      try {
+        const p4b = base + kpFinal +
+          "\n\n【补齐任务】现在只缺 " + need + " 道时政【多选】题，请只输出 " + need + " 道全新的多选题（不要重复已有题目）。" +
+          "每题 options 必须是 4 个【独立的知识表述】，type=multi、multi=答案字母组合（2-4 个字母、组合不重复）。" +
+          "已用题干开头（严禁重复）：" + (usedHeads.join("；") || "（无）") + "。只输出一个 JSON 数组。" + quizSpec;
+        const more = await genSeg(p4b, "AI 补齐时政多选题…", 84, Math.max(1, need - 1), 6000, 2);
+        multi = multi.concat((Array.isArray(more) ? more : []).filter(q => q && q.type === "multi" && q.multi));
+      } catch (e) {}
+    }
 
-    /* ★言语废题剔除（宁缺毋滥）：重生成后仍不合格（含解析缺失）的题直接丢掉；
-       选项/答案已强制对齐 vPlan.specs，确保留下的题格式与答案零错误。 */
+    /* （言语剔废与补齐已在上方逐轮完成，此处无需再处理） */
     (function () {
       const vb = validateVerbal(verbal);
       if (vb.length) {
         const bs = new Set(vb);
-        const good = verbal.filter((_, i) => !bs.has(i));
-        if (good.length >= 1) verbal = good;   // 只要留下≥1 道合规题就呈现，避免把坏题漏给用户
+        verbal = verbal.filter((_, i) => !bs.has(i));   // 仍不合格的题直接丢掉，绝不让坏题漏给用户
       }
-      /* 最终兜底：把留下题的选项/答案再对齐一次钉死值，彻底杜绝渲染错配 */
-      verbal = alignVerbal(verbal);
     })();
 
     let quiz = (Array.isArray(single) ? single : []).concat(Array.isArray(multi) ? multi : []);
@@ -1316,22 +1341,27 @@
       }
       return q;
     });
-    /* 校验剔除废题：字母组合当选项 / 完全重复 / 多选缺标记 */
-    let qbad = validateQuiz(quiz);
+    /* 校验剔除废题：字母组合当选项 / 完全重复 / 多选缺标记 / ★考新闻数字细节与操作流程（v20261008h） */
+    let qbad = validateQuiz(quiz, matAll);
     if (qbad.length) {
       const badSet = new Set(qbad);
       quiz = quiz.filter((_, i) => !badSet.has(i));
     }
-    /* 题量不足时补生成（不再抛错，保证「点一次就能出」） */
-    if (quiz.length < 8) {
+    /* 题量不足时补生成（不再抛错，保证「点一次就能出」）；多选仍不足 3 道则优先补多选 */
+    if (quiz.length < 8 || quiz.filter(q => q && q.type === "multi").length < 3) {
       try {
-        const need = 10 - quiz.length;
+        const multiHave = quiz.filter(q => q && q.type === "multi").length;
+        const needMulti = Math.max(0, 3 - multiHave);
+        const need = Math.max(0, 10 - quiz.length);
+        const ask = needMulti > 0
+          ? "补充生成 " + needMulti + " 道时政【多选】题" + (need - needMulti > 0 ? ("，再补 " + (need - needMulti) + " 道【单选】题") : "")
+          : ("补充生成 " + need + " 道时政题（单选即可）");
         const p5 = base + kpBlock +
-          "\n\n【输出要求】补充生成 " + need + " 道时政题（单选即可），不要与已出题目重复：" + (avoid || "（无）") +
+          "\n\n【输出要求】" + ask + "，不要与已出题目重复：" + (avoid || "（无）") +
           "。只输出一个 JSON 数组，不要任何说明文字。" + quizSpec;
         const more = await genSeg(p5, "补充生成时政题…", 88, Math.max(2, need - 1), 6000, 2);
         quiz = quiz.concat(more);
-        const qbad2 = validateQuiz(quiz);
+        const qbad2 = validateQuiz(quiz, matAll);
         if (qbad2.length) {
           const bs = new Set(qbad2);
           quiz = quiz.filter((_, i) => !bs.has(i));
