@@ -540,15 +540,18 @@
      页面层级：时政模块 → 「每日时政热点」方格 → 日期方格 → 当天页（材料+金句）→ 言语/时政题目页。
      题目页走通用答题引擎（练题/背题、收藏、勾画、每题用时统计与其它模块完全一致）。 */
   function hotNewsHtml(news) {
+    const arr = (news || []).slice();
     const byStar = {};
-    (news || []).forEach(n => { const s = n.star || 3; (byStar[s] = byStar[s] || []).push(n); });
+    arr.forEach((n, i) => { const s = n.star || 3; (byStar[s] = byStar[s] || []).push([i, n]); });
     const label = { 5: "★★★★★ 必考核心考点", 4: "★★★★ 高频常考考点", 3: "★★★ 常识积累考点", 2: "★★ 了解即可", 1: "★ 了解即可" };
     let h = "";
     [5, 4, 3, 2, 1].forEach(s => {
-      const arr = byStar[s];
-      if (!arr || !arr.length) return;
+      const a = byStar[s];
+      if (!a || !a.length) return;
       h += `<h4 style="margin:12px 0 6px">${label[s] || "★".repeat(s)}</h4><ol>`;
-      arr.forEach(n => { h += `<li><b>${esc(n.title || "")}</b>${n.body ? "：" + esc(n.body) : ""}</li>`; });
+      a.forEach(([i, n]) => {
+        h += `<li><label class="dh-sel"><input type="checkbox" class="dh-check" data-i="${i}"/> <b>${esc(n.title || "")}</b>${n.body ? "：" + esc(n.body) : ""}</label></li>`;
+      });
       h += `</ol>`;
     });
     return h || `<div class="muted small">暂无</div>`;
@@ -633,6 +636,44 @@
     }
     h += `</div>`;
     box.appendChild(UI.el(h));
+    /* ★每日时政热点当天页：多选导出 PDF（用户 19:21 要求加在「每日时政热点」页，之前误加在时事热点列表） */
+    box.appendChild(UI.el(`<div id="dhSelbar" style="display:none;margin:10px 0;padding:10px;background:var(--glass);border-radius:10px;gap:10px;flex-wrap:wrap;align-items:center">
+      <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="dhSelAll"/> 全选本日</label>
+      <span id="dhSelCnt" class="muted small">已选 0 条</span>
+      <button class="btn sm primary" id="dhExport">⬇ 导出选中为PDF</button>
+      <button class="btn sm ghost" id="dhClear">清除选择</button>
+    </div>`));
+    setTimeout(() => {
+      const news = (d.news || []);
+      const checks = Array.prototype.slice.call(box.querySelectorAll(".dh-check"));
+      const selbar = box.querySelector("#dhSelbar");
+      const cnt = box.querySelector("#dhSelCnt");
+      const all = box.querySelector("#dhSelAll");
+      if (!checks.length || !selbar) return;
+      const upd = () => {
+        const sel = checks.filter(c => c.checked);
+        selbar.style.display = sel.length ? "flex" : "none";
+        cnt.textContent = "已选 " + sel.length + " 条";
+        if (all) all.checked = sel.length > 0 && sel.length === checks.length;
+      };
+      checks.forEach(c => { c.onchange = upd; });
+      if (all) all.onchange = () => { checks.forEach(c => { c.checked = all.checked; }); upd(); };
+      const ex = box.querySelector("#dhExport");
+      if (ex) ex.onclick = () => {
+        const sel = checks.filter(c => c.checked).map(c => news[+c.getAttribute("data-i")]).filter(Boolean);
+        if (!sel.length) { try { UI.toast("请先勾选要导出的时政"); } catch (e) {} return; }
+        let html = `<h1>📅 ${esc(d.title || date)} · 时政精选（${sel.length} 条）</h1><hr/>`;
+        sel.forEach((n, i) => {
+          html += `<div style="margin:12px 0;page-break-inside:avoid"><h3>${i + 1}. ${esc(n.title || "")}</h3>`;
+          if (n.body) html += `<p>${esc(n.body).replace(/\n/g, "<br/>")}</p>`;
+          html += `</div>` + (i < sel.length - 1 ? "<hr/>" : "");
+        });
+        if (window.PDF && window.PDF.exportHtml) window.PDF.exportHtml("时政精选（" + sel.length + "条）", html);
+        try { UI.toast("已生成PDF，请在打印窗口选择「另存为 PDF」"); } catch (e) {}
+      };
+      const cl = box.querySelector("#dhClear");
+      if (cl) cl.onclick = () => { checks.forEach(c => { c.checked = false; }); upd(); };
+    }, 0);
     if (!P) return;
     const g = P.grid();
     [["verbal", "🗣 言语理解 · " + (d.verbal || []).length + " 题", "言语理解"],
