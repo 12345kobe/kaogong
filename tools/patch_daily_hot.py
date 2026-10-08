@@ -15,7 +15,9 @@ TARGET = os.path.join("assets", "data", "daily_hot.js")
 
 def main():
     if not os.path.exists(DAY_PATH):
-        raise SystemExit("缺少 %s（生成步骤未产出当日内容）" % DAY_PATH)
+        # 生成步骤跳过（如今天已有合格内容无需覆盖）时属正常情况，不算失败，避免 job 标红
+        print("无当日产物 %s（生成步骤已跳过），本次无需合并，正常退出。" % DAY_PATH)
+        return 0
     with open(DAY_PATH, "r", encoding="utf-8") as f:
         day = json.load(f)
     date = day.get("date")
