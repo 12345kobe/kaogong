@@ -95,7 +95,9 @@ SPEC_TMPL = """你是公务员考试时政命题专家。下面是 {date} 的真
 "quiz":[10 道（7 单选 + 3 多选）。★★定位（最重要）：今日时政【只作背景引入】（一两句话点到即可，用来引出主题），真正考察的内容全部来自政治理论知识点；严禁整题都在考今天这条新闻本身（如「该会议在哪召开」「该发布于何时」一律禁止）。★考点来源：今日时政涉及哪个主题，就考该主题下的政治理论知识（例：涉及国家安全→考政治安全、经济安全、文化安全、社会安全等构成与表述；涉及科技攻关→考科技自立自强、新质生产力等表述；涉及党中央会议/重大政治表述→那些政治名词本身就是知识点，可直接考）。正确项=知识点原文原词原句，不改写。★错误项=只换「关键词/数字/主体」：①换关键词；②换数字/日期；③换主体（张冠李戴）；④漏条/加条；⑤偷换范围或绝对化。★禁止消极、唱衰、否定性表述（可积极、可绝对化）。★国际时政只作背景引入，不作为考察重点；不考纯外国事件。★题型随机取用：表述辨析（下列说法正确的是/错误的是）、概念归属（下列属于…的是）、要点组合、单一事实（政治名词/会议/文件）、数量辨析（正确的有几项）。单选 {"q":"（今日时政一两句作背景引入，不写背景标签）…\n设问句","options":[4项],"a":1,"e":"【答案】B\n【解析】…"}，a 为 0 基数字；多选 {"q":"（今日时政一两句作背景引入）…\n（多选）下列表述符合政治理论原文的有","options":[4项独立知识表述],"a":"ABC","type":"multi","multi":"ABC","e":"【答案】ABC\n【解析】…"}，a 为 2-4 个字母且组合不重复。★★多选选项红线：A/B/C/D 每个选项必须是一句独立完整的知识表述，严禁把「AC」「BCD」这类字母组合当成选项内容，也不许选项只写字母。★解析：先引知识点原文说明正确项为何对，再逐条指出错误项偷换了哪个关键词/数字/主体，结尾「故本题选X。」★全部题目彼此不得重复。]}}
 【范围红线】news/verbal/quiz 全部只限中国相关时政；国际性事件仅当与中国直接相关时才可收录。
 【选项红线】错误选项只做关键词/数字/主体的同义替换，不得消极否定负面；解析说明错在哪个词被替换，禁止写「对应易错点第X条」。
-【答案格式】单选【答案】：A；多选【答案】：ABC。"""
+【答案格式】单选【答案】：A；多选【答案】：ABC。
+【★★答案绝对一致红线】单选 a 的 0 基索引换算出的字母，必须与解析里【答案】X 和末尾「故本题选X」完全相同（a=1→【答案】B）；多选 a 必须是字母串且与【答案】后的字母完全一致。写完逐题自检，做不到就重写该题。
+【★★言语感情色彩红线】讲成就、成效、惠民的文段严禁把贬义词当正确答案；解析必须原样点名全部 4 个选项的词，逐项说明错在哪，禁止空泛套话。"""
 
 
 def call_ai(prompt):
@@ -174,6 +176,50 @@ def parse_json(txt):
     raise SystemExit("AI 返回内容不是有效 JSON（已救援仍失败）")
 
 
+def enforce_answers(items):
+    """★写库前强制答案一致（用户死命令）：解析里【答案】X/故本题选X 与 a 字段不一致时，以解析为准纠正 a。
+       同时剔除选项数≠4、答案越界的坏题，避免把「解析说B判分C」的错误题写进数据源。"""
+    L = "ABCD"
+    out = []
+    fixed = dropped = 0
+    for q in (items or []):
+        if not isinstance(q, dict):
+            continue
+        opts = q.get("options") or []
+        if len(opts) != 4:
+            dropped += 1
+            continue
+        e = str(q.get("e") or "")
+        is_multi = q.get("type") == "multi" or q.get("multi") or (
+            isinstance(q.get("a"), str) and len(q.get("a") or "") > 1)
+        if is_multi:
+            out.append(q)
+            continue
+        # 提取解析声明的答案字母（取出现最多的一个）
+        cands = re.findall(r"【\s*答案\s*】\s*[:：]?\s*([A-D])(?![A-D])", e)
+        cands += re.findall(
+            r"(?:故本题选|本题选|故选|应选|故正确答案为|正确答案[是为]|正确选项[是为])\s*[:：]?\s*([A-D])(?![A-D])", e)
+        idx = q.get("a")
+        idx = idx if isinstance(idx, int) else (L.find(str(idx).strip()) if str(idx).strip() in L else -1)
+        if cands:
+            freq = {}
+            for c in cands:
+                freq[c] = freq.get(c, 0) + 1
+            best = max(sorted(freq), key=lambda k: freq[k])
+            bi = L.find(best)
+            if bi >= 0 and bi != idx:
+                q["a"] = bi
+                fixed += 1
+            idx = q["a"]
+        if not isinstance(idx, int) or idx < 0 or idx > 3:
+            dropped += 1
+            continue
+        out.append(q)
+    if fixed or dropped:
+        print("答案一致性处理：纠正 %d 题（以解析为准），剔除坏题 %d 题" % (fixed, dropped), file=sys.stderr)
+    return out
+
+
 def merge_static(day):
     path = "assets/data/daily_hot.js"
     store = {}
@@ -212,19 +258,8 @@ def main():
     if not mat:
         raise SystemExit("没有可用的今日素材，跳过本次生成")
     print("素材 %d 条，日期 %s" % (len(mat), DATE))
-    # ★保护：今天已经存在合格内容时直接跳过，绝不覆盖已人工/校验过的版本
-    #  （2026-10-08 用户手工重做的 5/10 内容曾被担心被夜间 AI 版冲掉）
-    try:
-        _txt = open("assets/data/daily_hot.js", "r", encoding="utf-8").read()
-        _a, _b = _txt.find("{"), _txt.rfind("}")
-        _store = json.loads(_txt[_a:_b + 1]) if (_a >= 0 and _b > _a) else {}
-        _old = _store.get(DATE) or {}
-        if len(_old.get("verbal") or []) >= 4 and len(_old.get("quiz") or []) >= 8:
-            print("今天（%s）已有合格内容（言语 %d / 时政 %d），跳过生成，不覆盖。"
-                  % (DATE, len(_old.get("verbal") or []), len(_old.get("quiz") or [])))
-            return
-    except Exception as e:
-        print("（跳过保护检查：%s）" % e, file=sys.stderr)
+    # ★用户 2026-10-08 23:52 死命令：不做「已有内容就跳过」的保护，每次生成一律直接覆盖重写
+    #  （理由：自动生成的题质量太差、错误率高，宁可每轮重写也不要把旧的错误题留着）
     base_prompt = SPEC_TMPL.replace("{date}", DATE).replace(
         "{mat}", "\n".join("%d. %s" % (i + 1, m) for i, m in enumerate(mat)))
     # ★分段生成（v20261008l）：一次要「要点+金句+言语5+时政10」的整包太大，
@@ -256,6 +291,8 @@ def main():
     verbal = gen_segment("verbal", 5)
     quiz = gen_segment("quiz", 10)
     day = {"news": news or [], "essay": essay or {}, "verbal": verbal or [], "quiz": quiz or []}
+    day["verbal"] = enforce_answers(day["verbal"])
+    day["quiz"] = enforce_answers(day["quiz"])
     nv, nq = len(day["verbal"]), len(day["quiz"])
     nn = len(day["news"])
     if nv < 4 or nq < 8 or nn < 6:
