@@ -184,6 +184,42 @@ def parse_json(txt):
     raise SystemExit("AI 返回内容不是有效 JSON（已救援仍失败）")
 
 
+POLI_KW = ("坚持", "战略", "制度", "体系", "治理", "现代化", "高质量", "发展", "人民", "安全",
+           "改革", "开放", "法治", "生态", "文明", "党的", "中国式", "新质生产力", "供给侧",
+           "共同富裕", "根本", "首要", "核心", "统筹", "协调", "绿色", "创新", "共享", "基本",
+           "方针", "政策", "部署", "原则", "道路", "理论", "民生", "保障", "建设", "推进",
+           "完善", "健全", "优化", "提升", "自信", "格局", "理念", "要求", "任务", "基点")
+
+
+def filter_offtopic(items):
+    """★乱出题硬过滤（用户死命令）：选项必须像政治理论知识点表述，否则整题剔除。
+       命中即废：①选项带「A. 」这类字母前缀；②选项过短（<6 字）；
+       ③四个选项中含政治理论关键词的不足 3 个（说明在出题外的内容，如「保障运动员收入」）。"""
+    out, dropped = [], 0
+    for q in (items or []):
+        if not isinstance(q, dict):
+            continue
+        opts = []
+        for o in (q.get("options") or []):
+            s = re.sub(r"^\s*[A-D]\s*[\.、．]\s*", "", str(o or "")).strip()
+            opts.append(s)
+        if len(opts) != 4:
+            dropped += 1
+            continue
+        if any(len(o) < 6 for o in opts):
+            dropped += 1
+            continue
+        hit = sum(1 for o in opts if any(k in o for k in POLI_KW))
+        if hit < 3:
+            dropped += 1
+            continue
+        q["options"] = opts          # 顺手清掉「A. 」前缀
+        out.append(q)
+    if dropped:
+        print("乱出题过滤：剔除 %d 题（选项非知识点表述/过短/带字母前缀）" % dropped, file=sys.stderr)
+    return out
+
+
 def enforce_answers(items):
     """★写库前强制答案一致（用户死命令）：解析里【答案】X/故本题选X 与 a 字段不一致时，以解析为准纠正 a。
        同时剔除选项数≠4、答案越界的坏题，避免把「解析说B判分C」的错误题写进数据源。"""
@@ -296,8 +332,8 @@ def main():
 
     news = gen_segment("news", 9)
     essay = gen_segment("essay", 1)
-    verbal = gen_segment("verbal", 5)
-    quiz = gen_segment("quiz", 10, note=(
+    verbal = gen_segment("verbal", 5, tries=5)   # ★言语最容易失败：多给两次机会
+    quiz = gen_segment("quiz", 10, tries=4, note=(
         "★题型构成必须严格为 7 道单选 + 3 道多选：多选必须带 \"type\":\"multi\"，a 为 2-4 个字母"
         "（如 \"ABC\"），且必须同时有 \"multi\":\"ABC\" 字段与 a 完全相同；"
         "缺少多选或缺少 type/multi 字段视为本次失败，必须重写。"))
@@ -318,9 +354,10 @@ def main():
     quiz = singles[:7] + multis[:3]
     day = {"news": news or [], "essay": essay or {}, "verbal": verbal or [], "quiz": quiz or []}
     day["verbal"] = enforce_answers(day["verbal"])
-    day["quiz"] = enforce_answers(day["quiz"])
+    day["quiz"] = filter_offtopic(enforce_answers(day["quiz"]))
     nv, nq = len(day["verbal"]), len(day["quiz"])
     nn = len(day["news"])
+    # 阈值放宽：言语≥4、时政≥8 即可写入（整批丢弃会让当天没内容，比少一题更糟）
     if nv < 4 or nq < 8 or nn < 6:
         raise SystemExit("多次生成仍未通过数量校验（要点 %d / 言语 %d / 时政 %d），跳过写入（避免污染数据）"
                          % (nn, nv, nq))
