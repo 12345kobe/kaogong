@@ -12,6 +12,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
+<meta name="kg-version" content="20261008j" />
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="apple-touch-icon" href="icon-192.png" />
 <link rel="icon" type="image/png" href="icon-192.png" />
@@ -39,9 +40,12 @@
 </head>
 <body>
 <!-- 启动页：按主题+横竖屏显示对应图片，展示约2秒自动进入（期间完成云端拉取与设置恢复）；右下角小字版本号随每次更新变化 -->
-<div id="kgSplash"><span id="kgSplashVer">版本号：20261007h</span></div>
+<div id="kgSplash"><span id="kgSplashVer">版本号：…</span></div>
 <script>
 (function(){try{
+  var _kv=document.querySelector('meta[name="kg-version"]');
+  var _kver=(_kv&&_kv.content)||"未知";
+  var _vspan=document.getElementById("kgSplashVer"); if(_vspan)_vspan.textContent="版本号："+_kver;
   var s=JSON.parse(localStorage.getItem("kg_desk_state_v1")||"{}");
   var n=(s.theme&&s.theme.name)||"wuxia";
   if(n!=="cute"&&n!=="cyber"&&n!=="custom"&&n!=="minimal")n="wuxia"; /* minimal 等其余主题沿用武侠启动图 */
@@ -193,7 +197,7 @@
  *   2) 监听 controllerchange → 新 SW 接管后立即刷新页面，无需手动刷新/重装；
  *   3) 后台每 60s 调一次 reg.update() → 治 iOS 主屏 App 常驻后台不触发导航的更新盲区。 */
 if ("serviceWorker" in navigator) {
-  var KG_APP_V = "20261008i";
+  var KG_APP_V = (document.querySelector('meta[name="kg-version"]') || {}).content || "20261008j";
   window.addEventListener("load", function () {
     navigator.serviceWorker.register("./sw.js?v=" + KG_APP_V).then(function (reg) {
       if (reg) {

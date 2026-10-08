@@ -3,7 +3,7 @@
  * 断网时才回退到缓存。上线新版本后用户下次打开即自动生效，无需手动刷新。
  * 注意：发新版时须同步修改下方 CACHE 版本号与 index.html 内 ?v= 版本。
  */
-const CACHE = "kaogong-v20261008i";
+const CACHE = "kaogong-v20261008j";
 
 self.addEventListener("install", function (e) {
   self.skipWaiting();
@@ -14,6 +14,13 @@ self.addEventListener("activate", function (e) {
     const keys = await caches.keys();
     await Promise.all(keys.filter(function (k) { return k !== CACHE; }).map(function (k) { return caches.delete(k); }));
     await self.clients.claim();
+    /* ★v20261008j 杀手锏：新 SW 接管后，强制让所有已打开的页面重新导航到当前 URL。
+       不依赖页面 JS 里有没有监听 controllerchange，彻底打破「旧 SW 吐旧页面 → 旧页面没有新注册代码 → 永远不更新」的死锁。
+       activate 只在 SW 首次激活时跑一次，不会循环。 */
+    const cls = await self.clients.matchAll({ includeUncontrolled: true, type: "window" });
+    cls.forEach(function (c) {
+      try { c.navigate(c.url); } catch (err) {}
+    });
   })());
 });
 
