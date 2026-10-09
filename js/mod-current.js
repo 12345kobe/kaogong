@@ -735,6 +735,20 @@
       return;
     }
     if (!P) { host.appendChild(UI.el(`<div class="muted small">已生成 ${days.length} 天，请刷新页面后查看。</div>`)); return; }
+    /* 今日生成状态条（用户要求：20 点前就能看到当天内容、能看到它什么时候生成的） */
+    try {
+      const has = !!(today && map[today]);
+      const d = has ? map[today] : null;
+      const t = d ? (d.manualAt || d.generatedAt || 0) : 0;
+      const hhmm = t ? new Date(t).toTimeString().slice(0, 5) : "";
+      const kind = d ? (d.manualAt ? "你手动生成" : "自动更新") : "";
+      host.appendChild(UI.el(`<div class="card" style="margin-bottom:8px;padding:10px 12px">
+        <div style="font-size:13px"><b>今日（${esc(today)}）：</b>${
+          has ? "✅ 已出内容（" + kind + (hhmm ? " · " + hhmm : "") + "）"
+              : "⏳ 还没出内容"}</div>
+        <div class="muted small" style="margin-top:4px">自动更新：每晚 <b>19:00</b> 开始生成、<b>20:00 前</b> 入库，你 20 点前进来就已经有当天内容；想立刻要就点下面「🔄 刷新今日时政」（手动版会锁定，不会被自动版覆盖）。</div>
+      </div>`));
+    } catch (e) {}
     const grid = P.grid();
     /* ★日期级多选导出 PDF（用户 23:06 死命令：多选「一整个文件（整天）」下载，不是页内每小句） */
     const dhSel = new Set();
@@ -1577,6 +1591,15 @@
       day.manualAt = Date.now();   // 标记为本人手动版：云同步时优先保留（仅本账号可见）
       DB.state.dailyHot[date] = day;
       DB.save();
+      /* ★立刻上云（用户死命令）：手动生成后马上推送，别等定时上传——
+         否则「生成完就退出、清后台再进」时云端还没有这份，就被自动版顶掉了。 */
+      try {
+        if (DB.isLoggedIn && DB.isLoggedIn() && DB.push) {
+          setTip("正在把这份内容同步到你的账号云端…");
+          await DB.push();
+          setTip("已生成并同步云端（" + date + "）：手动版已锁定，不会被自动版覆盖");
+        }
+      } catch (e) { console.warn("[时政] 云端推送失败（本机已保存）", e); }
       if (window.KGProgress) KGProgress.show("今日时政已生成 ✓", 100);
       setTimeout(() => { if (window.KGProgress) KGProgress.hide(); }, 1200);
       setTip("已生成今天（" + date + "），本机与你的账号云端已更新");

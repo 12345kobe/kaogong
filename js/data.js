@@ -120,6 +120,10 @@
      manualAt：用户点「刷新今日时政」现场生成时写入的时间戳；自动版（云端/静态源）无此字段。 */
   function pickDailyHot(cur, inc) {
     if (!cur) return inc;
+    /* ★用户 2026-10-09 死命令：自己手动生成的内容锁死为最高优先级，
+       任何自动版（云端/静态源）都不得覆盖当天已有的手动版——
+       否则「刚生成完、清后台再进就不见了，只剩昨晚自动版」。 */
+    if ((cur && cur.manualAt) && !(inc && inc.manualAt)) return cur;
     const cut = (x) => { try { const t = new Date(((x && x.date) || "") + "T20:00:00").getTime(); return isNaN(t) ? 0 : t; } catch (e) { return 0; } };
     const mC = (cur && cur.manualAt) || 0, mI = (inc && inc.manualAt) || 0;
     const kC = (mC && mC >= cut(cur)) ? mC : 0, kI = (mI && mI >= cut(inc)) ? mI : 0;
