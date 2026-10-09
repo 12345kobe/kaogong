@@ -885,11 +885,29 @@
     const UI = window.UI;
     const bar = UI.el(`<div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap;align-items:center">
       <button class="btn sm primary" id="hotRefresh">🔄 刷新今日时政</button>
+      <button class="btn sm ghost" id="hotForceUpd">🧹 强制更新版本</button>
       <span class="muted small" id="hotRefreshTip">任意时间点击都会现场生成今天的内容（重生成只覆盖你自己的账号）；每晚 20:00 自动版会覆盖白天版本，历史日期不会被改动</span>
     </div>`);
     setTimeout(() => {
       const b = bar.querySelector("#hotRefresh");
       if (b) b.onclick = () => refreshToday(host, bar);
+      const f = bar.querySelector("#hotForceUpd");
+      if (f) f.onclick = async () => {
+        try { UI.toast("正在清缓存并拉取最新版本…"); } catch (e) {}
+        try {
+          if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            for (const r of regs) { try { await r.unregister(); } catch (e) {} }
+          }
+        } catch (e) {}
+        try {
+          if (window.caches && caches.keys) {
+            const ks = await caches.keys();
+            await Promise.all(ks.map(k => caches.delete(k)));
+          }
+        } catch (e) {}
+        setTimeout(() => { try { location.reload(true); } catch (e) { location.reload(); } }, 400);
+      };
     }, 0);
     return bar;
   }
