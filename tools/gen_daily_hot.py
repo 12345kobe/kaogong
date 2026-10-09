@@ -114,31 +114,54 @@ def call_ai(prompt):
         raise SystemExit("缺少 AI_API_KEY（请在仓库 Settings → Secrets and variables → Actions 里配置）")
     # workflow 里 secret 未配置时 env 是空字符串而非缺失，必须用 or 兜底，否则 base='' 直接炸
     base = (os.environ.get("AI_API_BASE") or "https://open.bigmodel.cn/api/paas/v4/chat/completions").strip()
-    model = (os.environ.get("AI_MODEL") or "glm-4-flash").strip()
-    body = {
+    # ★2026-10-10：默认从老旧的 glm-4-flash 换成免费但强得多的 glm-4.7-flash
+    #  （智谱开放平台免费档，同一把 key 直接可用、不花钱；glm-4.5-flash 已于 2026-01-30 下线）
+    model = (os.environ.get("AI_MODEL") or "glm-4.7-flash").strip()
+    base_body = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.3,          # ★降低随机性：减少跑偏与格式崩坏
         "max_tokens": 8192,          # ★防截断：整包 15 题一次输出极易被截断（2026-10-07 两次失败即此因）
     }
-    data = json.dumps(body, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(base, data=data, method="POST")
-    req.add_header("Content-Type", "application/json")
-    req.add_header("Authorization", "Bearer " + key)
+    # ★强制 JSON 输出（json_object 模式）：中端模型最容易在格式上翻车，能大幅提高合规率
+    #   部分端点不支持该参数 → 先带参数试，报错自动降级为普通请求
+    variants = []
+    try:
+        b1 = dict(base_body)
+        b1["response_format"] = {"type": "json_object"}
+        variants.append(b1)
+    except Exception:
+        pass
+    variants.append(base_body)
     last = None
-    for attempt in range(5):   # 生成 30 题耗时较长：超时 300 秒 + 最多 5 次（服务端 500 常见）
-        try:
-            req2 = urllib.request.Request(base, data=data, method="POST")
-            req2.add_header("Content-Type", "application/json")
-            req2.add_header("Authorization", "Bearer " + key)
-            with urllib.request.urlopen(req2, timeout=300) as r:
-                res = json.loads(r.read().decode("utf-8"))
-            return res["choices"][0]["message"]["content"]
-        except Exception as e:
-            last = e
-            print("AI 调用第 %d 次失败：%s，重试…" % (attempt + 1, e), file=sys.stderr)
-            time.sleep(10 * (attempt + 1))   # 服务端 500 多为过载，指数退避
-    raise SystemExit("AI 调用失败（已重试 5 次）：%s" % last)
+    for vi, body in enumerate(variants):
+        data = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        for attempt in range(4):   # 服务端 500/超时常见：指数退避重试
+            try:
+                req = urllib.request.Request(base, data=data, method="POST")
+                req.add_header("Content-Type", "application/json")
+                req.add_header("Authorization", "Bearer " + key)
+                with urllib.request.urlopen(req, timeout=300) as r:
+                    res = json.loads(r.read().decode("utf-8"))
+                return res["choices"][0]["message"]["content"]
+            except urllib.error.HTTPError as e:
+                last = e
+                try:
+                    detail = e.read().decode("utf-8", "ignore")[:200]
+                except Exception:
+                    detail = ""
+                # 400 多为不支持 response_format → 直接跳到下一个变体
+                if e.code == 400 and vi == 0:
+                    print("json_object 模式不被支持（400），降级为普通请求", file=sys.stderr)
+                    break
+                print("AI 调用第 %d 次失败（HTTP %s）：%s %s，重试…"
+                      % (attempt + 1, e.code, e, detail), file=sys.stderr)
+                time.sleep(8 * (attempt + 1))
+            except Exception as e:
+                last = e
+                print("AI 调用第 %d 次失败：%s，重试…" % (attempt + 1, e), file=sys.stderr)
+                time.sleep(8 * (attempt + 1))
+    raise SystemExit("AI 调用失败（已重试多轮）：%s" % last)
 
 
 def parse_json(txt):
@@ -332,25 +355,61 @@ def main():
 
     news = gen_segment("news", 9)
     essay = gen_segment("essay", 1)
-    verbal = gen_segment("verbal", 5, tries=5)   # ★言语最容易失败：多给两次机会
-    quiz = gen_segment("quiz", 10, tries=4, note=(
-        "★题型构成必须严格为 7 道单选 + 3 道多选：多选必须带 \"type\":\"multi\"，a 为 2-4 个字母"
-        "（如 \"ABC\"），且必须同时有 \"multi\":\"ABC\" 字段与 a 完全相同；"
-        "缺少多选或缺少 type/multi 字段视为本次失败，必须重写。"))
-    # 兜底：多选不足 3 道时单独补生成多选题，最后规整为「7 单选 + 3 多选」
+    def pick_item(obj):
+        """兼容模型把单题包成 {q:...} / {"verbal":[{...}]} / [{...}] 等多种写法"""
+        if isinstance(obj, list) and obj:
+            return obj[0]
+        if isinstance(obj, dict):
+            if "q" in obj and "options" in obj:
+                return obj
+            for k in ("verbal", "quiz", "item", "data"):
+                v = obj.get(k)
+                if isinstance(v, list) and v:
+                    return v[0]
+                if isinstance(v, dict) and "q" in v:
+                    return v
+        return None
+
+    def gen_one(kind, tries=3):
+        """★一次只出 1 道题：输出量极小 → 中端模型也不会截断或写坏格式。"""
+        extra = {
+            "verbal": "这是一道【言语理解·逻辑填空】题。",
+            "single": "这是一道【时政单选题】：a 用 0 基数字，不要 type/multi 字段。",
+            "multi": ("这是一道【时政多选题】：必须同时有 \"type\":\"multi\" 和 \"multi\":\"字母组合\"，"
+                      "a 为 2-4 个字母且与 multi 完全相同。")
+        }.get(kind, "")
+        for t in range(tries):
+            p = base_prompt + (
+                "\n\n【本次只输出 1 道题】" + extra +
+                "只输出一个 JSON 对象，不要数组包裹、不要说明文字、不要 markdown 围栏，"
+                "形如 {\"q\":\"…\",\"options\":[\"A项\",\"B项\",\"C项\",\"D项\"],\"a\":0,"
+                "\"e\":\"【答案】A\\n【解析】…\"}（多选再加 \"type\":\"multi\",\"multi\":\"ABC\"，a 用字母串）。")
+            if t > 0:
+                p += "\n【上一次输出不是合法 JSON，请重新输出，务必完整、不要截断。】"
+            try:
+                it = pick_item(parse_json(call_ai(p)))
+                if it and it.get("options") and it.get("q"):
+                    return it
+            except SystemExit as e:
+                print("%s 第 %d 次失败：%s" % (kind, t + 1, e), file=sys.stderr)
+            except Exception as e:
+                print("%s 第 %d 次异常：%s" % (kind, t + 1, e), file=sys.stderr)
+            time.sleep(5)
+        return None
+
+    # ★逐题生成（一次 1 题）：言语 5 题 + 时政 7 单选 + 3 多选
+    verbal = [x for x in (gen_one("verbal") for _ in range(5)) if x]
+    singles = [x for x in (gen_one("single") for _ in range(7)) if x]
+    multis = [x for x in (gen_one("multi") for _ in range(3)) if x]
+
     def is_multi(q):
         return (q.get("type") == "multi") or bool(q.get("multi"))
 
-    singles = [q for q in (quiz or []) if not is_multi(q)]
-    multis = [q for q in (quiz or []) if is_multi(q)]
-    if len(multis) < 3:
-        need = 3 - len(multis)
-        more = gen_segment("quiz", need, note=(
-            "★本次全部输出【多选题】，共 %d 道：每题必须带 \"type\":\"multi\"，a 为 2-4 个字母（如 \"ABC\"），"
-            "且必须有 \"multi\" 字段与 a 完全相同；四个选项必须各自是一句独立完整的知识表述。" % need))
-        for q in (more or []):
-            if is_multi(q):
-                multis.append(q)
+    multis = [q for q in multis if is_multi(q)]
+    for q in list(singles):
+        if is_multi(q):
+            singles.remove(q)
+            multis.append(q)
     quiz = singles[:7] + multis[:3]
     day = {"news": news or [], "essay": essay or {}, "verbal": verbal or [], "quiz": quiz or []}
     day["verbal"] = enforce_answers(day["verbal"])
