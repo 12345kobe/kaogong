@@ -302,6 +302,12 @@
           askWrap.querySelector(".ask-ai").onclick = () => askAI(qq, ua, qi);
         }
         if (opts.onAnswer) opts.onAnswer(qq, right);
+        /* ★全部题目都已揭示 → 自动结算（v20261010a）：多选逐题「✓ 确认本题」后不必再找「交卷」，
+           刷题记录（每日计划自动创建并打勾）也不会因为忘了交卷而丢失 */
+        try {
+          const unrevealed = container.querySelector('.quiz-q[data-revealed!="1"]');
+          if (!unrevealed) finish();
+        } catch (e) {}
       }
 
       function maybeFinish() {
@@ -446,7 +452,10 @@
         autoTodoOnWrong(subject, qq);
       }
 
+      let quizFinished = false;
       function finish() {
+        if (quizFinished) return;   // ★幂等保护：自动结算 + 交卷/maybeFinish 可能并发触发
+        quizFinished = true;
         if (liveTimer) clearInterval(liveTimer);
         if (Quiz._timer) { try { clearInterval(Quiz._timer); } catch (e) {} Quiz._timer = null; }
         if (Quiz._handler) { try { document.removeEventListener("keydown", Quiz._handler); } catch (e) {} Quiz._handler = null; }

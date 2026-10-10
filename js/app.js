@@ -597,6 +597,7 @@
     DB.state.calendar[today] = DB.state.calendar[today] || { start: "", end: "", checked: false };
     DB.state.calendar[today].checked = true;
     DB.save();
+    try { window.dispatchEvent(new Event("kg-plan-changed")); } catch (e) {}
     refreshTop(); UI.toast("打卡成功，继续加油！💪");
   }
 

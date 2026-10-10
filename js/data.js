@@ -381,6 +381,8 @@
         const label = { quiz: "刷题", flash: "闪卡" }[type] || type;
         const text = meta && meta.text ? meta.text : (label + (module ? "·" + module : ""));
         this.addPlanItem(this.today(), { module: module || "", type: type, text: text, meta: meta || null, done: true });
+        // 通知打卡日历实时刷新（用户正看着日历页时，刷完题立刻能看到新记录+已打勾）
+        try { window.dispatchEvent(new Event("kg-plan-changed")); } catch (e) {}
       } catch (e) {}
     },
 
@@ -681,9 +683,14 @@
       // 时政记录：按 id 去重追加（云端同步 / 备份导入都不丢）
       out.currentAffairs = mergeArrById(out.currentAffairs, b.currentAffairs);
       // 每日时政热点：按日期合并（手动重生成版优先，其余按 pickDailyHot 取舍）
+      // ★删除墓碑（v20261010a）：本机删除过的日期跨设备也生效——先并集墓碑，再跳过被删日期
+      out.dailyHotDeleted = out.dailyHotDeleted || {};
+      const dhd = b.dailyHotDeleted || {};
+      for (const d in dhd) out.dailyHotDeleted[d] = true;
       out.dailyHot = out.dailyHot || {};
       const dh = b.dailyHot || {};
       for (const d in dh) {
+        if (out.dailyHotDeleted[d]) continue;   // 已删除的日期不复活
         out.dailyHot[d] = pickDailyHot(out.dailyHot[d], dh[d]);
       }
       // 导入的网页（时事热点「导入网页」）：按 id 去重追加，跨设备一致

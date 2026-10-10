@@ -27,6 +27,14 @@
       let selDay = DB.today(); // 当前查看的计划日期（可追溯到过去/未来任意一天）
       const WK = ["日", "一", "二", "三", "四", "五", "六"];
 
+      // ★刷题/闪卡/打卡产生新记录时实时刷新（用户正看着日历页就能立刻看到新任务+已打勾）
+      if (!window.__kgPlanChangedHooked) {
+        window.__kgPlanChangedHooked = true;
+        window.addEventListener("kg-plan-changed", () => {
+          if (location.hash.indexOf("#/calendar") === 0) { try { render(); } catch (e) {} }
+        });
+      }
+
       function render() {
         const y = view.getFullYear(), m = view.getMonth();
         const first = new Date(y, m, 1).getDay();

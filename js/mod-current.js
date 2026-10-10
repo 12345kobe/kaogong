@@ -570,7 +570,8 @@
       const weak = optClean.filter(s => { const n = Array.from(s).length; return n > 0 && n < 2 && !TRIVIAL.test(s); }).length;
       if (bare >= 2 || weak >= 2) return; // ② 字母占位 / 空洞选项（≥2 个整题废）
       if (new Set(optClean.filter(s => s.length)).size < 4) return; // ③ 选项两两重复整题废
-      const ans = q.a;
+      const ans0 = q.a;
+      let ans = ans0;
       const isMultiPre = q.type === "multi" || q.multi || (typeof ans === "string" && ans.length > 1);
       let aIdx = (typeof ans === "number") ? ans
                  : (typeof ans === "string" && /^[A-D]$/.test(ans.trim())) ? "ABCD".indexOf(ans.trim())
@@ -595,6 +596,24 @@
           const eIdx = "ABCD".indexOf(best);
           if (eIdx >= 0 && eIdx !== aIdx) aIdx = eIdx;   // ★解析为准，自动纠正
         }
+      }
+      /* ④.6 ★多选答案一致性（v20261010a）：解析声明组合与 multi 不符 → 以解析为准；
+         解析点名「X项错误/不符」→ 从答案剔除该字母；不足 2 个字母 = 坏题剔除 */
+      if (isMulti) {
+        const eTxt2 = String(q.e || "");
+        let cur = String((q.multi || (typeof ans === "string" ? ans : "")) || "").toUpperCase().replace(/[^A-D]/g, "");
+        const combos2 = []; let m9;
+        const r9a = /【\s*答案\s*】\s*[:：]?\s*([A-D]{2,4})/g;
+        const r9b = /(?:故本题选|本题选|故选|应选)\s*[:：]?\s*([A-D]{2,4})/g;
+        while ((m9 = r9a.exec(eTxt2))) combos2.push(m9[1]);
+        while ((m9 = r9b.exec(eTxt2))) combos2.push(m9[1]);
+        if (combos2.length) cur = combos2[combos2.length - 1];
+        const negRe2 = /([A-D])\s*[项选项]?\s*[:：]?\s*[^。；;\n]{0,24}?(错误|不正确|不符|不符合|不属于|不对|表述有误|说法有误)/g;
+        const drop2 = {}; let m10;
+        while ((m10 = negRe2.exec(eTxt2))) drop2[m10[1]] = 1;
+        cur = cur.split("").filter(c => !drop2[c]).join("");
+        if (cur.length < 2) return;   // 自相矛盾到只剩不足 2 个正确项 → 废题
+        ans = cur; q.multi = cur;
       }
       if (isVerbal) { // ⑤ 言语题：空数必须 = 每选项词数（核心根治点）
         const qt = String(q.q || "");
@@ -672,9 +691,11 @@
   function mergeDailyHot(target, src) {
     let changed = false;
     const pick = (window.DB && DB.pickDailyHot) || null;
+    const tomb = (window.DB && DB.state && DB.state.dailyHotDeleted) || {};
     Object.keys(src || {}).forEach(d => {
       const inc = src[d];
       if (!inc) return;
+      if (tomb[d]) return;   // ★已删除日期（墓碑）绝不复活
       if (!target[d]) { target[d] = inc; changed = true; return; }
       if (pick) {
         const win = pick(target[d], inc);
@@ -725,10 +746,12 @@
   function renderDailyHot(host) {
     const UI = window.UI, P = window.Pager;
     const map = (window.DB && DB.state && DB.state.dailyHot) || {};
+    const tomb = (window.DB && DB.state && DB.state.dailyHotDeleted) || {};
     const today = (window.DB && DB.today && DB.today()) || "";
-    const days = Object.keys(map).sort().reverse();
+    /* 已删除日期（墓碑）不再展示，也不会被静态/云端兜底复活 */
+    const days = Object.keys(map).filter(d => !tomb[d]).sort().reverse();
     /* 今天还没生成 → 也要占一位，显示灰色按钮（点击可立即生成） */
-    if (today && !map[today]) days.unshift(today);
+    if (today && !map[today] && !tomb[today]) days.unshift(today);
     host.innerHTML = "";
     if (!days.length) {
       host.appendChild(UI.el(`<div class="muted small">每晚 20:00 后自动生成当天内容：时政考点（星级分级）+ 申论时评与金句 + 言语理解 10 题 + 时政 20 题（15 单选 + 5 多选）。生成后这里会按日期列出，点日期即可查看与练题。</div>`));
@@ -793,13 +816,14 @@
       grid.appendChild(tEl);
     });
     host.appendChild(grid);
-    /* 多选工具条：导出选中的「整天」内容为 PDF */
+    /* 多选工具条：导出选中的「整天」内容为 PDF + 删除选中的整天内容（v20261010a 用户要求） */
     const dhBar = UI.el(`<div id="dhSelbar" style="display:none;margin:12px 0;padding:10px 12px;background:var(--glass,rgba(127,127,127,.12));border-radius:10px;gap:10px;flex-wrap:wrap;align-items:center">
       <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="dhSelAll"/> 全选本页</label>
       <span id="dhSelCnt" class="muted small">已选 0 天</span>
       <button class="btn sm primary" id="dhExportDays">⬇ 导出选中日期为PDF</button>
+      <button class="btn sm danger" id="dhDelDays">🗑 删除选中日期</button>
       <button class="btn sm ghost" id="dhClearDays">清除选择</button>
-      <span class="muted small">导出内容为整天的完整文件（时政考点 + 金句 + 题目）</span>
+      <span class="muted small">导出内容为整天的完整文件（时政考点 + 金句 + 题目）；删除会连同题目一起移除且不再被同步恢复</span>
     </div>`);
     function dayHtml(date, day) {
       const es = day.essay || {};
@@ -873,6 +897,25 @@
       };
       const cl = bar.querySelector("#dhClearDays");
       if (cl) cl.onclick = () => { dhSel.clear(); host.querySelectorAll(".dh-date-check").forEach(c => { c.checked = false; }); updDhBar(); };
+      /* 🗑 删除选中日期（v20261010a 用户要求）：连同考点/金句/题目整日删除；
+         写墓碑 dailyHotDeleted，防止云端同步 / 静态兜底把删掉的日期再合并回来 */
+      const del = bar.querySelector("#dhDelDays");
+      if (del) del.onclick = async () => {
+        const ds = Array.from(dhSel).filter(x => map[x]);
+        if (!ds.length) { try { UI.toast("请先勾选要删除的日期"); } catch (e) {} return; }
+        const msg = "确定删除这 " + ds.length + " 天（" + ds.slice(0, 3).join("、") + (ds.length > 3 ? "…" : "") + "）的时政内容吗？删除后云端、静态兜底都不会再恢复；当天可点「刷新今日时政」重新生成。";
+        let ok = false;
+        try { const p = UI.confirm(msg); ok = (p && typeof p.then === "function") ? await p : !!p; } catch (e) { ok = window.confirm(msg); }
+        if (!ok) return;
+        const st = DB.state;
+        st.dailyHotDeleted = st.dailyHotDeleted || {};
+        ds.forEach(x => { delete st.dailyHot[x]; st.dailyHotDeleted[x] = true; });
+        dhSel.clear();
+        DB.save();
+        try { if (DB.isLoggedIn && DB.isLoggedIn() && DB.push) await DB.push(); } catch (e) {}
+        try { UI.toast("已删除 " + ds.length + " 天的时政内容"); } catch (e) {}
+        renderDailyHot(host);
+      };
     }, 0);
     host.appendChild(dhBar);
     host.appendChild(hotRefreshBar(host));
@@ -1289,6 +1332,13 @@
       const askingDetail = /多少|几[成亿元万%]|占比|比例是|规模是|金额是|是多少|如何进行|怎样进行|如何操作|怎样操作|怎么操作|操作方式|实施方式|采购方式/.test(askLine) || /如何进行|怎样进行|如何操作|操作方式/.test(qtxt);
       if (hitNum && (askingDetail || rightTxt.indexOf(hitNum) >= 0)) { bad.push(qi); return; }
       if (askingDetail && /\d/.test(rightTxt)) { bad.push(qi); return; }   // 问数字细节且正确项是数字=考新闻
+      /* ★「数据反映成就」类考新闻题拦截（v20261010a 实锤：「发送旅客3.02亿人次，这一数据反映了
+         我国在哪个方面取得成就」——整题还是在考今天新闻本身，违反「时政只作背景引入」死命令） */
+      if (hitNum && /(这一|该|上述|此)(组)?(数据|数字|现象|变化|成就)|反映了|反映的是|折射出/.test(askLine)) { bad.push(qi); return; }
+      /* ★①②组合占位选项拦截（v20261010a 实锤：多选选项全是「①②」「①③」组合符）：
+         允许真正的组合列举题，但题干必须完整给出 ①②③④ 各分句的具体表述 */
+      const comboOpt = q.options.filter(o => /^[①②③④⑤⑥⑦⑧][①②③④⑤⑥⑦⑧\s、，,和]*$/.test(String(o || "").trim())).length;
+      if (comboOpt >= 3 && !/[①②③④⑤⑥⑦⑧][^①②③④⑤⑥⑦⑧\n]{8,}/.test(String(q.q || ""))) { bad.push(qi); return; }
       /* ★★答案一致性（v20261008l）：解析声明的答案字母与 a 字段不一致 = 废题（用户 23:06 实锤：
          解析写【答案】B、判分却判 C，一大片）。多选跳过（看 multi 字段）。 */
       const isM = q.type === "multi" || q.multi || (typeof q.a === "string" && q.a.length > 1);
@@ -1306,6 +1356,25 @@
           Object.keys(fq).forEach(k => { if (fq[k] > bn2) { bn2 = fq[k]; bs = k; } });
           if ("ABCD".indexOf(bs) !== aIdx) { bad.push(qi); return; }   // 解析与字段不一致=废题
         }
+      }
+      /* ★★多选答案一致性（v20261010a，用户实锤：解析写「选项B与政策立场不符」、答案却是 BC）：
+         ① 解析声明的组合（【答案】ABC / 故本题选ABC）与 multi 字段不符 → 以解析为准纠正；
+         ② 解析里「X项错误/不符/不正确」→ 从答案组合剔除该字母；剔除后不足 2 个字母 = 废题 */
+      if (isM) {
+        const eT = String(q.e || "");
+        let cur = String((q.multi || (typeof q.a === "string" ? q.a : "")) || "").toUpperCase().replace(/[^A-D]/g, "");
+        const combos = []; let m5;
+        const rc1 = /【\s*答案\s*】\s*[:：]?\s*([A-D]{2,4})/g;
+        const rc2 = /(?:故本题选|本题选|故选|应选)\s*[:：]?\s*([A-D]{2,4})/g;
+        while ((m5 = rc1.exec(eT))) combos.push(m5[1]);
+        while ((m5 = rc2.exec(eT))) combos.push(m5[1]);
+        if (combos.length) cur = combos[combos.length - 1];
+        const negRe = /([A-D])\s*[项选项]?\s*[:：]?\s*[^。；;\n]{0,24}?(错误|不正确|不符|不符合|不属于|不对|表述有误|说法有误)/g;
+        const drop = {}; let m6;
+        while ((m6 = negRe.exec(eT))) drop[m6[1]] = 1;
+        cur = cur.split("").filter(c => !drop[c]).join("");
+        if (cur.length < 2) { bad.push(qi); return; }
+        q.multi = cur; q.a = cur; q.type = "multi";
       }
       // ★修正：旧版取「前 20 字」做去重键，而规则要求长引子前置 → 多题开头雷同被误判重复
       //       → 大批废题 → 题量不足 → 直接抛「内容不完整」= 生成失败。改为全文去重。
@@ -1394,13 +1463,13 @@
     const kpFinal = (themeBlock && themeBlock.length > 20) ? themeBlock
       : (kpBlock ? "\n\n【本次必须考察的知识点（权威原文表述。今日时政只作背景引入，设问与正确项必须取自这里）】" + kp : "");
 
-    /* 2/4 言语理解 5 题 */
+    /* 2/4 言语理解 5 题（v20261010a：★一次只出 1 题、逐题生成逐题校验逐题入库——
+       根治「5 题一锅出 → 弱模型全违规 → 校验全杀 → 0 题」。云端 10-08/09/10 言语全为 0 的实锤 */
     if (window.KGProgress) KGProgress.show("AI 生成言语理解 5 题 · 2/4…", 42);
     const verbalSpec =
-      "\n\n【输出要求】只输出一个 JSON 数组，恰好 5 道「言语理解·逻辑填空」题，不要任何说明文字、不要 markdown 代码块。" +
-      "双空题格式：{\"q\":\"长背景材料（100-200字、至少3个分句，公考书面政论语体）…____…____\",\"options\":[\"词一 词二\",\"词三 词四\",\"词五 词六\",\"词七 词八\"],\"a\":0,\"e\":\"逐空逐项解析（阿里木江两步法，≥120字，原样点名全部四个选项的词）\"}；" +
-      "单空题格式：{\"q\":\"长背景材料（100-200字、至少3个分句，公考书面政论语体）…____…\",\"options\":[\"词一\",\"词二\",\"词三\",\"词四\"],\"a\":0,\"e\":\"…\"}。" +
-      "空数必须与选项词数一致（1空对1词、2空对2词），每题恰好 4 个选项。a 为正确选项 0 基数字。" +
+      "\n\n【输出要求】只输出一个 JSON 数组，**只含 1 道**「言语理解·逻辑填空」题（形如 [{…}]），不要任何说明文字、不要 markdown 代码块。" +
+      "格式：{\"q\":\"长背景材料（100-200字、至少3个分句，公考书面政论语体）…____…____\",\"options\":[\"词一 词二\",\"词三 词四\",\"词五 词六\",\"词七 词八\"],\"a\":0,\"e\":\"逐空逐项解析（阿里木江两步法，≥120字，原样点名全部四个选项的词）\"}；" +
+      "单空题则题干 1 个 ____、options 每项 1 个词。空数必须与选项词数一致，每题恰好 4 个选项。a 为正确选项 0 基数字。" +
       vBankBlock +
       VERBAL_RULES;
     const p2 = base + verbalSpec;
@@ -1412,42 +1481,33 @@
       });
       return out;
     }
-    let verbal = verbalDedupe(await genSeg(p2, "AI 生成言语理解 5 题…", 45, 5, 8000, 3));
-    /* 重试：带着「错在哪」再生成一次 */
-    let vbad = validateVerbal(verbal);
-    if (vbad.length) {
+    let verbal = [];
+    const usedHeadsAll = [];
+    function verbalAccept(cands) { // 单题校验合格才入库，并登记题干开头防重复
+      let n = 0;
+      (cands || []).forEach(function (q) {
+        if (!q || validateVerbal([q]).length) return;
+        const k = String(q.q || "").replace(/\s+/g, "");
+        if (!k || verbal.some(x => String(x.q || "").replace(/\s+/g, "") === k)) return;
+        verbal.push(q); usedHeadsAll.push(k.slice(0, 30)); n++;
+      });
+      return n;
+    }
+    for (let vi = 0; vi < 5; vi++) {
+      const p2i = p2 + "\n\n【第 " + (vi + 1) + " / 5 题】只出这 1 道。正确答案建议取 " + "ABCD"[vi % 4] + "（可按质量微调）。已用题干开头（严禁重复相同开头/相同主题文段）：" + (usedHeadsAll.join("；") || "（无）");
       try {
-        const p2b = p2 +
-          "\n\n【上一稿校验失败】第 " + vbad.map(i => i + 1).join("、") + " 题违规（任一：正文不足100字或不足3个分句；空数与选项词数不匹配；选项不足4个；正确项感情色彩与语境矛盾（正面成就文段配了贬义正确项）；选项含「了」类词；出现三字词；同一空位四选项字数不一致；解析缺失/未逐项点名四个选项的词）。必须重新输出完整 5 题。";
-        const d2b = verbalDedupe(await genSeg(p2b, "言语题修正重生成…", 52, 5, 8000, 2));
-        const merged = verbalDedupe(verbal.concat(d2b));
-        if (validateVerbal(merged).length <= validateVerbal(verbal).length) verbal = merged;
+        const one = await genSeg(p2i, "AI 生成言语理解题（" + (vi + 1) + "/5）…", 40 + vi * 3, 1, 3000, 2);
+        verbalAccept(one);
       } catch (e) {}
     }
-    /* ★逐题补齐循环（用户死命令：不许只剩一两道题）：剔废题后不足 5 道，
-       就把已用题干列为「不得重复」继续补，最多 4 轮，直到凑满 5 道合规题。 */
-    for (let round = 0; round < 4 && validateVerbal(verbal).length; round++) {
-      const bs = new Set(validateVerbal(verbal));
-      verbal = verbal.filter((_, i) => !bs.has(i));
-      if (verbal.length >= 5) break;
-      const need = 5 - verbal.length;
-      const usedHeads = verbal.map(q => String(q.q || "").replace(/\s+/g, "").slice(0, 30)).filter(Boolean);
+    /* ★逐题补齐循环（用户死命令：不许只剩一两道题）：不足 5 道就逐题补，最多 6 轮 */
+    for (let round = 0; round < 6 && verbal.length < 5; round++) {
       try {
-        const p2c = base + verbalSpec +
-          "\n\n【补齐任务】现在只缺 " + need + " 道合规题，请只输出 " + need + " 道全新的言语理解题（不要重复输出已有题目）。" +
-          "已用题干开头（严禁再写相同开头/相同主题文段）：" + (usedHeads.join("；") || "（无）") + "。";
-        const more = verbalDedupe(await genSeg(p2c, "言语题补齐（第 " + (round + 1) + " 轮）…", 56, Math.max(1, need - 1), 8000, 2));
-        verbal = verbalDedupe(verbal.concat(more));
-      } catch (e) { break; }
+        const p2c = p2 + "\n\n【补齐任务】只输出 1 道全新的言语理解题（已有 " + verbal.length + "/5）。已用题干开头（严禁再写相同开头/相同主题文段）：" + (usedHeadsAll.join("；") || "（无）");
+        const more = await genSeg(p2c, "言语题补齐（第 " + (round + 1) + " 轮）…", 52 + round * 3, 1, 3000, 2);
+        verbalAccept(more);
+      } catch (e) { if (round >= 3) break; }
     }
-    /* 最终剔废（此时通常已满 5 道合规题） */
-    (function () {
-      const vb = validateVerbal(verbal);
-      if (vb.length) {
-        const bs = new Set(vb);
-        verbal = verbal.filter((_, i) => !bs.has(i));
-      }
-    })();
 
     /* 3/4 时政单选 7 道 */
     if (window.KGProgress) KGProgress.show("AI 生成时政单选题 7 道 · 3/4…", 62);

@@ -58,10 +58,11 @@
         { id: "Qwen/Qwen2.5-7B-Instruct", label: "Qwen2.5 7B", note: "免费", vision: false },
         { id: "THUDM/glm-4-9b-chat", label: "GLM-4 9B", note: "免费", vision: false }
       ] },
-    { id: "zhipu", label: "智谱 GLM（glm-4-flash 免费）", base: "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+    { id: "zhipu", label: "智谱 GLM（glm-4.7-flash 免费）", base: "https://open.bigmodel.cn/api/paas/v4/chat/completions",
       keyHint: "智谱 API Key", keyUrl: "https://open.bigmodel.cn/usercenter/apikeys", maxTok: 1024,
       models: [
-        { id: "glm-4-flash", label: "GLM-4-Flash", note: "免费", vision: false, maxOut: 4095 },
+        { id: "glm-4.7-flash", label: "GLM-4.7-Flash", note: "免费·推荐出题", vision: false, maxOut: 8192 },
+        { id: "glm-4-flash", label: "GLM-4-Flash", note: "免费（旧）", vision: false, maxOut: 4095 },
         { id: "glm-4v-flash", label: "GLM-4V-Flash", note: "可识图", vision: true, maxOut: 1024 }
       ] },
     { id: "ollama", label: "本地 Ollama（完全免费 · 离线）", base: "http://localhost:11434/v1/chat/completions",
@@ -110,6 +111,9 @@
     let m = "";
     try { m = localStorage.getItem(modelStore(id)) || ""; } catch (e) {}
     if (!m && id === "github") { try { m = localStorage.getItem("kg_ai_model") || ""; } catch (e) {} }
+    // ★旧模型静默升级：智谱 glm-4-flash 出题质量太差（言语全废/多选烂题根源之一），
+    //   glm-4.7-flash 同一把 Key 直接可用且永久免费 → 存量用户自动切到新模型
+    if (id === "zhipu" && (m === "glm-4-flash" || m === "glm-4.5-flash")) m = "glm-4.7-flash";
     // 存的模型已下架/是生图模型（不该当对话模型）→ 回退第一个非生图模型
     const hit = p.models.filter(x => x.id === m)[0];
     if (m && hit && !hit.image) return m;
