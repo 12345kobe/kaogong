@@ -995,8 +995,17 @@
           if (m.images && m.images.length) {
             html += m.images.map(u => `<img class="ai-img" src="${u}" alt="附图"/>`).join("");
           }
+          /* ★v20261010b 每条消息显示咨询时间（今天=时分，跨天=月-日 时分） */
+          let tTxt = "";
+          if (m.t) {
+            const d = new Date(m.t), now = new Date();
+            const p2 = n => String(n).padStart(2, "0");
+            const hm = p2(d.getHours()) + ":" + p2(d.getMinutes());
+            tTxt = (d.toDateString() === now.toDateString()) ? hm
+              : (p2(d.getMonth() + 1) + "-" + p2(d.getDate()) + " " + hm);
+          }
           return `<div class="ai-msg ${m.role === "user" ? "user" : "bot"}" data-i="${i}">
-            <div class="ai-who">${m.role === "user" ? "我" : "AI"}</div>
+            <div class="ai-who">${m.role === "user" ? "我" : "AI"}${tTxt ? `<span class="ai-time"> ${tTxt}</span>` : ""}</div>
             <div class="ai-text">${UI.md(m.content)}${html}</div>
           </div>`;
         }).join("");
@@ -1158,7 +1167,7 @@
         });
         if (!parts.length) parts.push({ type: "text", text: " " });
 
-        log.push({ role: "user", content: text || "（见图/PDF）", images: imgAtts.map(a => a.dataUrl) });
+        log.push({ role: "user", content: text || "（见图/PDF）", images: imgAtts.map(a => a.dataUrl), t: Date.now() });
         input.value = ""; atts = []; renderAtts(); renderMsgs();
         msgs.innerHTML += `<div class="ai-msg bot" id="aiPending"><div class="ai-who">AI</div><div class="ai-text">思考中…</div></div>`;
         scrollBottom();
@@ -1169,7 +1178,7 @@
             .concat(log.slice(0, -1).map(x => ({ role: x.role, content: x.content })))
             .concat([{ role: "user", content: parts.length === 1 && parts[0].type === "text" ? parts[0].text : parts }]);
           const reply = await chat(messages, { providerId: pid, key: key, model: model });
-          log.push({ role: "assistant", content: reply });
+          log.push({ role: "assistant", content: reply, t: Date.now() });
           setLog(log); curLog = log; renderMsgs();
           showJyfs();
           // AI 解答自动存入题目笔记（保存即上传云端，跨设备可见）

@@ -25,6 +25,7 @@
   const GH = (window.APP_CONFIG && window.APP_CONFIG.GH) || { owner: "12345kobe", repo: "kaogong", dataBranch: "userdata" };
 
   const LS_KEY = "kg_desk_state_v1";
+  const LS_KEY_BAK = "kg_desk_state_v1_bak";   // ★v20261010b 本地状态备份键：主键解析失败/被清时恢复，杜绝「一退出就没记录」
   const LS_TOKEN = "kg_sync_token";
   const LS_USER = "kg_sync_user";
   const LS_DEVICE = "kg_device_id";
@@ -144,6 +145,17 @@
       if (raw) {
         try { state = JSON.parse(raw); } catch (e) { state = null; }
       }
+      // ★v20261010b 主状态损坏/为空时，从备份键恢复 —— 这是「移动端退出就没记录」的第一道保险
+      if (!state) {
+        let bak = null;
+        try { bak = localStorage.getItem(LS_KEY_BAK); } catch (e) {}
+        if (bak) {
+          try {
+            state = JSON.parse(bak);
+            setTimeout(() => { try { window.UI && window.UI.toast("检测到本地数据损坏，已从备份恢复 ✓"); } catch (e) {} }, 1800);
+          } catch (e) { state = null; }
+        }
+      }
       if (!state) {
         state = deepClone(DEFAULT_STATE);
         state.meta.createdAt = Date.now();
@@ -246,7 +258,12 @@
       state.meta.updatedAt = Date.now();
       try { state.meta.deviceId = this.deviceId(); } catch (e) {}
       this._snapshotVault();
-      try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {}
+      let mainOk = true;
+      try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) { mainOk = false; }
+      // ★v20261010b 备份键：主键写入失败（存储配额溢出）或每 20 秒一次，双写兜底
+      if (!mainOk || !this._bakAt || Date.now() - this._bakAt > 20000) {
+        try { localStorage.setItem(LS_KEY_BAK, JSON.stringify(state)); this._bakAt = Date.now(); } catch (e) {}
+      }
       this._dirty = true;
     },
     save(immediate) {
@@ -1020,7 +1037,15 @@
       this._pulling = true;
       try {
         const r = await this._gh(`/repos/${GH.owner}/${GH.repo}/contents/${this._userPath()}?ref=${GH.dataBranch}`);
-        const data = mergeDefault(JSON.parse(this._b64dec(r.content)), DEFAULT_STATE);
+        // ★v20261010b 大文件（>1MB）Contents API 不返回 content —— 必须回退 git blobs 按 sha 取，
+        //   否则 pull 永远失败：云端数据（含每日时政、其他设备的记录）再也同步不到本机。
+        let rawPull = (r && r.content) || "";
+        if (!rawPull && r && r.sha) {
+          const blob = await this._gh(`/repos/${GH.owner}/${GH.repo}/git/blobs/${r.sha}`);
+          rawPull = (blob && blob.content) || "";
+        }
+        if (!rawPull) throw new Error("云端内容为空");
+        const data = mergeDefault(JSON.parse(this._b64dec(rawPull)), DEFAULT_STATE);
         // 与本机「累积合并」：本机尚未上传的历史不会被云端覆盖
         const beforeSig = this._sig();
         // 判定云端是否比「本机上次见到的版本」更新 —— 是则设置类数据以云端为准（换设备后一模一样）
@@ -1053,13 +1078,48 @@
         this._pulling = false;
       }
     },
+    /* ★v20261010b 防骤减保险：本地学习记录比云端少一大截（设备存储被清空/重置后），
+       绝不允许直接上传 —— 先把云端合并进来（合并是「只增不减」的，本地历史自动救回）再上传。
+       2026-10-10 18:24 实锤事故：一台本地状态被清空的设备把云端 38 天打卡/127 项计划/全部刷题记录
+       直接覆盖成了空白。 */
+    _shrunkVs(cloud, local) {
+      const cnt = (x) => (Array.isArray(x) ? x.length : (x && typeof x === "object") ? Object.keys(x).length : 0);
+      const pairs = [
+        [cnt((cloud.checkin || {}).dates), cnt((local.checkin || {}).dates)],
+        [cnt(cloud.accuracy), cnt(local.accuracy)],
+        [cnt(cloud.mutiHistory), cnt(local.mutiHistory)]
+      ];
+      return pairs.some(([c, l]) => c >= 5 && l < Math.min(3, c * 0.4));
+    },
     async push() {
       if (!this.isLoggedIn()) return;
       this._localSave();                       // 上传前先落盘：确保 meta.updatedAt 与 vault 都是最新的
       const path = this._userPath();
-      const content = this._b64enc(JSON.stringify(state));
       let sha = null;
-      try { const r = await this._gh(`/repos/${GH.owner}/${GH.repo}/contents/${path}?ref=${GH.dataBranch}`); sha = r.sha; } catch (e) {}
+      try {
+        const r = await this._gh(`/repos/${GH.owner}/${GH.repo}/contents/${path}?ref=${GH.dataBranch}`);
+        sha = r && r.sha;
+        // 防骤减保险（3 分钟内只做一次全量比对，避免每次 push 都拉 2MB）
+        if (sha && (!this._shrunkCheckAt || Date.now() - this._shrunkCheckAt > 180000)) {
+          this._shrunkCheckAt = Date.now();
+          let rawC = (r && r.content) || "";
+          if (!rawC) {
+            const b = await this._gh(`/repos/${GH.owner}/${GH.repo}/git/blobs/${sha}`);
+            rawC = (b && b.content) || "";
+          }
+          if (rawC) {
+            const cloudState = JSON.parse(this._b64dec(rawC));
+            if (this._shrunkVs(cloudState, state)) {
+              console.warn("[同步保险] 本地记录比云端骤减，先合并云端（只增不减）再上传");
+              const merged = this.mergeStates(state, cloudState, { cloudNewer: false });
+              state = merged; this.state = merged;
+              this._localSave();
+              try { window.UI && window.UI.toast("🛡️ 检测到本地记录异常减少，已自动从云端恢复"); } catch (e) {}
+            }
+          }
+        }
+      } catch (e) {}
+      const content = this._b64enc(JSON.stringify(state));
       try {
         await this._gh(`/repos/${GH.owner}/${GH.repo}/contents/${path}`, {
           method: "PUT",

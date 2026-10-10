@@ -659,7 +659,8 @@
       const ds = dt.getFullYear() + "-" + p2(dt.getMonth() + 1) + "-" + p2(dt.getDate()) + " " + p2(dt.getHours()) + ":" + p2(dt.getMinutes());
       stampHtml = '<div style="color:var(--txt-dim);font-size:12px;margin:2px 0 10px">生成于 ' + ds + (d.manualAt ? "（手动刷新）" : "（每晚20:00自动）") + "</div>";
     }
-    let h = `<div class="card"><h3>📅 ${esc(d.title || (date + " 时政"))}</h3>` + stampHtml;
+    let h = `<div class="card"><h3>📅 ${esc(d.title || (date + " 时政"))}` +
+      `<button class="btn sm danger" id="dhDelDay" style="float:right;margin-left:8px" title="删除这一天的时政内容（含考点/金句/题目）">🗑 删除当天</button></h3>` + stampHtml;
     h += hotNewsHtml(d.news);
     if (es.topic || (es.paras || []).length || (es.quotes || []).length) {
       h += `<h4 style="margin:14px 0 6px">✍ 今日申论时评 + 金句</h4>`;
@@ -673,6 +674,22 @@
     }
     h += `</div>`;
     box.appendChild(UI.el(h));
+    /* ★v20261010b 日内容页「🗑 删除当天」：整日删除 + 墓碑防复活 + 立即上云（用户要求在多选题所在的当天页里也能删） */
+    const delBtn = box.querySelector("#dhDelDay");
+    if (delBtn) delBtn.onclick = async () => {
+      const msg = "确定删除 " + date + " 的时政内容吗？删除后云端、静态兜底都不会再恢复；当天可点「刷新今日时政」重新生成。";
+      let ok = false;
+      try { const p = UI.confirm(msg); ok = (p && typeof p.then === "function") ? await p : !!p; } catch (e) { ok = window.confirm(msg); }
+      if (!ok) return;
+      const st = DB.state;
+      st.dailyHotDeleted = st.dailyHotDeleted || {};
+      delete st.dailyHot[date];
+      st.dailyHotDeleted[date] = true;
+      DB.save();
+      try { if (DB.isLoggedIn && DB.isLoggedIn() && DB.push) await DB.push(); } catch (e) {}
+      try { UI.toast("已删除 " + date + " 的时政内容"); } catch (e) {}
+      try { if (P) location.hash = "#/current"; } catch (e) {}
+    };
     if (!P) return;
     const g = P.grid();
     [["verbal", "🗣 言语理解 · " + (d.verbal || []).length + " 题", "言语理解"],
@@ -1602,6 +1619,47 @@
         }
       } catch (e) {}
     }
+
+    /* ★v20261010b 静态题库兜底补齐（用户死命令：不许只剩多选、不许缺言语）：
+       AI 产出不足时，从静态源 window.KG_DAILY_HOT（每晚自动化同步的合格题库）按题干去重补足到
+       言语 5 / 单选 7 / 多选 3 —— 保证「点一次就能出完整一套」，绝不再出现 0 言语 0 单选。 */
+    (function () {
+      function staticPool() {
+        try {
+          const H = window.KG_DAILY_HOT || {};
+          const dates = Object.keys(H).sort().reverse();   // 最新日期优先
+          const v = [], sq = [], mq = [];
+          dates.forEach(d => {
+            const e = H[d] || {};
+            (e.verbal || []).forEach(q => { if (q && q.q) v.push(q); });
+            (e.quiz || []).forEach(q => {
+              if (!q || !q.q) return;
+              if (q.type === "multi") mq.push(q); else sq.push(q);
+            });
+          });
+          return { v: v, sq: sq, mq: mq };
+        } catch (e) { return { v: [], sq: [], mq: [] }; }
+      }
+      const pool = staticPool();
+      const have = (arr, q) => arr.some(x => String((x && x.q) || "").replace(/\s+/g, "") === String(q.q || "").replace(/\s+/g, ""));
+      for (const q of pool.v) {
+        if (verbal.length >= 5) break;
+        if (!have(verbal, q) && !validateVerbal([q]).length) verbal.push(q);
+      }
+      let singlesNow = quiz.filter(q => q && q.type !== "multi");
+      for (const q of pool.sq) {
+        if (singlesNow.length >= 7) break;
+        if (!have(quiz, q) && !validateQuiz([q], matAll).length) { quiz.push(q); singlesNow.push(q); }
+      }
+      let multisNow = quiz.filter(q => q && q.type === "multi");
+      for (const q of pool.mq) {
+        if (multisNow.length >= 3) break;
+        if (!have(quiz, q) && !validateQuiz([q], matAll).length) { quiz.push(q); multisNow.push(q); }
+      }
+      if (pool.v.length || pool.sq.length || pool.mq.length) {
+        try { console.log("[时政兜底] 补后题量：言语 " + verbal.length + "/5，时政 " + quiz.length + "/10（单 " + singlesNow.length + " 多 " + multisNow.length + "）"); } catch (e) {}
+      }
+    })();
 
     /* 只有「AI 完全没产出」才算失败；部分不足也照常呈现，绝不让用户看到「生成失败」 */
     if (!quiz.length && !verbal.length && !news.length)

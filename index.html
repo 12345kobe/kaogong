@@ -12,7 +12,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
-<meta name="kg-version" content="20261010a" />
+<meta name="kg-version" content="20261010b" />
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="apple-touch-icon" href="icon-192.png" />
 <link rel="icon" type="image/png" href="icon-192.png" />
@@ -35,7 +35,7 @@
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.cn/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;700&family=Noto+Sans+SC:wght@400;700&family=ZCOOL+XiaoWei&display=swap" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css" />
-<link rel="stylesheet" href="css/styles.css?v=20261010a" />
+<link rel="stylesheet" href="css/styles.css?v=20261010b" />
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -138,12 +138,12 @@
 <script src="assets/data/essay_quotes.js?v=20260909b"></script>
 <script src="assets/data/essay_normwords.js?v=20260909b"></script>
 <script src="js/config.js?v=20261008d"></script>
-<script src="js/data.js?v=20261010a"></script>
+<script src="js/data.js?v=20261010b"></script>
 <script src="js/social.js?v=20261008d"></script>
 <script src="js/ebbinghaus.js?v=20261008d"></script>
 <script src="js/icons.js?v=20261008d"></script>
 <script src="js/ui.js?v=20261008d"></script>
-<script src="js/quiz.js?v=20261010a"></script>
+<script src="js/quiz.js?v=20261010b"></script>
 <script src="js/banks.js?v=20261008d"></script>
 <script src="js/pdf.js?v=20261008d"></script>
 <script src="js/flashcard.js?v=20261008d"></script>
@@ -179,9 +179,9 @@
 <script src="js/mod-stats.js?v=20261008d"></script>
 <script src="js/voice.js?v=20261008d"></script>
 <script src="js/drills-data.js?v=20261008d"></script>
-<script src="js/mod-current.js?v=20261010a"></script>
+<script src="js/mod-current.js?v=20261010b"></script>
 <script src="js/mod-pdfimport.js?v=20261008d"></script>
-<script src="js/mod-ai.js?v=20261010a"></script>
+<script src="js/mod-ai.js?v=20261010b"></script>
 <script src="js/ai-quiz.js?v=20261008d"></script>
 <script src="js/mod-favorites.js?v=20261008d"></script>
 <script src="js/mod-settings.js?v=20261008d"></script>
@@ -189,7 +189,7 @@
 <script src="js/exam-mode.js?v=20261008d"></script>
 <script src="js/help.js?v=20261008d"></script>
 <script src="js/mod-contacts.js?v=20261008d"></script>
-<script src="js/app.js?v=20261010a"></script>
+<script src="js/app.js?v=20261010b"></script>
 <script>
 /* Service Worker：网络优先，保证主屏 PWA 每次打开都拉到最新版。
  * ★v20261008i 强制自更新（用户死命令：不想重装 PWA 也要拿到新版）：
@@ -208,6 +208,34 @@ if ("serviceWorker" in navigator) {
     navigator.serviceWorker.addEventListener("controllerchange", function () {
       window.location.reload();
     });
+    /* ★v20261010b 版本自检兜底（用户死命令：移动端必须自动更新）：
+       每 30 分钟拉一次线上 index.html（no-store + 时间戳绕缓存），发现版本号比本机新
+       → 注销所有 SW + 刷新一次。即使 reg.update() 链路失灵也能强制吃到新版。 */
+    function kgVersionCheck() {
+      try {
+        var last = Number(localStorage.getItem("kg_vcheck_at") || 0);
+        if (Date.now() - last < 30 * 60 * 1000) return;
+        localStorage.setItem("kg_vcheck_at", String(Date.now()));
+        fetch("./index.html?_vchk=" + Date.now(), { cache: "no-store" }).then(function (r) {
+          return r.ok ? r.text() : "";
+        }).then(function (txt) {
+          if (!txt) return;
+          var m = txt.match(/kg-version"\s+content="([^"]+)"/);
+          var remote = m && m[1];
+          if (remote && remote !== KG_APP_V) {
+            localStorage.removeItem("kg_vcheck_at");   // 刷新后允许继续检查
+            if (navigator.serviceWorker.controller) {
+              navigator.serviceWorker.getRegistrations().then(function (rs) {
+                rs.forEach(function (x) { try { x.unregister(); } catch (e) {} });
+                window.location.reload();
+              }).catch(function () { window.location.reload(); });
+            } else window.location.reload();
+          }
+        }).catch(function () {});
+      } catch (e) {}
+    }
+    setTimeout(kgVersionCheck, 8000);
+    setInterval(kgVersionCheck, 10 * 60 * 1000);
   });
 }
 </script>
