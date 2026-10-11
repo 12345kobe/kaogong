@@ -986,7 +986,11 @@
       // 云端数据落到本机后：刷新顶栏 + 主题立即生效 + 重画当前页（答题/手写进行中不打断）
       try { if (window.__refreshTop) window.__refreshTop(); } catch (e) {}
       try { if (window.Theme && window.Theme.apply) window.Theme.apply(); } catch (e) {}
-      const busy = !!document.querySelector(".hw-overlay") || !!document.querySelector(".quiz-full") || !!(window.Quiz && window.Quiz.active);
+      // ★v20261010c 加固：页面上还有答题卡（.quiz-live / .quiz-q）就绝不整页重渲染，
+      //   否则 15 秒一次的云端同步会把已答题重建回「未作答」（用户反馈「背题模式得疯狂点」）
+      const busy = !!document.querySelector(".hw-overlay") || !!document.querySelector(".quiz-full")
+        || !!document.querySelector(".quiz-live") || !!document.querySelector(".quiz-q")
+        || !!(window.Quiz && window.Quiz.active);
       try { if (!busy && window.__kgRerender) window.__kgRerender(); } catch (e) {}
     },
     _schedulePull() {

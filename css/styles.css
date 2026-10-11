@@ -486,6 +486,10 @@ body.light:not(.glass) .hw-palette{background:rgba(255,255,255,.98);border-color
 .tag.q-type-single{background:rgba(255,209,102,.14);border-color:var(--yellow);color:var(--yellow)}
 .q-multi-hint{margin:6px 0 2px}
 .q-confirm{margin:4px 0}
+/* v20261010c 多选题「☑ 多选」开关 */
+.q-multi-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 2px}
+.q-multi-toggle{min-height:34px;padding:6px 14px;font-weight:700}
+.q-multi-toggle.on{background:var(--brand,#34e7e4);color:#06222a;border:1px solid var(--brand,#34e7e4)}
 
 /* ===== 更新日志 ===== */
 .cg-bubble{position:absolute;left:36px;top:-8px;max-width:170px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;

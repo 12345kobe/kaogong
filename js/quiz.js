@@ -56,8 +56,14 @@
   function fmt(sec) { sec = Math.max(0, Math.round(sec)); const m = Math.floor(sec / 60), s = sec % 60; return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0"); }
 
   const Quiz = {
+    active: false,   // ★v20261010c 答题进行中标记：云端同步合并后据此跳过整页重渲染
     start(container, questions, subject, opts) {
       opts = opts || {};
+      /* ★v20261010c 答案被"重置"的根因修复：以前 Quiz.active 从未被赋值，
+         导致 data.js _afterApply 判定「不在答题」→ 每次云端同步都整页重渲染 →
+         答题卡被重建，上一题答过的痕迹全没了（用户反馈「得疯狂点」）。 */
+      Quiz.active = true;
+      try { container.classList.add("quiz-live"); } catch (e) {}
       const noStats = !!opts.noStats;
       const noRecordWrong = !!opts.noRecordWrong; // 错题本「重做本题」用：避免重复写入错题本
       // 进入答题时隐藏所有悬浮标注按钮，避免与「交卷」按钮在左下角重叠；
@@ -337,11 +343,41 @@
           </div>
           <div class="q">${nl2br(qq.q)}</div>
           ${(qq.img ? '<div class="q-img-wrap"><img class="q-img" src="' + UI.esc(qq.img) + '" alt="配图" onerror="this.style.display=\'none\'"/></div>' : '')}
-          ${isMulti(qq) ? `<div class="q-multi-hint muted small">本题为多选题，可选多个选项，选完后点「✓ 确认本题」或最后统一交卷。</div>` : ""}
+          ${isMulti(qq) ? `<div class="q-multi-bar"><button type="button" class="btn sm q-multi-toggle">☑ 多选</button><span class="muted small">点「☑ 多选」开启后可同时勾多个，选完点「✓ 确认本题」</span></div>` : ""}
           <div class="opts"></div>
           ${isMulti(qq) ? `<button class="btn sm q-confirm" style="display:none;margin:4px 0">✓ 确认本题</button>` : ""}
           <div class="exp" style="display:none"></div></div>`);
         const optsWrap = card.querySelector(".opts");
+
+        /* ★v20261010c 多选题「☑ 多选」开关（用户要求）：
+           关闭时点选项＝单选手感（只保留最后点的一项）；开启后点选项＝累加勾选，可勾多个。 */
+        if (isMulti(qq)) {
+          card.dataset.multiOn = "0";
+          const mt = card.querySelector(".q-multi-toggle");
+          if (mt) mt.onclick = (ev) => {
+            ev.preventDefault();
+            const on = card.dataset.multiOn === "1" ? "0" : "1";
+            card.dataset.multiOn = on;
+            mt.classList.toggle("on", on === "1");
+            mt.textContent = on === "1" ? "☑ 多选（已开启）" : "☑ 多选";
+            if (on === "0") {
+              // 关掉多选：只保留最后选中的一项
+              const sels = Array.prototype.slice.call(optsWrap.querySelectorAll(".opt.selected"));
+              sels.slice(0, -1).forEach(x => x.classList.remove("selected"));
+              syncSel();
+            }
+            try { if (navigator.vibrate) navigator.vibrate(15); } catch (e) {}
+          };
+        }
+        function syncSel() {
+          const sel = Array.prototype.slice.call(optsWrap.querySelectorAll(".opt.selected"))
+            .map(x => parseInt(x.dataset.oi, 10)).sort((x, y) => x - y);
+          card.dataset.ua = JSON.stringify(sel);
+          results[qi] = { ua: sel, right: null };
+          Quiz._answered = answeredCount();
+          updateSubmitHint();
+          const cf = card.querySelector(".q-confirm"); if (cf) cf.style.display = sel.length ? "" : "none";
+        }
 
         card.querySelector(".pen-btn").onclick = () => UI.Handwriting.open({
           subject, id: qid, anchor: card, session: true, fresh: false, onChange: () => {
@@ -411,15 +447,13 @@
             const qtEl = card.querySelector(".q-time");
             if (qtEl) qtEl.textContent = "⏱ 用时 " + fmt(qTimes[qi] / 1000);
             if (isMulti(qq)) {
-              // 多选：切换选择态，可同时选多项，不直接揭示
-              b.classList.toggle("selected");
-              const sel = Array.prototype.slice.call(optsWrap.querySelectorAll(".opt.selected"))
-                .map(x => parseInt(x.dataset.oi, 10)).sort((x, y) => x - y);
-              card.dataset.ua = JSON.stringify(sel);
-              results[qi] = { ua: sel, right: null };
-              Quiz._answered = answeredCount();
-              updateSubmitHint();
-              const cf = card.querySelector(".q-confirm"); if (cf) cf.style.display = sel.length ? "" : "none";
+              // 多选：开了「☑ 多选」就累加勾选；没开就是单选手感（只留最后点的那项），都不直接揭示
+              if (card.dataset.multiOn === "1") b.classList.toggle("selected");
+              else {
+                optsWrap.querySelectorAll(".opt").forEach(ob => ob.classList.remove("selected"));
+                b.classList.add("selected");
+              }
+              syncSel();
             } else if (mode === "practice") {
               // 仅标记选择，不揭示
               optsWrap.querySelectorAll(".opt").forEach(ob => ob.classList.remove("selected"));
@@ -456,6 +490,8 @@
       function finish() {
         if (quizFinished) return;   // ★幂等保护：自动结算 + 交卷/maybeFinish 可能并发触发
         quizFinished = true;
+        Quiz.active = false;        // ★v20261010c 交卷后解除「答题中」，允许整页重渲染
+        try { container.classList.remove("quiz-live"); } catch (e) {}
         if (liveTimer) clearInterval(liveTimer);
         if (Quiz._timer) { try { clearInterval(Quiz._timer); } catch (e) {} Quiz._timer = null; }
         if (Quiz._handler) { try { document.removeEventListener("keydown", Quiz._handler); } catch (e) {} Quiz._handler = null; }

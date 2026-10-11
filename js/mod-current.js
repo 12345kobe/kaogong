@@ -745,9 +745,33 @@
       .catch(() => cb());
   }
 
+  /* ★v20261010c App 自己生成（用户死命令：不再依赖电脑）：
+     ① 不管今天有没有内容，都覆盖重写（电脑端 20:00 自动化同样一直覆盖）；
+     ② 但 20:00 之后你手动生成过（manualAt ≥ 今日 20:00）就不动它，尊重你的版本；
+     ③ 每天只自动出一次（本地标记 kg_hotAuto_<日期>），不重复烧 AI 额度。 */
+  function autoGenToday(host) {
+    try {
+      const DB = window.DB, UI = window.UI;
+      if (!DB || !DB.today) return;
+      const date = DB.today();
+      const e = ((DB.state && DB.state.dailyHot) || {})[date] || {};
+      const cut = new Date(); cut.setHours(20, 0, 0, 0);
+      if (e.manualAt && e.manualAt >= cut.getTime()) return;   // 20 点后你自己出过 → 不打扰
+      const key = "kg_hotAuto_" + date;
+      if (localStorage.getItem(key)) return;                   // 今天已自动出过一次
+      if (!window.KGAI || !window.KGAI.chat) return;           // 没配 AI 就不折腾
+      if (hotBusy) return;
+      localStorage.setItem(key, String(Date.now()));
+      setTimeout(() => {
+        try { UI && UI.toast("正在自动生成今天（" + date + "）的时政…"); } catch (err) {}
+        refreshToday(host, null);
+      }, 1200);
+    } catch (e) {}
+  }
+
   function mountDailyHot(host) {
     host.innerHTML = `<div class="muted small">正在载入每日时政热点…</div>`;
-    ensureDailyHot(() => renderDailyHot(host));
+    ensureDailyHot(() => { renderDailyHot(host); autoGenToday(host); });
   }
 
   /* 生成时间戳：手动刷新写 manualAt，每晚20:00自动版写 generatedAt；两者取一显示 */
