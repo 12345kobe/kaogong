@@ -764,7 +764,23 @@
       localStorage.setItem(key, String(Date.now()));
       setTimeout(() => {
         try { UI && UI.toast("正在自动生成今天（" + date + "）的时政…"); } catch (err) {}
-        refreshToday(host, null);
+        /* ★20261012a 生成成功才保留「今天已出」标记；失败立刻清标记 + 10 分钟后自动重试，
+           绝不允许「一次失败 → 当天永远空白」（10-11/10-12 空白的真凶就是标记先写） */
+        Promise.resolve(refreshToday(host, null))
+          .then(() => {
+            const ok = !!(((DB.state && DB.state.dailyHot) || {})[date]);
+            if (!ok) localStorage.removeItem(key);
+          })
+          .catch(() => { try { localStorage.removeItem(key); } catch (err) {} });
+        // 页面还开着的话，失败后 10 分钟自动补一次（不影响当前使用）
+        setTimeout(() => {
+          try {
+            if (!(((DB.state && DB.state.dailyHot) || {})[date]) && !hotBusy) {
+              localStorage.removeItem(key);
+              autoGenToday(host);
+            }
+          } catch (err) {}
+        }, 10 * 60 * 1000);
       }, 1200);
     } catch (e) {}
   }

@@ -484,7 +484,7 @@
       ).join("");
       return html || "";
     } catch (e) {
-      return `<p class="al-p">${boldMd(esc(String(raw || "").slice(0, 4000)))}</p>`;
+      return `<p class="al-p">${boldMd(esc(String(raw || "")))}</p>`;
     }
   }
   /* 已经是 HTML 就直接用（章节 theory 入库时就存 HTML） */
@@ -1845,12 +1845,48 @@
         return out;
       }
 
+      /* ★20261012a 长资料分块：超过模型单次上限的资料按行切块（尽量在题号边界切开），
+         逐块交给 AI 再合并——杜绝「资料只识别了一小部分就被截掉」 */
+      function chunkByLines(text, maxLen) {
+        const lines = String(text || "").replace(/\r\n?/g, "\n").split("\n");
+        const chunks = []; let cur = "";
+        const qStart = /^(\d{1,4})\s*[.．、)]\s*/;
+        for (const ln of lines) {
+          const cand = cur ? cur + "\n" + ln : ln;
+          if (cand.length > maxLen && cur) {
+            // 优先在「本行是新题号」处切，避免把一道题劈成两半
+            if (qStart.test(ln.trim()) || cur.length > maxLen * 0.5) { chunks.push(cur); cur = ln; }
+            else cur = cand;
+          } else cur = cand;
+        }
+        if (cur.trim()) chunks.push(cur);
+        return chunks.length ? chunks : [String(text || "")];
+      }
+
       // AI 文本 → 题目结构化（粘贴 / PDF / Word 文字，比纯正则更准）
       async function aiTextQuestions(text, subject) {
         const A = window.KGAI; const provId = A.getProvider(); const prov = A.providerById(provId); let model = A.getModel();
         const key = A.getKey(provId);
         if (!key && !prov.noKey && !A.hasCustom()) throw new Error("未配置 AI 令牌");
-        const sys = "你是公考题库录入助手。下面是一段公考题或资料的纯文字。请严格只输出一个 JSON 数组（不要任何解释、不要 markdown 代码块、不要 ```），数组每个元素是 {\"q\":\"题干\",\"options\":[\"A选项\",\"B选项\",\"C选项\",\"D选项\"],\"a\":\"A\"或\"B\"或\"C\"或\"D\"（不确定填 null），\"e\":\"解析，可空\"}。选项必须 2-4 个，顺序与文字一致；忽略页眉页脚、页码、非题目文字。若这段文字不是公考题目（如词语积累、讲义、纯资料），只返回 []。";
+        const full = String(text || "");
+        if (full.length > 6000) {
+          // 长资料分块识别后合并（每块都在题号边界附近切开，不丢题）
+          let out = [];
+          for (const ch of chunkByLines(full, 6000)) {
+            try {
+              const part = await aiTextQuestionsCore(ch, subject);
+              if (part && part.length) out = out.concat(part);
+            } catch (e) { console.warn("[录入] 分块识别失败，跳过该块", e); }
+          }
+          return out;
+        }
+        return aiTextQuestionsCore(full, subject);
+      }
+      async function aiTextQuestionsCore(text, subject) {
+        const A = window.KGAI; const provId = A.getProvider(); const prov = A.providerById(provId); let model = A.getModel();
+        const key = A.getKey(provId);
+        if (!key && !prov.noKey && !A.hasCustom()) throw new Error("未配置 AI 令牌");
+        const sys = "你是公考题库录入助手。下面是一段公考题或资料的纯文字。请严格只输出一个 JSON 数组（不要任何解释、不要 markdown 代码块、不要 ```），数组每个元素是 {\"q\":\"题干\",\"type\":\"single\"或\"multi\",\"options\":[\"A选项\",\"B选项\",\"C选项\",\"D选项\"],\"a\":\"A\"或\"ABD\"（单选填单个字母；多选必须填多个字母拼成的串，如 \"ABC\"；资料里答案明确写了几个字母就照抄几个；不确定填 null），\"e\":\"解析，可空\"}。规则：① 先判断题型：单选 type 填 \"single\"、多选 type 填 \"multi\"；② 选项必须 2-6 个，顺序与文字一致；③ 资料里若标注了答案字母（如 答案：ABC），a 必须原样照抄，绝不能丢。忽略页眉页脚、页码、非题目文字。若这段文字不是公考题目（如词语积累、讲义、纯资料），只返回 []。";
         const user = "请识别这段公考题目，按要求只输出 JSON 数组：\n" + text.slice(0, 6000);
         const t = await A.chat([{ role: "system", content: sys }, { role: "user", content: user }], { providerId: provId, model: model, key: key });
         return parseAiQuestions(t, subject);
@@ -1862,8 +1898,19 @@
         const key = A.getKey(provId);
         if (!key && !prov.noKey && !A.hasCustom()) throw new Error("未配置 AI 令牌");
         const sys = "你是公考时政/申论资料整理助手。用户会发一段杂乱的时政汇总或申论资料文字。请整理成规范文本，结构保持：第一部分：YYYY年M月D日公考标准时政汇总（星级重难点）\\n国内时政\\n⭐1. …\\n国际时政\\n…\\n第二部分：申论标准时评+必背金句\\n…\\n第三部分：时政专属词语释义 + 言语真题\\n…\\n第四部分：原创时政单选\\n…\\n只输出整理后的纯文本本身，不要任何解释、不要 markdown 代码块。";
-        const user = "请整理这段资料：\n" + text.slice(0, 6000);
-        const t = await A.chat([{ role: "system", content: sys }, { role: "user", content: user }], { providerId: provId, model: model, key: key });
+        const user = "请整理这段资料：\n";
+        let t;
+        if (String(text || "").length > 6000) {
+          // 长资料分块整理再拼接，绝不截断
+          const parts = [];
+          for (const ch of chunkByLines(text, 6000)) {
+            try { parts.push(await A.chat([{ role: "system", content: sys }, { role: "user", content: user + ch }], { providerId: provId, model: model, key: key })); }
+            catch (e) { console.warn("[整理] 分块失败，跳过", e); }
+          }
+          t = parts.join("\n\n");
+        } else {
+          t = await A.chat([{ role: "system", content: sys }, { role: "user", content: user + text }], { providerId: provId, model: model, key: key });
+        }
         return (t || "").trim();
       }
 
@@ -1881,9 +1928,31 @@
         const key = A.getKey(provId);
         if (!key && !prov.noKey && !A.hasCustom()) throw new Error("未配置 AI 令牌");
         const sys = "你是公考时政资料解析助手。用户会给一段时政/申论资料（常见结构：上面是资料，下面是题目）。请严格只输出一个 JSON 对象（不要任何解释、不要 markdown 代码块），格式：{\"date\":\"YYYY-MM-DD\",\"title\":\"标题\",\"news\":[{\"area\":\"国内时政\",\"star\":1,\"title\":\"要点\",\"body\":\"正文\"}],\"essay\":{\"topic\":\"时评主题\",\"paras\":[\"段落\"],\"quotes\":[\"金句\"]},\"words\":[{\"word\":\"词语\",\"type\":\"两字\",\"def\":\"释义\"}],\"verbal\":[{\"q\":\"题干\",\"options\":[\"A选项\",\"B选项\",\"C选项\",\"D选项\"],\"a\":\"A\",\"e\":\"解析\"}],\"quiz\":[{\"q\":\"题干\",\"options\":[\"A选项\",\"B选项\",\"C选项\",\"D选项\"],\"a\":\"B\",\"e\":\"解析\"}]}。规则：资料部分归入 news/essay/words；所有选择题（言语真题、时政单选等）归入 verbal/quiz，且必须给出答案 a（A/B/C/D）与解析 e；没有的字段填空数组。";
-        const user = "请把这段资料按上面格式解析，只输出 JSON：\n" + text.slice(0, 8000);
-        const t = await A.chat([{ role: "system", content: sys }, { role: "user", content: user }], { providerId: provId, model: model, key: key });
-        return parseAiObject(t);
+        const user = "请把这段资料按上面格式解析，只输出 JSON：\n";
+        const parseOne = async (seg) => {
+          const t = await A.chat([{ role: "system", content: sys }, { role: "user", content: user + seg }], { providerId: provId, model: model, key: key });
+          return parseAiObject(t);
+        };
+        if (String(text || "").length <= 8000) return parseOne(text);
+        // ★长资料分块解析再合并：news/essay/words/verbal/quiz 全量保留，一个字都不截
+        const merged = { date: "", title: "", news: [], essay: { topic: "", paras: [], quotes: [] }, words: [], verbal: [], quiz: [] };
+        for (const ch of chunkByLines(text, 8000)) {
+          try {
+            const d = await parseOne(ch);
+            if (!merged.date && d.date) merged.date = d.date;
+            if (!merged.title && d.title) merged.title = d.title;
+            (d.news || []).forEach(x => merged.news.push(x));
+            if (d.essay) {
+              if (!merged.essay.topic && d.essay.topic) merged.essay.topic = d.essay.topic;
+              (d.essay.paras || []).forEach(x => merged.essay.paras.push(x));
+              (d.essay.quotes || []).forEach(x => merged.essay.quotes.push(x));
+            }
+            (d.words || []).forEach(x => merged.words.push(x));
+            (d.verbal || []).forEach(x => merged.verbal.push(x));
+            (d.quiz || []).forEach(x => merged.quiz.push(x));
+          } catch (e) { console.warn("[时政解析] 分块失败，跳过", e); }
+        }
+        return merged;
       }
 
       function saveQuestionsAs(subject, qs, folderId, nameOverride) {
@@ -2000,6 +2069,31 @@
         return out;
       }
 
+      /* ★20261012a 答案抢救：AI 偷懒没给答案（a=null）时，从解析反推——
+         「D项表述错误/不符/不属于」→ 其余字母即答案（≥2 个字母自动识别为多选）；
+         「故本题选ABC / 答案是ABD」→ 直接取字母串。 */
+      function rescueFromExplain(e, optCount) {
+        const s = String(e || "");
+        if (!s || !optCount) return "";
+        const norm = (t) => String(t).replace(/[Ａ-Ｅａ-ｅ]/g, c => String.fromCharCode(c.charCodeAt(0) - 65248)).toUpperCase();
+        const all = "ABCDE".slice(0, optCount).split("");
+        // ① 解析明确点名答案（取最后一处，最贴近结论）
+        let m, ans = "";
+        const combos = [];
+        const reC = /(?:本题选|故选|应选|答案是|答案为|【答案】|答案[:：选])\s*[:：]?\s*([A-Ea-eＡ-Ｅａ-ｅ](?:\s*[、,，\s和及与]*[A-Ea-eＡ-Ｅａ-ｅ]){0,5})/g;
+        while ((m = reC.exec(s))) combos.push(norm(m[1]).replace(/[^A-E]/g, ""));
+        if (combos.length) ans = combos[combos.length - 1].split("").filter(c => all.indexOf(c) >= 0).join("");
+        // ② 排除法：解析恰好只点名一个错误项 → 其余项为答案（≥2 字母即多选）
+        if (!ans) {
+          const drop = [];
+          const reD = /([A-Ea-eＡ-Ｅａ-ｅ])\s*[项选项]?\s*[:：]?\s*[^。；;\n]{0,26}?(表述错误|说法错误|不正确|不符|不符合|不属于|不对|说法有误|表述有误|错误)/g;
+          while ((m = reD.exec(s))) drop.push(norm(m[1]));
+          const uniq = Array.from(new Set(drop)).filter(c => all.indexOf(c) >= 0);
+          if (uniq.length === 1 && optCount >= 3) ans = all.filter(c => c !== uniq[0]).join("");
+        }
+        return ans;
+      }
+
       function parseAiQuestions(text, subject) {
         if (!text) return [];
         let s = String(text).trim();
@@ -2058,6 +2152,17 @@
             a = okAll ? multi : -1;
           }
           const e = sanitizeText(x.e || "").trim();
+          /* ★答案抢救：AI 没给答案时从解析反推（「D项表述错误」→其余项；「本题选ABC」→ABC） */
+          if (a === -1 && !multi) {
+            const r = rescueFromExplain(e, opts.length);
+            if (r.length === 1) {
+              const li = "ABCDE".indexOf(r);
+              if (li >= 0 && li < opts.length) a = li;
+            } else if (r.length > 1) {
+              const okAll = r.split("").every(c => { const i = "ABCDE".indexOf(c); return i >= 0 && i < opts.length; });
+              if (okAll) { multi = r; type = "multi"; a = r; }
+            }
+          }
           const needCheck = typeof a === "string" ? !a.length : !(a >= 0 && a < opts.length);
           const out = { q, options: opts, a, e, kp: "", num: idx + 1, needCheck: needCheck };
           if (type) out.type = type;

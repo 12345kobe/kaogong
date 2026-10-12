@@ -244,6 +244,42 @@
   }
 
   /* ===== 调用（OpenAI 兼容，按当前服务商） ===== */
+  /* ★20261012a 智谱免费模型「该模型当前访问量过大」治理：
+     ①临时性故障（过载/限流/5xx/网络抖动）自动指数退避重试；
+     ②主模型持续过载 → 自动切免费备胎 glm-4-flash（同一把 key），不再让用户手动重试 */
+  function isTransientErr(msg) {
+    return /访问量过大|稍后再试|系统繁忙|服务器繁忙|overload|internal error|server error|bad gateway|service unavailable|network|failed to fetch|\b429\b|\b500\b|\b502\b|\b503\b|\b504\b|rate.?limit|too many requests/i.test(String(msg || ""));
+  }
+  function aiSleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+  async function chatFetch(payload, pid, model, headers, o) {
+    const p = providerById(pid);
+    const candidates = [model];
+    if (pid === "zhipu" && model !== "glm-4-flash" && !o.baseUrl) candidates.push("glm-4-flash");   // 免费备胎（自定义网关不加）
+    let lastMsg = "";
+    for (let ci = 0; ci < candidates.length; ci++) {
+      const mid = candidates[ci];
+      const rounds = ci === 0 ? 3 : 2;
+      for (let i = 0; i < rounds; i++) {
+        try {
+          const resp = await fetch(o.baseUrl || p.base, {
+            method: "POST", headers: headers,
+            body: JSON.stringify(Object.assign({}, payload, { model: mid }))
+          });
+          if (resp.ok) return resp;
+          let msg = "HTTP " + resp.status;
+          try { const j = await resp.clone().json(); msg = (j.error && (j.error.message || j.error)) || j.message || msg; } catch (e) {}
+          lastMsg = msg;
+          if (!isTransientErr(msg)) throw new Error(msg);   // 401/400 等参数类错误：不重试直接抛
+        } catch (e) {
+          if (e && e.message && !isTransientErr(e.message) && /^HTTP 4/.test(e.message)) throw e;
+          lastMsg = (e && e.message) || String(e);
+        }
+        if (i < rounds - 1) await aiSleep(1500 * (i + 1) * (i + 1));
+      }
+    }
+    throw new Error(lastMsg || "AI 请求失败");
+  }
+
   async function chat(messages, o) {
     o = o || {};
     const pid = o.providerId || getProviderId();
@@ -263,15 +299,7 @@
     // 流式：传了 onDelta 就走 SSE，边生成边回调（全文累积值, 本次增量）
     if (typeof o.onDelta === "function") {
       payload.stream = true;
-      const resp = await fetch(o.baseUrl || p.base, {
-        method: "POST", headers: headers,
-        body: JSON.stringify(payload)
-      });
-      if (!resp.ok) {
-        let msg = "HTTP " + resp.status;
-        try { const j = await resp.json(); msg = (j.error && (j.error.message || j.error)) || (j.message) || msg; } catch (e) {}
-        throw new Error(msg);
-      }
+      const resp = await chatFetch(payload, pid, model, headers, o);
       const reader = resp.body.getReader();
       const dec = new TextDecoder();
       let buf = "", full = "";
@@ -310,15 +338,7 @@
         return full;
       } catch (e) { return full || "（无内容）"; }
     }
-    const resp = await fetch(o.baseUrl || p.base, {
-      method: "POST", headers: headers,
-      body: JSON.stringify(payload)
-    });
-    if (!resp.ok) {
-      let msg = "HTTP " + resp.status;
-      try { const j = await resp.json(); msg = (j.error && (j.error.message || j.error)) || (j.message) || msg; } catch (e) {}
-      throw new Error(msg);
-    }
+    const resp = await chatFetch(payload, pid, model, headers, o);
     const j = await resp.json();
     return (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "（无内容）";
   }
