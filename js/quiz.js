@@ -343,18 +343,23 @@
           </div>
           <div class="q">${nl2br(qq.q)}</div>
           ${(qq.img ? '<div class="q-img-wrap"><img class="q-img" src="' + UI.esc(qq.img) + '" alt="配图" onerror="this.style.display=\'none\'"/></div>' : '')}
-          ${isMulti(qq) ? `<div class="q-multi-bar"><button type="button" class="btn sm q-multi-toggle">☑ 多选</button><span class="muted small">点「☑ 多选」开启后可同时勾多个，选完点「✓ 确认本题」</span></div>` : ""}
+          ${isMulti(qq) ? `<div class="q-multi-bar"><button type="button" class="btn sm q-multi-toggle on">☑ 多选（已开启）</button><span class="muted small">多选题：点选项即勾选（再点取消），选完点「✓ 确认本题」</span></div>` : ""}
           <div class="opts"></div>
           ${isMulti(qq) ? `<button class="btn sm q-confirm" style="display:none;margin:4px 0">✓ 确认本题</button>` : ""}
           <div class="exp" style="display:none"></div></div>`);
         const optsWrap = card.querySelector(".opts");
 
-        /* ★v20261010c 多选题「☑ 多选」开关（用户要求）：
-           关闭时点选项＝单选手感（只保留最后点的一项）；开启后点选项＝累加勾选，可勾多个。 */
+        /* ★v20261012c 多选题默认「累加勾选」：点选项即勾选/取消（可勾多个，点过的保持绿色），
+           选完点「✓ 确认本题」提交。「☑ 多选」按钮仅作切换单选手感（误触保护），不再是必开开关。
+           （v20261010c 的默认单选手感导致用户连点 A、B、D 只记下最后一个 → 全判错，已废除该默认） */
         if (isMulti(qq)) {
-          card.dataset.multiOn = "0";
+          card.dataset.multiOn = "1";
           const mt = card.querySelector(".q-multi-toggle");
-          if (mt) mt.onclick = (ev) => {
+          if (mt) {
+            mt.classList.add("on");
+            mt.textContent = "☑ 多选（已开启）";
+          }
+          const flip = (ev) => {
             ev.preventDefault();
             const on = card.dataset.multiOn === "1" ? "0" : "1";
             card.dataset.multiOn = on;
@@ -368,6 +373,7 @@
             }
             try { if (navigator.vibrate) navigator.vibrate(15); } catch (e) {}
           };
+          if (mt) mt.onclick = flip;
         }
         function syncSel() {
           const sel = Array.prototype.slice.call(optsWrap.querySelectorAll(".opt.selected"))

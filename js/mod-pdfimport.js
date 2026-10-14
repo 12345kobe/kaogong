@@ -1381,6 +1381,15 @@
     const s = subject || "综合";
     const taken = {};
     rawBooks().forEach(b => { if (b.subject === subject) taken[b.name] = 1; });
+    /* ★v20261012c 时政题册自动命名为「日期+时政」（如 2026-10-14时政）；同日多套自动加序号 */
+    if (s === "时政") {
+      let n = 0;
+      for (;;) {
+        const nm = db().today() + "时政" + (n ? "（" + n + "）" : "");
+        if (!taken[nm]) return nm;
+        n++;
+      }
+    }
     let n = 1;
     while (taken[s + "刷题册（" + n + "）"]) n++;
     return s + "刷题册（" + n + "）";
