@@ -745,28 +745,39 @@
       .catch(() => cb());
   }
 
-  /* ★v20261010c App 自己生成（用户死命令：不再依赖电脑）：
-     ① 不管今天有没有内容，都覆盖重写（电脑端 20:00 自动化同样一直覆盖）；
-     ② 但 20:00 之后你手动生成过（manualAt ≥ 今日 20:00）就不动它，尊重你的版本；
-     ③ 每天只自动出一次（本地标记 kg_hotAuto_<日期>），不重复烧 AI 额度。 */
-  function autoGenToday(host) {
+  /* ★v20261010c / 2026-10-15 修正 App 自己生成（用户死命令：不再依赖电脑）：
+     精准实现「每晚 20:00 覆盖，除非你 20 点后自己出过」：
+     ① 无论今天有没有内容都生成/覆盖；
+     ② 你 20:00 之后手动生成过（manualAt ≥ 今日 20:00）→ 不动它，尊重你的版本；
+     ③ 两种触发：白天首次打开给个预览版；若现已过 20:00 且上次自动出在 20:00 前，
+        则执行「每晚 20:00 官方覆盖」（每天至多两次，不重复烧 AI 额度）。 */
+  function autoGenToday(host, opts) {
+    opts = opts || {};
+    const silent = !!opts.silent;
     try {
       const DB = window.DB, UI = window.UI;
       if (!DB || !DB.today) return;
       const date = DB.today();
       const e = ((DB.state && DB.state.dailyHot) || {})[date] || {};
       const cut = new Date(); cut.setHours(20, 0, 0, 0);
-      if (e.manualAt && e.manualAt >= cut.getTime()) return;   // 20 点后你自己出过 → 不打扰
+      const now = Date.now();
+      if (e.manualAt && e.manualAt >= cut.getTime()) {
+        if (!silent) try { UI && UI.toast("今天 20:00 后你已手动生成，自动版不再覆盖"); } catch (err) {}
+        return;   // 20 点后你自己出过 → 不打扰
+      }
       const key = "kg_hotAuto_" + date;
-      if (localStorage.getItem(key)) return;                   // 今天已自动出过一次
+      const lastAuto = parseInt(localStorage.getItem(key) || "0", 10) || 0;
+      // 需要自动生成：A) 今天还没自动出过（白天预览）；B) 已过 20:00 但上次自动出在 20:00 前（官方覆盖）
+      const needGen = (!lastAuto) || (now >= cut.getTime() && lastAuto < cut.getTime());
+      if (!needGen) return;
       if (!window.KGAI || !window.KGAI.chat) return;           // 没配 AI 就不折腾
       if (hotBusy) return;
-      localStorage.setItem(key, String(Date.now()));
+      localStorage.setItem(key, String(now));
       setTimeout(() => {
-        try { UI && UI.toast("正在自动生成今天（" + date + "）的时政…"); } catch (err) {}
+        if (!silent) try { UI && UI.toast("正在自动生成今天（" + date + "）的时政…"); } catch (err) {}
         /* ★20261012a 生成成功才保留「今天已出」标记；失败立刻清标记 + 10 分钟后自动重试，
-           绝不允许「一次失败 → 当天永远空白」（10-11/10-12 空白的真凶就是标记先写） */
-        Promise.resolve(refreshToday(host, null))
+           绝不允许「一次失败 → 当天永远空白」 */
+        Promise.resolve(refreshToday(host, null, { manual: false, silent: silent }))
           .then(() => {
             const ok = !!(((DB.state && DB.state.dailyHot) || {})[date]);
             if (!ok) localStorage.removeItem(key);
@@ -777,13 +788,15 @@
           try {
             if (!(((DB.state && DB.state.dailyHot) || {})[date]) && !hotBusy) {
               localStorage.removeItem(key);
-              autoGenToday(host);
+              autoGenToday(host, opts);
             }
           } catch (err) {}
         }, 10 * 60 * 1000);
       }, 1200);
     } catch (e) {}
   }
+  // 暴露给 app.js boot：开机即触发今日时政自动生成（无需进入时政模块）
+  window.kgAutoGenToday = function (host, opts) { try { autoGenToday(host, opts); } catch (e) {} };
 
   function mountDailyHot(host) {
     host.innerHTML = `<div class="muted small">正在载入每日时政热点…</div>`;
@@ -1722,15 +1735,25 @@
        则自己的版本优先保留（pickDailyHot：20点后手动版最高优先）。
      - **历史日期一律不动**。 */
   let hotBusy = false;
-  async function refreshToday(host, bar) {
+  /* ★2026-10-15 重构刷新今日时政：
+     opts.manual：true=用户点「刷新」→ 标 manualAt（本人手动版，云端最高优先）；
+                  false=App 自动生成（开机/每晚20:00覆盖）→ 标 generatedAt（可被服务器端 20:00 版覆盖）。
+     opts.silent：true=开机后台自动生成，不弹进度条/不打扰式 toast（仍生成+上云）。
+     host 可传 null（开机无页面）：此时跳过渲染，只生成+写库+上云。 */
+  async function refreshToday(host, bar, opts) {
+    opts = opts || {};
+    const silent = !!opts.silent;
+    const prog = (t, p) => { if (!silent && window.KGProgress) KGProgress.show(t, p); };
+    const progHide = () => { if (!silent && window.KGProgress) KGProgress.hide(); };
+    const note = (m) => { if (!silent && window.UI) { try { window.UI.toast(m); } catch (e) {} } };
     const UI = window.UI, DB = window.DB;
     const tip = bar ? bar.querySelector("#hotRefreshTip") : null;
     const setTip = (t) => { if (tip) tip.textContent = t; };
-    if (hotBusy) { try { UI.toast("今天的时政正在生成中，请稍候…"); } catch (e) {} return; }
+    if (hotBusy) { if (!silent) try { UI.toast("今天的时政正在生成中，请稍候…"); } catch (e) {} return; }
     hotBusy = true;
     const date = DB.today();
     try {
-      if (window.KGProgress) KGProgress.show("正在准备生成今日时政（" + date + "）…", 6);
+      prog("正在准备生成今日时政（" + date + "）…", 6);
       setTip("正在同步最新数据…");
       // ① 拉热点素材（供现场生成用）
       try {
@@ -1749,8 +1772,8 @@
       try { if (DB.pull) await DB.pull(); } catch (e) {}
       DB.state.dailyHot = DB.state.dailyHot || {};
       if (window.KG_DAILY_HOT) mergeDailyHot(DB.state.dailyHot, window.KG_DAILY_HOT);
-      renderDailyHot(host);
-      if (window.KGProgress) KGProgress.show("AI 正在生成今日时政（" + date + "）…约 1-2 分钟", 18);
+      if (host) renderDailyHot(host);
+      prog("AI 正在生成今日时政（" + date + "）…约 1-2 分钟", 18);
       // ③ 无论几点：现场生成今天（用户手动触发即运转）；进度条常驻顶部，可离开本页
       setTip("正在用 AI 生成今天（" + date + "）的时政…约需 2-4 分钟");
       let day = null;
@@ -1759,33 +1782,34 @@
       } catch (e1) {
         console.warn("[时政] 第一次生成未成功，自动整跑重试一次", e1);
         setTip("第一次生成未成功，自动再试一次…");
-        if (window.KGProgress) KGProgress.show("第一次未成功，自动整体重试一次…", 12);
+        prog("第一次未成功，自动整体重试一次…", 12);
         await new Promise(r => setTimeout(r, 3000));
         day = await genTodayByAI(date);
       }
-      if (window.KGProgress) KGProgress.show("生成完成，正在写入…", 92);
-      day.manualAt = Date.now();   // 标记为本人手动版：云同步时优先保留（仅本账号可见）
+      prog("生成完成，正在写入…", 92);
+      if (opts.manual) { day.manualAt = Date.now(); delete day.generatedAt; }   // 手动版：云端最高优先
+      else { day.generatedAt = Date.now(); delete day.manualAt; }               // 自动版：可被服务器 20:00 覆盖
       DB.state.dailyHot[date] = day;
       DB.save();
-      /* ★立刻上云（用户死命令）：手动生成后马上推送，别等定时上传——
+      /* ★立刻上云（用户死命令）：生成后马上推送，别等定时上传——
          否则「生成完就退出、清后台再进」时云端还没有这份，就被自动版顶掉了。 */
       try {
         if (DB.isLoggedIn && DB.isLoggedIn() && DB.push) {
           setTip("正在把这份内容同步到你的账号云端…");
           await DB.push();
-          setTip("已生成并同步云端（" + date + "）：手动版已锁定，不会被自动版覆盖");
+          setTip("已生成并同步云端（" + date + "）" + (opts.manual ? "：手动版已锁定，不会被自动版覆盖" : "：自动版已写入"));
         }
       } catch (e) { console.warn("[时政] 云端推送失败（本机已保存）", e); }
-      if (window.KGProgress) KGProgress.show("今日时政已生成 ✓", 100);
-      setTimeout(() => { if (window.KGProgress) KGProgress.hide(); }, 1200);
+      prog("今日时政已生成 ✓", 100);
+      setTimeout(() => { progHide(); }, 1200);
       setTip("已生成今天（" + date + "），本机与你的账号云端已更新");
-      renderDailyHot(host);
-      try { UI.toast("今日时政已生成"); } catch (e) {}
+      if (host) renderDailyHot(host);
+      note("今日时政已生成");
     } catch (e) {
-      if (window.KGProgress) KGProgress.hide();
+      progHide();
       setTip("生成失败：" + ((e && e.message) || e) + "，可稍后再试；每晚 20:00 也会自动生成");
-      try { UI.toast("今日时政生成失败：" + ((e && e.message) || e)); } catch (err) {}
-      renderDailyHot(host);   // 恢复列表（今天回到灰色占位）
+      try { if (!silent && window.UI) window.UI.toast("今日时政生成失败：" + ((e && e.message) || e)); } catch (err) {}
+      if (host) renderDailyHot(host);   // 恢复列表（今天回到灰色占位）
     } finally {
       hotBusy = false;
     }

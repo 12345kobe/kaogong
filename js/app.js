@@ -1139,6 +1139,11 @@
     Promise.all([Promise.race([pullP, capWait]), minWait]).then(() => {
       if (DB.isLoggedIn()) DB.startAutoSync();
       renderRoute(); refreshTop();
+      // ★2026-10-15：开机即触发今日时政自动生成（无需进入时政模块）。
+      //   3s 后执行：若今天还没出过 / 已过 20:00 需官方覆盖，则用本机 AI 现场生成并上云。
+      setTimeout(() => {
+        try { if (window.kgAutoGenToday) window.kgAutoGenToday(null, { silent: true }); } catch (e) { console.error(e); }
+      }, 3000);
       if (splash) { splash.classList.add("kg-splash-hide"); setTimeout(() => { try { splash.remove(); } catch (e) {} }, 500); }
       // 新手引导：只对「真·新用户」自动启动（本地无任何学习数据）。
       // 清缓存 / 删除并重加主屏图标会丢 kg_guide_done 标记，但学习数据若还在（或云端同步回来），
