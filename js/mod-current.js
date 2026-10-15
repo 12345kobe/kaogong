@@ -858,7 +858,7 @@
         g.title = "今天的内容还没生成，点一下立即生成";
         g.onclick = () => {
           try { UI.toast("正在生成今天（" + d + "）的时政…"); } catch (e) {}
-          refreshToday(host, null);
+          refreshToday(host, null, { manual: true });
         };
         grid.appendChild(g);
         return;
@@ -1003,7 +1003,7 @@
     </div>`);
     setTimeout(() => {
       const b = bar.querySelector("#hotRefresh");
-      if (b) b.onclick = () => refreshToday(host, bar);
+      if (b) b.onclick = () => refreshToday(host, bar, { manual: true });
       const f = bar.querySelector("#hotForceUpd");
       if (f) f.onclick = async () => {
         try { UI.toast("正在清缓存并拉取最新版本…"); } catch (e) {}
