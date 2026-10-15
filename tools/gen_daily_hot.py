@@ -115,11 +115,15 @@ def call_ai(prompt):
         raise SystemExit("缺少 AI_API_KEY（请在仓库 Settings → Secrets and variables → Actions 里配置）")
     # workflow 里 secret 未配置时 env 是空字符串而非缺失，必须用 or 兜底，否则 base='' 直接炸
     base = (os.environ.get("AI_API_BASE") or "https://open.bigmodel.cn/api/paas/v4/chat/completions").strip()
-    # ★2026-10-10：默认从老旧的 glm-4-flash 换成免费但强得多的 glm-4.7-flash
-    #  （智谱开放平台免费档，同一把 key 直接可用、不花钱；glm-4.5-flash 已于 2026-01-30 下线）
-    model = (os.environ.get("AI_MODEL") or "glm-4.7-flash").strip()
-    # ★20261012a：主模型 glm-4.7-flash 偶发「该模型当前访问量过大」(429) 且持续整轮 →
-    #   自动切换免费备胎 glm-4-flash（同一把 key），保证每晚必定出内容
+    # ★2026-10-15 修正：glm-4.7-flash 长期「访问量过大」(429) 且持续整轮，导致每晚 20:00
+    #   自动化 + WorkBuddy 自动化全部写不出内容（用户实锤「20:00 自动出题从没跑成功过」）。
+    #   改用稳定的免费模型 glm-4-flash（同一把 key 直接可用，curl 实测 200 / ~1.3s）。
+    model = (os.environ.get("AI_MODEL") or "glm-4-flash").strip()
+    # ★2026-10-15：glm-4.7-flash 长期 429 过载（code 1305「访问量过大」）。即便仓库 Secrets
+    #   里 AI_MODEL 误配成它，也强制改回稳定的免费 glm-4-flash（同一把 key 直接可用），避免
+    #   每晚 20:00 自动化在过载模型上白耗 ~80s 重试甚至失败。其它自定义模型保持不变。
+    if model == "glm-4.7-flash":
+        model = "glm-4-flash"
     models = [model]
     if model != "glm-4-flash":
         models.append("glm-4-flash")
