@@ -31,10 +31,6 @@ body{
   /* 动态视口：跟随 iOS Safari/WebView 工具栏收展，避免 100vh 比可视区小导致底部留白 */
   height:100vh;
   height:100dvh;
-  /* ★v20261016d JS 钉死真实视口像素（--vh 由 app.js fixViewport 写入）：iOS PWA 启动时
-     webview 报告高度与实际渲染区不一致，底部多出一块未绘制白区（用户实锤「每次打开有缝，
-     扒拉一下才没」）。--vh 未设置时回退 100vh。 */
-  height:calc(var(--vh, 1vh) * 100);
 }
 /* 标题 / UI 控件统一用黑体；大标题黑体加粗；正文（body）用楷体 */
 h1,h2,h3,h4,.page-title,#pageTitle,.card>h3,.nav-item,.btn,.chip,.badge,.tag,.todo b,.eb-stat .n,.pct,.modal-title,.qd-chk,.fc-big,.countdown-num,.brand-logo span{
