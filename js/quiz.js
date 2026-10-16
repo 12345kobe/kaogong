@@ -348,6 +348,15 @@
           ${isMulti(qq) ? `<button class="btn sm q-confirm" style="display:none;margin:4px 0">✓ 确认本题</button>` : ""}
           <div class="exp" style="display:none"></div></div>`);
         const optsWrap = card.querySelector(".opts");
+        /* ★v20261017a 图推大图点击全屏查看（题干图+选项图要看得清） */
+        const qImg = card.querySelector(".q-img");
+        if (qImg) qImg.onclick = () => {
+          const lb = document.createElement("div");
+          lb.className = "q-img-lightbox";
+          lb.innerHTML = '<img src="' + qImg.getAttribute("src") + '" alt="配图放大"/>';
+          lb.onclick = () => { if (lb.parentNode) lb.parentNode.removeChild(lb); };
+          document.body.appendChild(lb);
+        };
 
         /* ★v20261012c 多选题默认「累加勾选」：点选项即勾选/取消（可勾多个，点过的保持绿色），
            选完点「✓ 确认本题」提交。「☑ 多选」按钮仅作切换单选手感（误触保护），不再是必开开关。

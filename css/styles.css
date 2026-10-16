@@ -33,6 +33,11 @@ body{
   height:100dvh;
 }
 /* 标题 / UI 控件统一用黑体；大标题黑体加粗；正文（body）用楷体 */
+/* ★v20261017a 判断题册图推大图：题干图+ABCD 选项图同图，尽量大、可点全屏 */
+.q-img-wrap{margin:10px 0;text-align:center}
+.q-img{max-width:100%;width:100%;height:auto;border-radius:10px;border:1px solid var(--line);display:block;cursor:zoom-in;background:#fff}
+.q-img-lightbox{position:fixed;inset:0;z-index:99998;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:12px;cursor:zoom-out}
+.q-img-lightbox img{max-width:100%;max-height:92vh;object-fit:contain;border-radius:8px}
 h1,h2,h3,h4,.page-title,#pageTitle,.card>h3,.nav-item,.btn,.chip,.badge,.tag,.todo b,.eb-stat .n,.pct,.modal-title,.qd-chk,.fc-big,.countdown-num,.brand-logo span{
   font-family:var(--font-head);
 }
