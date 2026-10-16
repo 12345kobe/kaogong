@@ -622,11 +622,19 @@
       }
 
       // 错词 / 错题本：按 id 去重追加
-      function mergeArrById(cur, inc) {
-        const arr = cur || [];
-        const have = new Set(arr.map(x => S(x && x.id)));
-        (inc || []).forEach(x => { const id = S(x && x.id); if (!id || !have.has(id)) { arr.push(x); if (id) have.add(id); } });
-        return arr;
+      // ★v20261016a 根治收藏爆炸：支持自定义 key 提取（收藏条目只有 qid 没有 id）；
+      //   且合并前先对 cur 自愈去重（治历史「每次同步翻倍」留下的 32 倍重复，本地膨胀自动收缩）。
+      function mergeArrById(cur, inc, keyFn) {
+        const kf = keyFn || (x => S(x && x.id));
+        const seen = new Set(), out = [];
+        (cur || []).forEach(x => {
+          const k = kf(x);
+          if (k && seen.has(k)) return;      // 自愈：丢弃 cur 里的历史重复
+          if (k) seen.add(k);
+          out.push(x);
+        });
+        (inc || []).forEach(x => { const k = kf(x); if (!k || !seen.has(k)) { out.push(x); if (k) seen.add(k); } });
+        return out;
       }
       out.wrongwords = mergeArrById(out.wrongwords, b.wrongwords);
       const wb = b.wrongbook || {};
@@ -797,9 +805,12 @@
       }
 
       // 收藏 / 待办 / 每日计划：按 id 去重合并，完成状态取「或」（一边勾了就算完成）
+      // ★收藏条目实际只有 qid 没有 id（data.js:79 注释里的 id 从未写入）→ 旧版 !id 恒真 → 每次同步整组追加翻倍。
+      //   v20261016a 改按 qid 去重（qid 缺失回退 id，再回退题干前 120 字）。
+      const fvKey = x => { if (!x) return ""; const id = (x.qid != null && x.qid !== "") ? x.qid : ((x.id != null && x.id !== "") ? x.id : ""); return id ? ("q:" + id) : ("t:" + S(x.q).slice(0, 120)); };
       out.favorites = out.favorites || {};
       const fvIn = b.favorites || {};
-      for (const s in fvIn) out.favorites[s] = mergeArrById(out.favorites[s], fvIn[s]);
+      for (const s in fvIn) out.favorites[s] = mergeArrById(out.favorites[s], fvIn[s], fvKey);
       out.todos = out.todos || {};
       const tdIn = b.todos || {};
       for (const m in tdIn) {
