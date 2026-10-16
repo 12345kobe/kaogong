@@ -85,6 +85,39 @@ def fallback_fetch():
     return out[:16]
 
 
+# ★跨天防重复（v20261016c）：时政题按主题域轮换出题——每天 10 道覆盖 10 个不同领域，
+#   杜绝模型在 temperature 0.3 下反复产出同一批「舒适区」考点（卫生与健康大会/国家公园…）。
+QUIZ_DOMAINS = ["经济建设", "科技创新", "民生社会", "生态文明", "法治建设", "文化思想",
+                "国家安全", "三农乡村", "党的建设", "教育人才", "国防军队", "外交国际"]
+
+
+def load_prev_heads(days=7, cap=40):
+    """★★跨天防重复（v20261016c，用户死命令「每天出的题必须不一样」）：
+    读静态源里最近 N 天已出题目的题干开头，注入 prompt 严禁重复，并在写入前硬校验剔除。
+    根因：temperature 0.3 + 相似素材 + 无回避清单，模型每天产出同一批题（用户实锤截图）。"""
+    heads = []
+    try:
+        txt = open("assets/data/daily_hot.js", "r", encoding="utf-8").read()
+        a, b = txt.find("{"), txt.rfind("}")
+        store = json.loads(txt[a:b + 1]) if (a >= 0 and b > a) else {}
+        ds = sorted([d for d in store.keys()
+                     if re.match(r"^\d{4}-\d{2}-\d{2}$", str(d)) and str(d) < DATE], reverse=True)[:days]
+        for d in ds:
+            e = store.get(d) or {}
+            for q in (e.get("verbal") or []) + (e.get("quiz") or []):
+                k = re.sub(r"\s+", "", str((q or {}).get("q") or ""))[:30]
+                if k:
+                    heads.append(k)
+    except Exception:
+        pass
+    seen, out = set(), []
+    for h in heads:
+        if h not in seen:
+            seen.add(h)
+            out.append(h)
+    return out[:cap]
+
+
 SPEC_TMPL = """你是公务员考试时政命题专家。下面是 {date} 的真实热点素材，请严格据此生成，禁止编造素材之外的事实。
 【今日素材】
 {mat}
@@ -349,6 +382,15 @@ def main():
     #  （理由：自动生成的题质量太差、错误率高，宁可每轮重写也不要把旧的错误题留着）
     base_prompt = SPEC_TMPL.replace("{date}", DATE).replace(
         "{mat}", "\n".join("%d. %s" % (i + 1, m) for i, m in enumerate(mat)))
+    # ★跨天防重复（v20261016c）：把近 7 天已出题干开头注入 prompt，严禁与近期任何一题雷同
+    prev_heads = load_prev_heads()
+    prev_set = set(prev_heads)
+    if prev_heads:
+        base_prompt += ("\n\n【★★跨天防重复红线】下面是最近几天已经出过的题干开头，今天出的每一道题"
+                        "（言语与时政全部）都严禁与它们重复——题干开头、背景事件、所考知识点三个维度"
+                        "都不得与近期任何一题雷同；同一知识点必须换全新角度、全新表述来考：\n"
+                        + "\n".join("%d. %s" % (i + 1, h) for i, h in enumerate(prev_heads)))
+        print("跨天防重复：注入近 7 天已出题干开头 %d 条" % len(prev_heads))
     # ★分段生成（v20261008l）：一次要「要点+金句+言语5+时政10」的整包太大，
     #   弱模型必然截断 → parse_json 救援也救不回来（10-07 连续两次失败即此因）。
     #   改为分段小请求，各自独立重试，最后拼装；某段失败不影响其它段。
@@ -390,8 +432,10 @@ def main():
                     return v
         return None
 
-    def gen_one(kind, tries=3):
-        """★一次只出 1 道题：输出量极小 → 中端模型也不会截断或写坏格式。"""
+    def gen_one(kind, tries=3, note=""):
+        """★一次只出 1 道题：输出量极小 → 中端模型也不会截断或写坏格式。
+        ★v20261016c：逐题注入「主题域/空型/答案字母」轮换 + 会话内已出题干回避——
+        旧版 5 次调用用逐字相同的 prompt，当天内部都可能出重复题（用户实锤）。"""
         extra = {
             "verbal": "这是一道【言语理解·逻辑填空】题。",
             "single": "这是一道【时政单选题】：a 用 0 基数字，不要 type/multi 字段。",
@@ -404,11 +448,16 @@ def main():
                 "只输出一个 JSON 对象，不要数组包裹、不要说明文字、不要 markdown 围栏，"
                 "形如 {\"q\":\"…\",\"options\":[\"A项\",\"B项\",\"C项\",\"D项\"],\"a\":0,"
                 "\"e\":\"【答案】A\\n【解析】…\"}（多选再加 \"type\":\"multi\",\"multi\":\"ABC\"，a 用字母串）。")
+            if note:
+                p += "\n【本题专属要求】" + note
+            if used_stems:
+                p += "\n【本次会话已出题目开头（严禁重复）】" + "；".join(used_stems[-14:])
             if t > 0:
                 p += "\n【上一次输出不是合法 JSON，请重新输出，务必完整、不要截断。】"
             try:
                 it = pick_item(parse_json(call_ai(p)))
                 if it and it.get("options") and it.get("q"):
+                    used_stems.append(re.sub(r"\s+", "", str(it.get("q") or ""))[:30])
                     return it
             except SystemExit as e:
                 print("%s 第 %d 次失败：%s" % (kind, t + 1, e), file=sys.stderr)
@@ -418,9 +467,13 @@ def main():
         return None
 
     # ★逐题生成（一次 1 题）：言语 5 题 + 时政 7 单选 + 3 多选
-    verbal = [x for x in (gen_one("verbal") for _ in range(5)) if x]
-    singles = [x for x in (gen_one("single") for _ in range(7)) if x]
-    multis = [x for x in (gen_one("multi") for _ in range(3)) if x]
+    #   ★v20261016c 轮换：空型/答案字母/主题域逐题指定 → 15 题覆盖不同域、不同题型，绝不雷同
+    used_stems = []
+    verbal_notes = ["双空、正确答案建议 A", "单空、正确答案建议 B", "双空、正确答案建议 C",
+                    "三空（每选项 3 个词、空数=每选项词数）、正确答案建议 D", "双空、正确答案建议 B"]
+    verbal = [x for x in (gen_one("verbal", note=verbal_notes[i]) for i in range(5)) if x]
+    singles = [x for x in (gen_one("single", note="本题主题域：【" + QUIZ_DOMAINS[i % len(QUIZ_DOMAINS)] + "】——背景新闻与考察考点都必须取自该主题域，且与本次已出题目的主题域互不相同。") for i in range(7)) if x]
+    multis = [x for x in (gen_one("multi", note="本题主题域：【" + QUIZ_DOMAINS[(i + 7) % len(QUIZ_DOMAINS)] + "】——背景新闻与考察考点都必须取自该主题域，且与本次已出题目的主题域互不相同。") for i in range(3)) if x]
 
     def is_multi(q):
         return (q.get("type") == "multi") or bool(q.get("multi"))
@@ -434,6 +487,16 @@ def main():
     day = {"news": news or [], "essay": essay or {}, "verbal": verbal or [], "quiz": quiz or []}
     day["verbal"] = enforce_answers(day["verbal"])
     day["quiz"] = filter_offtopic(enforce_answers(day["quiz"]))
+    # ★跨天硬校验（v20261016c）：与近 7 天任一题撞题干开头 → 直接剔除（prompt 回避失效时的保险）
+    if prev_set:
+        bv, bq = len(day["verbal"]), len(day["quiz"])
+        day["verbal"] = [q for q in day["verbal"]
+                         if re.sub(r"\s+", "", str(q.get("q") or ""))[:30] not in prev_set]
+        day["quiz"] = [q for q in day["quiz"]
+                       if re.sub(r"\s+", "", str(q.get("q") or ""))[:30] not in prev_set]
+        if bv != len(day["verbal"]) or bq != len(day["quiz"]):
+            print("跨天去重：剔除与近 7 天重复的题（言语 %d→%d，时政 %d→%d）"
+                  % (bv, len(day["verbal"]), bq, len(day["quiz"])), file=sys.stderr)
     nv, nq = len(day["verbal"]), len(day["quiz"])
     nn = len(day["news"])
     # 阈值放宽：言语≥4、时政≥8 即可写入（整批丢弃会让当天没内容，比少一题更糟）

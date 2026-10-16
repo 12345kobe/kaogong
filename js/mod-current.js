@@ -1487,6 +1487,31 @@
       "\n【时政范围红线】全部内容只限中国相关时政（国内政策、会议、科技、民生、经济、重大工程等）；纯国际新闻、外国事件一律禁止收录和入题；素材中如有国际条目（外国事故、外国选举、国际组织动态等），一律忽略、不得据此写要点或出题。";
     const redline = "【选项用词红线】错误选项只做词汇/领域/数字/主体的同义替换，句子仍来自知识点原意；不得出现消极、否定、负面评价或唱衰性表述。";
 
+    /* ★★★跨天防重复（v20261016c，用户死命令：每天出的题必须不一样）：
+       收集最近 7 天已出题目的题干开头——①全程注入 prompt 严禁重复；②入库前硬校验剔除；
+       ③静态兜底禁止回收历史日期原题。
+       根因：temperature 0.3 + 相似素材下，模型每天反复产出同一批公基考点（卫生与健康大会/
+       国家公园…），且兜底会把前几天的原题直接搬进今天（用户实锤截图「全都是一模一样的」）。 */
+    const prevHeadSet = (function () {
+      try {
+        const dh = (window.DB && window.DB.state && window.DB.state.dailyHot) || {};
+        const ds = Object.keys(dh).filter(d => d < date).sort().reverse().slice(0, 7);
+        const set = new Set();
+        ds.forEach(d => {
+          const e = dh[d] || {};
+          (e.verbal || []).concat(e.quiz || []).forEach(q => {
+            const k = String(q && q.q || "").replace(/\s+/g, "").slice(0, 30);
+            if (k) set.add(k);
+          });
+        });
+        return set;
+      } catch (e) { return new Set(); }
+    })();
+    const prevHeads = Array.from(prevHeadSet).slice(0, 40);
+    const prevBlock = prevHeads.length
+      ? "\n\n【★★跨天防重复红线】下面是最近几天已经出过的题干开头。今天出的每一道题都严禁与它们重复——题干开头、背景事件、所考知识点三个维度都不得与近期任何一题雷同；同一个知识点也必须换全新的角度、全新的表述来考：\n" + prevHeads.map((h, i) => (i + 1) + ". " + h).join("\n")
+      : "";
+
     /* ★内置知识点注入：今日时政只作背景引入，真正考的是这些知识点 */
     const matAll = hasMat ? mat.list.join(" ") : "";
     const kp = kpPickPolitical(matAll + date, 3, 5);
@@ -1554,13 +1579,14 @@
       return out;
     }
     let verbal = [];
-    const usedHeadsAll = [];
+    const usedHeadsAll = prevHeads.slice();   // ★跨天防重复：近 7 天题干开头一并列入「已用」清单，逐题注入 prompt
     function verbalAccept(cands) { // 单题校验合格才入库，并登记题干开头防重复
       let n = 0;
       (cands || []).forEach(function (q) {
         if (!q || validateVerbal([q]).length) return;
         const k = String(q.q || "").replace(/\s+/g, "");
         if (!k || verbal.some(x => String(x.q || "").replace(/\s+/g, "") === k)) return;
+        if (prevHeadSet.has(k.slice(0, 30))) return;   // ★跨天防重复：与近 7 天任一题撞开头 → 直接废
         verbal.push(q); usedHeadsAll.push(k.slice(0, 30)); n++;
       });
       return n;
@@ -1595,7 +1621,7 @@
       redline;
     const p3 = base + kpFinal +
       "\n\n【输出要求】生成时政【单选】题，恰好 7 道。★同主题强呼应（用户重点治理项）：每题必须从下方【主题：X】块中，选取「同一个主题」的一条新闻作一两句背景引入，并选取「该主题」的一个知识点设问——背景新闻与考察考点必须属于同一主题，严禁拿 A 主题的新闻配 B 主题的考点。真正设问与正确项必须取自该主题的知识点原文。" +
-      "只输出一个 JSON 数组，不要任何说明文字、不要 markdown 代码块。" + quizSpec;
+      "只输出一个 JSON 数组，不要任何说明文字、不要 markdown 代码块。" + prevBlock + quizSpec;
     let single = await genSeg(p3, "AI 生成时政单选题…", 65, 5, 6000, 3);
 
     /* 4/4 时政多选 3 道 */
@@ -1604,7 +1630,7 @@
     const p4 = base + kpFinal +
       "\n\n【输出要求】生成时政【多选】题，恰好 3 道。★同主题强呼应：每题同样从下方【主题：X】块中取同一主题的新闻作背景 + 该主题的知识点设问。每题 options 必须是 4 个【独立的知识表述】（A 一句、B 一句、C 一句、D 一句），" +
       "严禁把「AC」「BCD」这类字母组合写成选项；a 为 2-4 个字母、三题组合不重复。不要与前面的单选题重复：" + (avoid || "（无）") +
-      "。只输出一个 JSON 数组，不要任何说明文字、不要 markdown 代码块。" + quizSpec;
+      "。只输出一个 JSON 数组，不要任何说明文字、不要 markdown 代码块。" + prevBlock + quizSpec;
     let multi = [];
     try {
       multi = await genSeg(p4, "AI 生成时政多选题…", 82, 3, 6000, 3);
@@ -1619,7 +1645,7 @@
         const p4b = base + kpFinal +
           "\n\n【补齐任务】现在只缺 " + need + " 道时政【多选】题，请只输出 " + need + " 道全新的多选题（不要重复已有题目）。" +
           "每题 options 必须是 4 个【独立的知识表述】，type=multi、multi=答案字母组合（2-4 个字母、组合不重复）。" +
-          "已用题干开头（严禁重复）：" + (usedHeads.join("；") || "（无）") + "。只输出一个 JSON 数组。" + quizSpec;
+          "已用题干开头（严禁重复）：" + (usedHeads.join("；") || "（无）") + "。只输出一个 JSON 数组。" + prevBlock + quizSpec;
         const more = await genSeg(p4b, "AI 补齐时政多选题…", 84, Math.max(1, need - 1), 6000, 2);
         multi = multi.concat((Array.isArray(more) ? more : []).filter(q => q && q.type === "multi" && q.multi));
       } catch (e) {}
@@ -1653,6 +1679,8 @@
       const badSet = new Set(qbad);
       quiz = quiz.filter((_, i) => !badSet.has(i));
     }
+    /* ★跨天硬校验（v20261016c）：题干开头与近 7 天任一题相同 → 直接剔除（prompt 回避失效时的保险） */
+    quiz = quiz.filter(q => q && !prevHeadSet.has(String(q.q || "").replace(/\s+/g, "").slice(0, 30)));
     /* 题量不足时补生成（不再抛错，保证「点一次就能出」）；多选仍不足 3 道则优先补多选 */
     if (quiz.length < 8 || quiz.filter(q => q && q.type === "multi").length < 3) {
       try {
@@ -1664,7 +1692,7 @@
           : ("补充生成 " + need + " 道时政题（单选即可）");
         const p5 = base + kpBlock +
           "\n\n【输出要求】" + ask + "，不要与已出题目重复：" + (avoid || "（无）") +
-          "。只输出一个 JSON 数组，不要任何说明文字。" + quizSpec;
+          "。只输出一个 JSON 数组，不要任何说明文字。" + prevBlock + quizSpec;
         const more = await genSeg(p5, "补充生成时政题…", 88, Math.max(2, need - 1), 6000, 2);
         quiz = quiz.concat(more);
         const qbad2 = validateQuiz(quiz, matAll);
@@ -1672,6 +1700,7 @@
           const bs = new Set(qbad2);
           quiz = quiz.filter((_, i) => !bs.has(i));
         }
+        quiz = quiz.filter(q => q && !prevHeadSet.has(String(q.q || "").replace(/\s+/g, "").slice(0, 30)));   // ★跨天硬校验
       } catch (e) {}
     }
 
@@ -1680,39 +1709,52 @@
        言语 5 / 单选 7 / 多选 3 —— 保证「点一次就能出完整一套」，绝不再出现 0 言语 0 单选。 */
     (function () {
       function staticPool() {
+        /* ★v20261016c 两级兜底池：today=服务器今天刚生成的静态内容（可直接用）；
+           old=历史日期内容（最后手段，且回收时排除近 7 天出过的题）。 */
         try {
           const H = window.KG_DAILY_HOT || {};
           const dates = Object.keys(H).sort().reverse();   // 最新日期优先
-          const v = [], sq = [], mq = [];
+          const mk = () => ({ v: [], sq: [], mq: [] });
+          const today = mk(), old = mk();
           dates.forEach(d => {
             const e = H[d] || {};
-            (e.verbal || []).forEach(q => { if (q && q.q) v.push(q); });
+            const dst = (d === date) ? today : old;
+            (e.verbal || []).forEach(q => { if (q && q.q) dst.v.push(q); });
             (e.quiz || []).forEach(q => {
               if (!q || !q.q) return;
-              if (q.type === "multi") mq.push(q); else sq.push(q);
+              if (q.type === "multi") dst.mq.push(q); else dst.sq.push(q);
             });
           });
-          return { v: v, sq: sq, mq: mq };
-        } catch (e) { return { v: [], sq: [], mq: [] }; }
+          return { today: today, old: old };
+        } catch (e) { return { today: { v: [], sq: [], mq: [] }, old: { v: [], sq: [], mq: [] } }; }
       }
       const pool = staticPool();
       const have = (arr, q) => arr.some(x => String((x && x.q) || "").replace(/\s+/g, "") === String(q.q || "").replace(/\s+/g, ""));
-      for (const q of pool.v) {
-        if (verbal.length >= 5) break;
-        if (!have(verbal, q) && !validateVerbal([q]).length) verbal.push(q);
+      /* ★跨天防重复（v20261016c，用户实锤「等了特别久出来的一模一样」）：兜底旧逻辑只查
+         「今天列表内不重复」，会把昨天/前天的原题直接搬进今天凑数。现在：
+         ① 优先只取服务器「今天」生成的静态内容；② 历史内容仅作最后手段，且排除近 7 天原题。 */
+      const isPrev = q => prevHeadSet.has(String((q && q.q) || "").replace(/\s+/g, "").slice(0, 30));
+      function fillFrom(p, allowOld) {
+        for (const q of p.v) {
+          if (verbal.length >= 5) break;
+          if (!have(verbal, q) && (!allowOld || !isPrev(q)) && !validateVerbal([q]).length) verbal.push(q);
+        }
+        let singlesNow = quiz.filter(q => q && q.type !== "multi");
+        for (const q of p.sq) {
+          if (singlesNow.length >= 7) break;
+          if (!have(quiz, q) && (!allowOld || !isPrev(q)) && !validateQuiz([q], matAll).length) { quiz.push(q); singlesNow.push(q); }
+        }
+        let multisNow = quiz.filter(q => q && q.type === "multi");
+        for (const q of p.mq) {
+          if (multisNow.length >= 3) break;
+          if (!have(quiz, q) && (!allowOld || !isPrev(q)) && !validateQuiz([q], matAll).length) { quiz.push(q); multisNow.push(q); }
+        }
+        return { s: quiz.filter(q => q && q.type !== "multi").length, m: quiz.filter(q => q && q.type === "multi").length };
       }
-      let singlesNow = quiz.filter(q => q && q.type !== "multi");
-      for (const q of pool.sq) {
-        if (singlesNow.length >= 7) break;
-        if (!have(quiz, q) && !validateQuiz([q], matAll).length) { quiz.push(q); singlesNow.push(q); }
-      }
-      let multisNow = quiz.filter(q => q && q.type === "multi");
-      for (const q of pool.mq) {
-        if (multisNow.length >= 3) break;
-        if (!have(quiz, q) && !validateQuiz([q], matAll).length) { quiz.push(q); multisNow.push(q); }
-      }
-      if (pool.v.length || pool.sq.length || pool.mq.length) {
-        try { console.log("[时政兜底] 补后题量：言语 " + verbal.length + "/5，时政 " + quiz.length + "/10（单 " + singlesNow.length + " 多 " + multisNow.length + "）"); } catch (e) {}
+      const st1 = fillFrom(pool.today, false);
+      const st2 = fillFrom(pool.old, true);
+      if (pool.today.v.length || pool.today.sq.length || pool.today.mq.length || pool.old.v.length || pool.old.sq.length || pool.old.mq.length) {
+        try { console.log("[时政兜底] 补后题量：言语 " + verbal.length + "/5，时政 " + quiz.length + "/10（单 " + st2.s + " 多 " + st2.m + "；今日静态池贡献后 单" + st1.s + " 多" + st1.m + "）"); } catch (e) {}
       }
     })();
 
