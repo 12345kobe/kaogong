@@ -56,6 +56,26 @@
       applyGlass(true, st.glassLevel);
       try { DB.save(); } catch (e) {}
     }
+    /* ★iOS 全屏兜底（v20261016d，用户死命令：底部不许留缝，iPhone/iPad 一样治）：
+       iOS PWA 启动时 webview 报告的视口高度与实际渲染区不一致，底部多出一块未绘制区域，
+       首次手动滚动才触发重排消除（用户实锤「每次打开都有缝、扒拉一下才没」）。
+       把 html/body 高度钉死到真实视口像素（--vh 变量 + 内联高度），并在 resize/转向/
+       回前台/启动后多个时机反复校正——布局永远等于可视区，缝隙无处可出现。 */
+    function fixViewport() {
+      try {
+        const h = Math.round(window.innerHeight || 0);
+        if (!h || h < 320) return;
+        document.documentElement.style.setProperty("--vh", (h / 100) + "px");
+        document.documentElement.style.height = h + "px";
+        document.body.style.height = h + "px";
+      } catch (e) {}
+    }
+    window.addEventListener("resize", fixViewport);
+    window.addEventListener("orientationchange", fixViewport);
+    window.addEventListener("pageshow", fixViewport);
+    document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") fixViewport(); });
+    [0, 300, 1200].forEach(d => setTimeout(fixViewport, d));
+
     function apply() {
       const s = getState();
       const mode = resolveMode(s.mode);
