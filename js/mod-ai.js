@@ -152,6 +152,22 @@
   function noteTargetFromQ(subject, q) { try { setNoteTarget(subject, hashId(subject + "|" + (q && q.q || ""))); } catch (e) {} }
   // 当前对话（由 AI 页渲染时同步，供出题核心在无 AI 页场景下取上下文）
   let curLog = [];
+  /* ★v20261017a：相对路径图片 → base64 dataURL（图推题图发给视觉模型前必须转换） */
+  window.__kgImgToDataURL = async function (src) {
+    try {
+      if (!src) return null;
+      if (src.indexOf("data:") === 0) return src;
+      const r = await fetch(src);
+      if (!r.ok) return null;
+      const blob = await r.blob();
+      return await new Promise(res => {
+        const fr = new FileReader();
+        fr.onload = () => res(String(fr.result || ""));
+        fr.onerror = () => res(null);
+        fr.readAsDataURL(blob);
+      });
+    } catch (e) { return null; }
+  };
   function saveQCtx() { try { localStorage.setItem("kg_ai_qctx", JSON.stringify(qCtx)); } catch (e) {} }
   function loadQCtx() { try { qCtx = JSON.parse(localStorage.getItem("kg_ai_qctx") || "null"); } catch (e) { qCtx = null; } }
   function setReturnHook(fn) { returnHook = (typeof fn === "function") ? fn : null; }
@@ -1174,6 +1190,7 @@
 
         const m = modelInfo(pid, model);
         const imgAtts = atts.filter(a => a.kind === "image");
+        let hasQImgAttached = false;
         if (imgAtts.length && !m.vision) {
           const vis = prov.models.filter(x => x.vision)[0];
           if (vis) { UI.toast(m.label + " 不支持识图，已切换为 " + vis.label); model = vis.id; setModel(model, pid); renderModels(); renderHead(); }
@@ -1186,9 +1203,29 @@
           if (a.kind === "image") parts.push({ type: "image_url", image_url: { url: a.dataUrl } });
           else if (a.kind === "pdf") parts.push({ type: "text", text: "【以下是我上传的 PDF 内容，请据此作答】\n" + a.text });
         });
+        /* ★v20261017a 图形推理题咨询自动附题图：qCtx 带题图且本会话还没发过 →
+           自动把题图（题干图形+选项图形）转 dataURL 附上，并自动切到可识图模型 */
+        try {
+          const qimg = (typeof qCtx !== "undefined" && qCtx && qCtx.q && qCtx.q.img) || null;
+          if (qimg && !log.some(x => x.role === "user" && x.hasQImg)) {
+            const du = await window.__kgImgToDataURL(qimg);
+            if (du) {
+              if (!m.vision) {
+                const vis = prov.models.filter(x => x.vision)[0];
+                if (vis) {
+                  model = vis.id; setModel(model, pid);
+                  renderModels(); renderHead();
+                  try { UI.toast("图形推理题已自动切换识图模型：" + vis.label); } catch (e) {}
+                }
+              }
+              parts.push({ type: "image_url", image_url: { url: du } });
+              hasQImgAttached = true;
+            }
+          }
+        } catch (e) {}
         if (!parts.length) parts.push({ type: "text", text: " " });
 
-        log.push({ role: "user", content: text || "（见图/PDF）", images: imgAtts.map(a => a.dataUrl), t: Date.now() });
+        log.push({ role: "user", content: text || "（见图/PDF）", images: imgAtts.map(a => a.dataUrl).concat(hasQImgAttached && qCtx && qCtx.q && qCtx.q.img ? [qCtx.q.img] : []), hasQImg: hasQImgAttached || undefined, t: Date.now() });
         input.value = ""; atts = []; renderAtts(); renderMsgs();
         msgs.innerHTML += `<div class="ai-msg bot" id="aiPending"><div class="ai-who">AI</div><div class="ai-text">思考中…</div></div>`;
         scrollBottom();

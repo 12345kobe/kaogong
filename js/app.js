@@ -3,7 +3,7 @@
   "use strict";
   const DB = window.DB, UI = window.UI, ICONS = window.ICONS, MODULES = window.MODULES;
 
-  const NAV = ["countdown", "timer", "current", "verbal", "data", "logic", "politics", "quantity", "common", "essay", "calendar", "wrongbook", "favorites", "stats", "ai", "settings"];
+  const NAV = ["countdown", "timer", "current", "verbal", "data", "logic", "judgment", "politics", "quantity", "common", "essay", "calendar", "wrongbook", "favorites", "stats", "ai", "settings"];
   const GH_LABEL = "12345kobe/kaogong";
 
   /* ===== 主题系统：赛博朋克(默认) / 简约 / 可爱 / 武侠 / 自定义背景 =====

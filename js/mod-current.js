@@ -828,6 +828,8 @@
       return;
     }
     if (!P) { host.appendChild(UI.el(`<div class="muted small">已生成 ${days.length} 天，请刷新页面后查看。</div>`)); return; }
+    /* ★v20261017a：刷新/强制更新/多选三个按钮置顶到页面最上方（用户红圈位置） */
+    host.appendChild(hotRefreshBar(host));
     /* 今日生成状态条（用户要求：20 点前就能看到当天内容、能看到它什么时候生成的） */
     try {
       const has = !!(today && map[today]);
@@ -839,13 +841,34 @@
         <div style="font-size:13px"><b>今日（${esc(today)}）：</b>${
           has ? "✅ 已出内容（" + kind + (hhmm ? " · " + hhmm : "") + "）"
               : "⏳ 还没出内容"}</div>
-        <div class="muted small" style="margin-top:4px">自动更新：每晚 <b>19:00</b> 开始生成、<b>20:00 前</b> 入库，你 20 点前进来就已经有当天内容；想立刻要就点下面「🔄 刷新今日时政」（手动版会锁定，不会被自动版覆盖）。</div>
+        <div class="muted small" style="margin-top:4px">自动更新：每晚 <b>19:00</b> 开始生成、<b>20:00 前</b> 入库；手动版会锁定，不会被自动版覆盖。</div>
       </div>`));
     } catch (e) {}
-    const grid = P.grid();
-    /* ★日期级多选导出 PDF（用户 23:06 死命令：多选「一整个文件（整天）」下载，不是页内每小句） */
+    /* ★v20261017a：按月份分组展示——最近一月展开、历史月份折叠，点月份标题切换；
+       勾选框只在「多选模式」下显示（顶部多选按钮切换），平时界面干净 */
+    const groups = {}, order = [];
+    days.forEach(d => { const ym = d.slice(0, 7); if (!groups[ym]) { groups[ym] = []; order.push(ym); } groups[ym].push(d); });
+    function ymLabel(ym) { const [y, m] = ym.split("-"); return y + "年" + parseInt(m, 10) + "月"; }
+    let multi = !!(DB.state && DB.state.dhMulti);
     const dhSel = new Set();
-    days.forEach((d, i) => {
+    let routeIdx = 0;
+    order.forEach((ym, gi) => {
+      const sec = UI.el(`<div style="margin-top:6px">
+        <div class="dh-month-head" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 4px;user-select:none">
+          <span style="background:var(--cyan,#34e7e4);color:#032;font-weight:800;font-size:13px;border-radius:8px;padding:3px 10px">${esc(ymLabel(ym))}</span>
+          <span class="muted small">${groups[ym].length} 天</span>
+          <span class="dh-caret muted small" style="margin-left:auto">${gi === 0 ? "▾ 收起" : "▸ 展开"}</span>
+        </div></div>`);
+      const grid = P.grid();
+      const head = sec.querySelector(".dh-month-head");
+      const caret = sec.querySelector(".dh-caret");
+      let open = (gi === 0);
+      function applyOpen() { grid.style.display = open ? "" : "none"; caret.textContent = open ? "▾ 收起" : "▸ 展开"; }
+      head.onclick = () => { open = !open; applyOpen(); };
+      applyOpen();
+      sec.appendChild(grid);
+      host.appendChild(sec);
+      groups[ym].forEach((d) => {
       if (!map[d]) {
         /* 灰色占位按钮：今天的内容还没生成 */
         const g = document.createElement("div");
@@ -863,17 +886,17 @@
         grid.appendChild(g);
         return;
       }
-      const route = "current/hot/" + i;
+      const route = "current/hot/" + (routeIdx++);
       P.define(route, { parent: "current", title: d + " 时政", build: (box) => buildHotDay(box, d, route) });
       const tEl = P.tile("📅", d + " 时政", "#/" + route);
       const tSpan = tEl.querySelector(".kg-tile-t");
       const stamp = genTimeLabel(map[d]);
       if (tSpan && stamp) tSpan.insertAdjacentHTML("beforeend",
         '<span style="display:block;font-weight:400;font-size:11px;color:var(--txt-dim);margin-top:3px">' + esc(stamp) + "</span>");
-      /* 日期勾选框（点击勾选不触发进入当天页） */
+      /* 日期勾选框（★v20261017a：只在多选模式下显示，点击勾选不触发进入当天页） */
       const chk = document.createElement("label");
       chk.className = "dh-date-sel";
-      chk.style.cssText = "position:absolute;top:6px;right:8px;display:inline-flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;z-index:2";
+      chk.style.cssText = "position:absolute;top:6px;right:8px;display:" + (multi ? "inline-flex" : "none") + ";align-items:center;gap:3px;font-size:11px;cursor:pointer;z-index:2";
       chk.innerHTML = '<input type="checkbox" class="dh-date-check" data-d="' + esc(d) + '"/> 选';
       chk.onclick = (ev) => ev.stopPropagation();
       chk.querySelector("input").onclick = (ev) => ev.stopPropagation();
@@ -884,8 +907,8 @@
       tEl.style.position = "relative";
       tEl.appendChild(chk);
       grid.appendChild(tEl);
+      });
     });
-    host.appendChild(grid);
     /* 多选工具条：导出选中的「整天」内容为 PDF + 删除选中的整天内容（v20261010a 用户要求） */
     const dhBar = UI.el(`<div id="dhSelbar" style="display:none;margin:12px 0;padding:10px 12px;background:var(--glass,rgba(127,127,127,.12));border-radius:10px;gap:10px;flex-wrap:wrap;align-items:center">
       <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="dhSelAll"/> 全选本页</label>
@@ -988,7 +1011,25 @@
       };
     }, 0);
     host.appendChild(dhBar);
-    host.appendChild(hotRefreshBar(host));
+    /* ★v20261017a：多选模式切换——勾选框只在多选时显示，退出时自动清空选择 */
+    setTimeout(() => {
+      const mb = host.querySelector("#dhMultiBtn");
+      if (mb) mb.onclick = () => {
+        DB.state.dhMulti = !DB.state.dhMulti;
+        DB.save();
+        multi = !!DB.state.dhMulti;
+        host.querySelectorAll(".dh-date-sel").forEach(el => { el.style.display = multi ? "inline-flex" : "none"; });
+        if (!multi) {
+          dhSel.clear();
+          host.querySelectorAll(".dh-date-check").forEach(c => { c.checked = false; });
+          const bar = host.querySelector("#dhSelbar");
+          if (bar) bar.style.display = "none";
+        }
+        mb.textContent = multi ? "☑ 退出多选" : "☑ 多选";
+        try { UI.toast(multi ? "已进入多选模式：点日期方格右上角勾选" : "已退出多选模式"); } catch (e) {}
+      };
+      if (mb) mb.textContent = multi ? "☑ 退出多选" : "☑ 多选";
+    }, 0);
   }
 
   /* ===== 刷新今日时政（v20261005a）=====
@@ -999,7 +1040,8 @@
     const bar = UI.el(`<div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap;align-items:center">
       <button class="btn sm primary" id="hotRefresh">🔄 刷新今日时政</button>
       <button class="btn sm ghost" id="hotForceUpd">🧹 强制更新版本</button>
-      <span class="muted small" id="hotRefreshTip">任意时间点击都会现场生成今天的内容（重生成只覆盖你自己的账号）；每晚 20:00 自动版会覆盖白天版本，历史日期不会被改动</span>
+      <button class="btn sm ghost" id="dhMultiBtn">☑ 多选</button>
+      <span class="muted small" id="hotRefreshTip">任意时间点「刷新」都会现场生成今天的内容；每晚 20:00 自动版覆盖白天版，历史日期不动</span>
     </div>`);
     setTimeout(() => {
       const b = bar.querySelector("#hotRefresh");
