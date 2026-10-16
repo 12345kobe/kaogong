@@ -32,6 +32,43 @@
   // ★ 同步保险箱：这些键不进云端（状态本体 / 登录凭据 / 设备 ID），其余 kg_* 全部镜像同步
   const LS_VAULT_SKIP = { kg_desk_state_v1: 1, kg_sync_token: 1, kg_sync_user: 1, kg_device_id: 1 };
 
+  // ★v20261016b 根治「数据清零 / 时政消失」：localStorage 在 iOS 仅 ~5MB 硬上限，
+  //   一旦 state（尤其 favorites 被旧版同步翻倍）膨胀超过此限，setItem 必抛 QuotaExceededError，
+  //   整份数据只能活在内存 → 任何闪退/后台回收/同步合并的内存压力都会让页面被杀 → 重启后读不到 → 看似「清零」。
+  //   改用 IndexedDB（配额 50MB+）作为真值存储兜底：localStorage 写失败时数据仍可持久化，重启后自动恢复。
+  const IDB_NAME = "kg_desk_idb", IDB_STORE = "kv", IDB_KEY = "state_v1";
+  function idbOpen() {
+    return new Promise((resolve, reject) => {
+      try {
+        if (!window.indexedDB) return reject(new Error("no-idb"));
+        const req = indexedDB.open(IDB_NAME, 1);
+        req.onupgradeneeded = () => { try { req.result.createObjectStore(IDB_STORE); } catch (e) {} };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error || new Error("idb-open-err"));
+      } catch (e) { reject(e); }
+    });
+  }
+  function idbPut(val) {
+    return idbOpen().then(db => new Promise((resolve, reject) => {
+      try {
+        const tx = db.transaction(IDB_STORE, "readwrite");
+        tx.objectStore(IDB_STORE).put(val, IDB_KEY);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => reject(tx.error || new Error("idb-put-err"));
+      } catch (e) { reject(e); }
+    }));
+  }
+  function idbGet() {
+    return idbOpen().then(db => new Promise((resolve, reject) => {
+      try {
+        const tx = db.transaction(IDB_STORE, "readonly");
+        const rq = tx.objectStore(IDB_STORE).get(IDB_KEY);
+        rq.onsuccess = () => resolve(rq.result || null);
+        rq.onerror = () => reject(rq.error || new Error("idb-get-err"));
+      } catch (e) { reject(e); }
+    }));
+  }
+
   const DEFAULT_STATE = {
     meta: { version: 1, createdAt: null, updatedAt: 0, deviceId: "" },
     vault: {},   // ★ 同步保险箱：本机 localStorage 里所有 kg_* 配置（AI 密钥/服务商/字体/偏好…）镜像，随云端同步，换设备自动还原
@@ -192,6 +229,10 @@
           try { window.UI && window.UI.toast("已修复「" + bad.join("、") + "」异常放大的答题数（历史翻倍导致），已清零重新累计"); } catch (e) {}
         }, 1200);
       }
+      // ★v20261016b 防御：本地 favorites 可能在旧版合并 bug 下膨胀，load 时原地收缩一次，避免内存炸弹导致闪退
+      this._dedupFavoritesLocal();
+      // ★v20261016b 异步从 IndexedDB 恢复真值（兜底 localStorage 写入失败的情况）
+      this._restoreFromIDB();
       return state;
     },
 
@@ -264,6 +305,15 @@
       if (!mainOk || !this._bakAt || Date.now() - this._bakAt > 20000) {
         try { localStorage.setItem(LS_KEY_BAK, JSON.stringify(state)); this._bakAt = Date.now(); } catch (e) {}
       }
+      // ★v20261016b IndexedDB 真值兜底：localStorage 5MB 上限会让大 state 写入静默失败 → 数据只能活内存。
+      //   永远异步写一份到 IndexedDB（配额充足），即使 localStorage 失败也能持久化，重启后自动恢复。防抖 500ms 避免高频写大对象。
+      if (!this._idbTimer) {
+        const self = this;
+        this._idbTimer = setTimeout(() => {
+          self._idbTimer = null;
+          try { idbPut(state).catch(() => {}); } catch (e) {}
+        }, 500);
+      }
       this._dirty = true;
     },
     save(immediate) {
@@ -277,6 +327,58 @@
     },
 
     uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); },
+
+    /* ★v20261016b 本地收藏夹原地去重：旧版合并 bug 会让 favorites 每次同步翻倍（实测 570→65000 条），
+       在 load 时立即收缩回真实条目，既是数据自愈，也避免超大数组解析/合并撑爆内存导致页面被杀闪退。 */
+    _dedupFavoritesLocal() {
+      try {
+        const fv = (state && state.favorites);
+        if (!fv || typeof fv !== "object") return;
+        let removed = 0;
+        for (const s in fv) {
+          const arr = fv[s];
+          if (!Array.isArray(arr)) continue;
+          const seen = new Set(), out = [];
+          for (const x of arr) {
+            const id = (x && (x.qid != null && x.qid !== "") ? x.qid : ((x.id != null && x.id !== "") ? x.id : ""));
+            const k = id ? ("q:" + id) : ("t:" + String((x && x.q) || "").slice(0, 120));
+            if (k && seen.has(k)) { removed++; continue; }
+            if (k) seen.add(k);
+            out.push(x);
+          }
+          fv[s] = out;
+        }
+        if (removed) { try { this._localSave(); } catch (e) {} }
+      } catch (e) {}
+    },
+    /* ★v20261016b 异步从 IndexedDB 恢复真值：localStorage 写入失败（配额溢出）时，内存态只靠 IndexedDB 兜底。
+       仅当 IndexedDB 明显更新（或本地 state 为空/损坏）时采用，绝不回退更新鲜的本地数据。 */
+    _restoreFromIDB() {
+      try {
+        idbGet().then(idbState => {
+          if (!idbState || !idbState.meta) return;
+          const lsAt = (state && state.meta && state.meta.updatedAt) || 0;
+          const idbAt = (idbState.meta && idbState.meta.updatedAt) || 0;
+          if (idbAt > lsAt + 2000 || !state || !state.meta) {
+            state = idbState;
+            mergeDefault(state, DEFAULT_STATE);
+            this.state = state;
+            this._dedupFavoritesLocal();
+            this.dailyResetIfNeeded();
+            try { window.UI && window.UI.refresh && window.UI.refresh(); } catch (e) {}
+            try { window.dispatchEvent(new Event("kg-state-restored")); } catch (e) {}
+          }
+        }).catch(() => {});
+      } catch (e) {}
+    },
+    /* ★v20261016b 「强制更新版本」按钮保命：立即（绕过防抖）把内存态写入 IndexedDB 真值，避免刷新后丢失当天打卡/时政。 */
+    persistNow() {
+      this._localSave();
+      return new Promise((resolve) => {
+        try { idbPut(state).then(() => resolve()).catch(() => resolve()); }
+        catch (e) { resolve(); }
+      });
+    },
     today() { return this.fmtDate(new Date()); },
     fmtDate(d) {
       const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, "0"), day = String(d.getDate()).padStart(2, "0");

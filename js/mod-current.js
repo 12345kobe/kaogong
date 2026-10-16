@@ -1006,7 +1006,9 @@
       if (b) b.onclick = () => refreshToday(host, bar, { manual: true });
       const f = bar.querySelector("#hotForceUpd");
       if (f) f.onclick = async () => {
-        try { UI.toast("正在清缓存并拉取最新版本…"); } catch (e) {}
+        try { UI.toast("正在保存本地数据并清缓存拉取最新版本…"); } catch (e) {}
+        // ★v20261016b 保命：先把内存态（含当天打卡 / 刚生成的时政）立即落盘到 IndexedDB，再清缓存刷新，避免丢失
+        try { if (window.DB && window.DB.persistNow) await window.DB.persistNow(); } catch (e) {}
         try {
           if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
             const regs = await navigator.serviceWorker.getRegistrations();
