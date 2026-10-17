@@ -77,6 +77,16 @@
         html += `<div class="card" style="margin-top:8px"><div class="muted small">💡 「学考点」按 PDF 原排版还原「考点直击」；「开始做题」走通用答题引擎，错题自动进入逻辑错题本。</div></div>`;
         body.innerHTML = html;
 
+        /* 判断推理题册（3200 系列）入口：挂在最顶部，Pager.tile 方格不会被 absorb 吸收，点击直达 #/judgment */
+        try {
+          if (window.Pager) {
+            const jg = window.Pager.grid();
+            jg.style.marginTop = "0";
+            jg.appendChild(window.Pager.tile("🧩", "判断推理题册（3200 系列 · 按题型刷题）", "#/judgment"));
+            body.insertBefore(jg, body.firstChild);
+          }
+        } catch (e) {}
+
         body.querySelectorAll("[data-study]").forEach(b => b.onclick = e => { e.stopPropagation(); openStudy(b.dataset.study); });
         body.querySelectorAll("[data-do]").forEach(b => b.onclick = e => { e.stopPropagation(); startQuiz(b.dataset.do); });
         body.querySelectorAll("[data-unit]").forEach(c => c.onclick = () => openStudy(c.dataset.unit));

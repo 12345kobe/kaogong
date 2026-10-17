@@ -15,7 +15,7 @@
   };
 
   window.MODULES.judgment = {
-    title: "判断题册", icon: "logic",
+    title: "判断推理题册", icon: "logic",
     render(body) {
       const DB = window.DB, UI = window.UI;
       const data = window.KG_JUDGMENT;
@@ -27,7 +27,7 @@
           return;
         }
         const total = data.total || secs.reduce((a, s) => a + s.items.length, 0);
-        let html = `<div class="card"><h3>🧠 判断推理题册（3200 系列）</h3>
+        let html = `<div class="card" data-kg-keep="1"><h3>🧠 判断推理题册（3200 系列）</h3>
           <div class="muted small">从《行测3200题·判断推理》题册+解析自动提取，共 <b>${total}</b> 题，按题型分板块。图形推理每题附整题大图（题干图形 + ABCD 选项图形）。全部单选。</div></div>
           <div class="grid g3" style="margin-top:8px">`;
         secs.forEach(s => {
@@ -39,7 +39,7 @@
               <button class="btn sm primary" data-go="${s.id}">▶ 开始刷题</button>
             </div></div>`;
         });
-        html += `</div><div class="card" style="margin-top:8px"><div class="muted small">💡 提示：图形推理题看图作答——大图包含题干图形序列与 A/B/C/D 四个选项图形；做完自动记错题本。AI 咨询图推题会自动切换可识图的模型帮你分析图形。</div></div>`;
+        html += `</div><div class="card" data-kg-keep="1" style="margin-top:8px"><div class="muted small">💡 提示：图形推理题看图作答——大图包含题干图形序列与 A/B/C/D 四个选项图形；做完自动记错题本。AI 咨询图推题会自动切换可识图的模型帮你分析图形。</div></div>`;
         body.innerHTML = html;
 
         body.querySelectorAll("[data-go]").forEach(b => b.onclick = () => {
