@@ -77,7 +77,7 @@
     profile: { name: "考生" },
     countdown: {
       exams: [
-        { id: "gk", name: "国考", date: "2026-11-30", color: "#34e7e4" },
+        { id: "gk", name: "国考", date: "2026-11-29", color: "#34e7e4" },
         { id: "gd", name: "广东省考", date: "2026-12-06", color: "#ff5cf0" },
         { id: "sy", name: "事业编联考", date: "2027-03-15", color: "#ffd166" }
       ]
@@ -202,7 +202,7 @@
 
       // 迁移：官方考试日期（仅当该考试日期为空时填充，不覆盖用户已设日期）
       let migrated = false;
-      const EXAM_DATES = { gk: "2026-11-30", gd: "2026-12-06", sy: "2027-03-15" };
+      const EXAM_DATES = { gk: "2026-11-29", gd: "2026-12-06", sy: "2027-03-15" };
       if (state.countdown && state.countdown.exams) {
         state.countdown.exams.forEach(ex => {
           if (EXAM_DATES[ex.id] && !ex.date) { ex.date = EXAM_DATES[ex.id]; migrated = true; }

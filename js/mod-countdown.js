@@ -1,36 +1,49 @@
-/* 模块：倒计时（v20261017a：只留考试倒计时，非常干净）
+/* 模块：倒计时（v20261017b：国考日期强制锁定 2026-11-29，迁移不再依赖旧值恰好 11-30）
    —— 省考模式/综合刷题已移至「上岸计时器」（mod-timer.js）
    —— 国考日期确定 2026-11-29：一次性迁移 11-30 → 11-29，并注入科目时间两行 */
 (function () {
-  /* ===== 一次性迁移：国考日期 11-30 → 11-29 + 注入科目时间 =====
-     ★云端同步（kg-state-restored）会把 exams 整体覆盖回来，所以迁移必须同时监听恢复事件 */
-  function migrateGuokao() {
+  /* ===== 国考日期强制锁定 2026-11-29 + 注入科目时间 =====
+     ★不依赖「旧值恰好是 11-30」这种脆弱的一次性迁移——只要国考日期不是 11-29 就改。
+     ★云端同步（kg-state-restored）会把 exams 整体覆盖回来，所以迁移必须同时监听恢复事件；
+       恢复后若用户正在看倒计时页，立即重渲染，避免页面仍显示旧日期。 */
+  function migrateGuokao(rerender) {
     try {
       const DB0 = window.DB;
       if (DB0 && DB0.state && DB0.state.countdown && Array.isArray(DB0.state.countdown.exams)) {
         let touched = false;
         DB0.state.countdown.exams.forEach(ex => {
-          if (ex.name === "国考" && ex.date === "2026-11-30") { ex.date = "2026-11-29"; touched = true; }
-          if (ex.name === "国考" && !ex.subjects) {
-            ex.subjects = [
-              { n: "行测", t: "11月29日 9:00-11:00" },
-              { n: "申论", t: "11月29日 14:00-17:00" }
-            ];
-            touched = true;
+          if (ex.name === "国考") {
+            if (ex.date !== "2026-11-29") { ex.date = "2026-11-29"; touched = true; }
+            if (!ex.subjects) {
+              ex.subjects = [
+                { n: "行测", t: "11月29日 9:00-11:00" },
+                { n: "申论", t: "11月29日 14:00-17:00" }
+              ];
+              touched = true;
+            }
           }
         });
-        if (touched) DB0.save();
+        if (touched) {
+          DB0.save();
+          if (rerender) {
+            const cur = (location.hash.replace("#/", "") || "countdown").split("/")[0];
+            if (cur === "countdown") {
+              setTimeout(() => { try { window.dispatchEvent(new Event("hashchange")); } catch (e) {} }, 0);
+            }
+          }
+        }
       }
     } catch (e) {}
   }
-  migrateGuokao();
-  window.addEventListener("kg-state-restored", migrateGuokao);
+  migrateGuokao(false);
+  window.addEventListener("kg-state-restored", () => migrateGuokao(true));
   window.MODULES = window.MODULES || {};
 
   window.MODULES.countdown = {
     title: "倒计时", icon: "countdown", noCollapse: true,
     render(body) {
       const DB = window.DB, UI = window.UI;
+      migrateGuokao(false); // ★兜底：每次进入倒计时页都强制锁定国考日期为 2026-11-29（不依赖加载时序/云端是否恢复）
       function daysLeft(dateStr) {
         if (!dateStr) return null;
         const d = new Date(dateStr + "T00:00:00");
