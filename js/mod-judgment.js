@@ -1,4 +1,4 @@
-/* 模块：判断推理题册（v20261017a，用户死命令）
+/* 模块：判断推理题册（v20261017d：新增「混合刷题」全部题型打乱混着刷）
    数据源：assets/data/judgment-data.js（window.KG_JUDGMENT，行测3200题之判断题册/解析 PDF 自动提取，793+ 题）
    - 按题型分板块：图形推理（含立体重构/三视图/截面/立体拼接，每题带整题大图）、论证、翻译、
      分析、真假、结构评价、原因解释、归纳、类比、定义判断
@@ -29,6 +29,14 @@
         const total = data.total || secs.reduce((a, s) => a + s.items.length, 0);
         let html = `<div class="card" data-kg-keep="1"><h3>🧠 判断推理题册（3200 系列）</h3>
           <div class="muted small">从《行测3200题·判断推理》题册+解析自动提取，共 <b>${total}</b> 题，按题型分板块。图形推理每题附整题大图（题干图形 + ABCD 选项图形）。全部单选。</div></div>
+          <div class="card" data-kg-keep="1" style="border-top:3px solid #a06cff">
+            <div class="spread"><b style="font-size:16px">🎲 混合刷题（全部题型打乱）</b>
+              <span class="muted small">${total} 题可选</span></div>
+            <div class="muted small" style="margin-top:6px">14 个题型随机打乱混着刷，更贴近真实套卷节奏；做过的也可重做。</div>
+            <div class="row" style="margin-top:10px;gap:8px;align-items:center">
+              <input type="number" min="1" max="${total}" value="30" id="mixCnt" style="max-width:80px"/>
+              <button class="btn sm primary" id="mixGo">🎲 开始混合刷题</button>
+            </div></div>
           <div class="grid g3" style="margin-top:8px">`;
         secs.forEach(s => {
           html += `<div class="card" style="border-top:3px solid var(--cyan)">
@@ -52,6 +60,39 @@
           n = Math.min(n, s.items.length);
           startQuiz(s, n);
         });
+
+        const mixGo = body.querySelector("#mixGo");
+        if (mixGo) mixGo.onclick = () => {
+          const inp = body.querySelector("#mixCnt");
+          let n = parseInt(inp && inp.value, 10);
+          if (!n || n < 1) n = 30;
+          startMixedQuiz(n);
+        };
+      }
+
+      function startMixedQuiz(n) {
+        // 汇集全部题型的题，Fisher-Yates 打乱后取前 n 题（混着刷）
+        const all = [];
+        secs.forEach(s => { if (s.items && s.items.length) s.items.forEach(q => all.push(q)); });
+        for (let i = all.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          const t = all[i]; all[i] = all[j]; all[j] = t;
+        }
+        n = Math.max(1, Math.min(n || 30, all.length));
+        const qs = all.slice(0, n).map(q => ({
+          q: q.q, options: (q.options || []).slice(), a: q.a, e: q.e || "", img: q.img || ""
+        }));
+        body.innerHTML = "";
+        const wrap = UI.el(`<div class="quiz-host"></div>`);
+        body.appendChild(wrap);
+        const back = UI.el(`<div class="card" style="margin-bottom:6px"><button class="btn xs ghost" id="bqBack">‹ 返回题册</button></div>`);
+        body.insertBefore(back, wrap);
+        back.querySelector("#bqBack").onclick = renderHome;
+        window.Quiz.start(wrap, qs, "判断", {
+          returnLabel: "‹ 返回题册",
+          returnAction: renderHome
+        });
+        window.scrollTo(0, 0);
       }
 
       function startQuiz(sec, n) {
