@@ -158,6 +158,15 @@
         </div>
 
         <div class="card" style="margin-top:12px">
+          <h3>🧹 版本更新</h3>
+          <div class="muted small">新版本发布后手机没自动更新？点下面按钮：<b>先保存本地数据</b>（打卡 / 时政等立即落盘），再清空缓存并重新拉取最新版本。</div>
+          <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:10px">
+            <button class="btn primary" id="forceUpd">🧹 强制更新最新版本</button>
+          </div>
+          <div class="muted small" id="forceUpdNote" style="margin-top:8px"></div>
+        </div>
+
+        <div class="card" style="margin-top:12px">
           <h3>🎤 语音输入</h3>
           <div class="muted small">在任意输入框聚焦时，右下角会出现 🎤 按钮，点一下即可<b>语音转文字</b>（再次点击停止）。支持<b>普通话 / 英文</b>切换（点 🎤 旁的语言按钮）。</div>
           ${voiceOk
@@ -332,6 +341,29 @@
         } else {
           UI.toast("拉取功能未就绪");
         }
+      };
+
+      /* ===== 强制更新版本（v20261018a 从时政模块迁移至此）===== */
+      const forceUpdBtn = body.querySelector("#forceUpd");
+      if (forceUpdBtn) forceUpdBtn.onclick = async () => {
+        try { UI.toast("正在保存本地数据并清缓存拉取最新版本…"); } catch (e) {}
+        const fnote = body.querySelector("#forceUpdNote");
+        if (fnote) fnote.textContent = "正在处理，页面即将自动刷新…";
+        // 保命：先把内存态（含当天打卡 / 刚生成的时政）立即落盘到 IndexedDB，再清缓存刷新，避免丢失
+        try { if (window.DB && window.DB.persistNow) await window.DB.persistNow(); } catch (e) {}
+        try {
+          if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            for (const r of regs) { try { await r.unregister(); } catch (e) {} }
+          }
+        } catch (e) {}
+        try {
+          if (window.caches && caches.keys) {
+            const ks = await caches.keys();
+            await Promise.all(ks.map(k => caches.delete(k)));
+          }
+        } catch (e) {}
+        setTimeout(() => { try { location.reload(true); } catch (e) { location.reload(); } }, 400);
       };
 
       /* ===== AI 令牌（保存后打码回显，让你能确认"确实存上了"） ===== */

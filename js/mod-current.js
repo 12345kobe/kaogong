@@ -615,6 +615,32 @@
         if (cur.length < 2) return;   // 自相矛盾到只剩不足 2 个正确项 → 废题
         ans = cur; q.multi = cur;
       }
+      /* ④.7 ★序号组合题一致性（v20261018a，用户截图实锤：解析说④正确、答案B=「①②③」矛盾）。
+         选项为 ①②③ 组合式时，解析点名「N正确/N错误」的序号集合必须与答案选项吻合：
+         答案选项须含全部「正确」序号、不含任何「错误」序号；不符→纠正到匹配项，无匹配→废题 */
+      {
+        const combRe = /^[\s①②③④⑤⑥、,，与和及其]*$/;
+        const nonEmpty = optClean.filter(s => s.length);
+        const isComb = nonEmpty.length >= 2 && nonEmpty.every(s => combRe.test(s));
+        if (isComb) {
+          const eTxt3 = String(q.e || "");
+          const okSet = {}, badSet = {}; let m11;
+          const r11 = /([①②③④⑤⑥])\s*[项]?\s*[:：]?[^。；;\n]{0,20}?(正确|对|错误|不符|不符合|不正确|有误)/g;
+          while ((m11 = r11.exec(eTxt3))) {
+            if (/^(正确|对)$/.test(m11[2])) okSet[m11[1]] = 1; else badSet[m11[1]] = 1;
+          }
+          const hasDigits = s => Array.from(s).some(ch => "①②③④⑤⑥".indexOf(ch) >= 0);
+          if (Object.keys(okSet).length || Object.keys(badSet).length) {
+            const digitOk = s => Object.keys(okSet).every(d => s.indexOf(d) >= 0) &&
+                                 Object.keys(badSet).every(d => s.indexOf(d) < 0);
+            const match = [];
+            optClean.forEach((s, i) => { if (hasDigits(s) && digitOk(s)) match.push(i); });
+            if (!match.length) return;               // 解析自相矛盾到无任何选项匹配 → 废题
+            if (match.indexOf(aIdx) < 0) aIdx = match[0];  // 纠正到匹配项
+            if (isMulti) { q.multi = "ABCD"[aIdx]; ans = q.multi; }  // 组合题若按多选存也同步
+          }
+        }
+      }
       if (isVerbal) { // ⑤ 言语题：空数必须 = 每选项词数（核心根治点）
         const qt = String(q.q || "");
         const blanks = (qt.match(/_{2,}/g) || []).length;
@@ -1039,32 +1065,12 @@
     const UI = window.UI;
     const bar = UI.el(`<div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap;align-items:center">
       <button class="btn sm primary" id="hotRefresh">🔄 刷新今日时政</button>
-      <button class="btn sm ghost" id="hotForceUpd">🧹 强制更新版本</button>
       <button class="btn sm ghost" id="dhMultiBtn">☑ 多选</button>
       <span class="muted small" id="hotRefreshTip">任意时间点「刷新」都会现场生成今天的内容；每晚 20:00 自动版覆盖白天版，历史日期不动</span>
     </div>`);
     setTimeout(() => {
       const b = bar.querySelector("#hotRefresh");
       if (b) b.onclick = () => refreshToday(host, bar, { manual: true });
-      const f = bar.querySelector("#hotForceUpd");
-      if (f) f.onclick = async () => {
-        try { UI.toast("正在保存本地数据并清缓存拉取最新版本…"); } catch (e) {}
-        // ★v20261016b 保命：先把内存态（含当天打卡 / 刚生成的时政）立即落盘到 IndexedDB，再清缓存刷新，避免丢失
-        try { if (window.DB && window.DB.persistNow) await window.DB.persistNow(); } catch (e) {}
-        try {
-          if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
-            const regs = await navigator.serviceWorker.getRegistrations();
-            for (const r of regs) { try { await r.unregister(); } catch (e) {} }
-          }
-        } catch (e) {}
-        try {
-          if (window.caches && caches.keys) {
-            const ks = await caches.keys();
-            await Promise.all(ks.map(k => caches.delete(k)));
-          }
-        } catch (e) {}
-        setTimeout(() => { try { location.reload(true); } catch (e) { location.reload(); } }, 400);
-      };
     }, 0);
     return bar;
   }

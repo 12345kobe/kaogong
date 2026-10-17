@@ -12,7 +12,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
-<meta name="kg-version" content="20261017d" />
+<meta name="kg-version" content="20261018b" />
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="apple-touch-icon" href="icon-192.png" />
 <link rel="icon" type="image/png" href="icon-192.png" />
@@ -35,12 +35,13 @@
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.cn/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;700&family=Noto+Sans+SC:wght@400;700&family=ZCOOL+XiaoWei&display=swap" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css" />
-<link rel="stylesheet" href="css/styles.css?v=20261017a" />
+<link rel="stylesheet" href="css/styles.css?v=20261018a" />
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
 <!-- 启动页：按主题+横竖屏显示对应图片，展示约2秒自动进入（期间完成云端拉取与设置恢复）；右下角小字版本号随每次更新变化 -->
-<div id="kgSplash"><span id="kgSplashVer">版本号：…</span></div>
+<!-- v20261018a 开屏动画：「考公工作台」四字从里渐大浮出（清晰化），背景往后退（浮起感），随后整体渐隐进主界面 -->
+<div id="kgSplash"><div id="kgSplashBg"></div><div id="kgSplashTitle">考公工作台</div><span id="kgSplashVer">版本号：…</span></div>
 <script>
 (function(){try{
   var _kv=document.querySelector('meta[name="kg-version"]');
@@ -51,7 +52,7 @@
   if(n!=="cute"&&n!=="cyber"&&n!=="custom"&&n!=="minimal")n="wuxia"; /* minimal 等其余主题沿用武侠启动图 */
   var p=window.matchMedia&&window.matchMedia("(orientation: portrait)").matches;
   var img="assets/splash/"+n+"-"+(p?"p":"l")+".jpg";
-  var d=document.getElementById("kgSplash");
+  var d=document.getElementById("kgSplashBg");
   if(d){var im=new Image();im.onload=function(){d.style.backgroundImage="url('"+img+"')";};im.src=img;}
   /* 版本号自动反色：深色启动图（赛博朋克）用白字，其余浅色图用黑字，保证都清晰可见 */
   var v=document.getElementById("kgSplashVer");
@@ -64,10 +65,11 @@
   <!-- 左侧导航 -->
   <aside id="sidebar">
     <div class="brand">
-      <div class="brand-logo">考</div>
+      <div class="brand-logo brand-logo-kingke" id="kingkeLogo"><span class="kk-fallback">考</span><img id="kingkeImg" alt="等级读书人" onerror="this.style.display='none'"/></div>
       <div class="brand-text">
-        <div class="brand-title">考公工作台</div>
-        <div class="brand-sub">个人备考助手</div>
+        <div class="brand-title" id="kingkeTitle">考公工作台</div>
+        <div class="brand-sub" id="kingkeSub">个人备考助手</div>
+        <div class="kk-bar"><i id="kingkeBar" style="width:0%"></i></div>
       </div>
     </div>
     <nav id="nav"></nav>
@@ -138,7 +140,7 @@
 <script src="assets/data/essay_quotes.js?v=20260909b"></script>
 <script src="assets/data/essay_normwords.js?v=20260909b"></script>
 <script src="js/config.js?v=20261008d"></script>
-<script src="js/data.js?v=20261017b"></script>
+<script src="js/data.js?v=20261018b"></script>
 <script src="js/social.js?v=20261008d"></script>
 <script src="js/ebbinghaus.js?v=20261008d"></script>
 <script src="js/icons.js?v=20261008d"></script>
@@ -176,23 +178,24 @@
 <script src="js/mod-relation.js?v=20261008d"></script>
 <script src="js/mod-timer.js?v=20261017a"></script>
 <script src="js/mod-shuati.js?v=20261008d"></script>
+<script src="js/mod-drills.js?v=20261018a"></script>
 <script src="js/mod-calendar.js?v=20261010a"></script>
 <script src="js/mod-wrongbook.js?v=20261008d"></script>
 <script src="js/mod-stats.js?v=20261008d"></script>
 <script src="js/voice.js?v=20261008d"></script>
 <script src="js/drills-data.js?v=20261017a"></script>
-<script src="js/mod-current.js?v=20261017a"></script>
+<script src="js/mod-current.js?v=20261018a"></script>
 <script src="js/mod-pdfimport.js?v=20261008d"></script>
 <script src="js/mod-ai.js?v=20261017a"></script>
 <script src="js/ai-quiz.js?v=20261008d"></script>
 <script src="js/mod-favorites.js?v=20261008d"></script>
-<script src="js/mod-settings.js?v=20261008d"></script>
+<script src="js/mod-settings.js?v=20261018a"></script>
 <script src="js/guide.js?v=20261008d"></script>
 <script src="js/exam-mode.js?v=20261008d"></script>
 <script src="js/exam-remind.js?v=20261017a"></script>
 <script src="js/help.js?v=20261008d"></script>
 <script src="js/mod-contacts.js?v=20261008d"></script>
-<script src="js/app.js?v=20261017c"></script>
+<script src="js/app.js?v=20261018a"></script>
 <script>
 /* Service Worker：网络优先，保证主屏 PWA 每次打开都拉到最新版。
  * ★v20261008i 强制自更新（用户死命令：不想重装 PWA 也要拿到新版）：

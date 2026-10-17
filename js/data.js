@@ -957,6 +957,15 @@
         const A = out.reviews.verbal[w], B = rvIn[w] || {};
         out.reviews.verbal[w] = !A ? B : { box: Math.max(A.box || 0, B.box || 0), next: Math.max(A.next || 0, B.next || 0) };
       }
+      // 刷题中心掌握度（v20261018a）：按叶子目录取大（done/right 单调不减，不重复累计）
+      if (b.drillStat) {
+        out.drillStat = out.drillStat || {};
+        for (const k in b.drillStat) {
+          const A = out.drillStat[k], B = b.drillStat[k] || {};
+          out.drillStat[k] = !A ? { done: B.done || 0, right: B.right || 0 }
+            : { done: Math.max(A.done || 0, B.done || 0), right: Math.max(A.right || 0, B.right || 0) };
+        }
+      }
       // 时事热点用户修改：缺的补、有的取更完整的一份
       out.hotspotsEdits = out.hotspotsEdits || {};
       const heIn = b.hotspotsEdits || {};

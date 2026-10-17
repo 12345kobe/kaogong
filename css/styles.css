@@ -76,6 +76,63 @@ h1,#pageTitle,.page-title,.fc-big,.countdown-num{ font-weight:700; }
 }
 .nav-item .ico{width:26px;height:26px;flex:0 0 26px}
 .nav-item .badge{margin-left:auto;font-size:10px;background:var(--magenta);color:#fff;border-radius:8px;padding:1px 6px}
+
+/* ===== v20261018a 知识点学习二级菜单 ===== */
+.nav-group{display:flex;flex-direction:column;gap:4px}
+.nav-item .nav-caret{margin-left:auto;font-size:12px;color:var(--txt-dim);transition:transform .18s}
+.nav-sub{display:flex;flex-direction:column;gap:2px;margin:2px 0 4px 18px;padding-left:8px;border-left:2px solid var(--line)}
+.nav-sub-item{padding:7px 10px;font-size:13px;font-weight:600;border-radius:10px}
+.nav-sub-item .nav-sub-dot{width:5px;height:5px;border-radius:50%;background:var(--cyan);flex:0 0 5px;opacity:.7}
+.nav-sub-item .nav-txt{margin-left:9px}
+
+/* ===== v20261018a 科举等级 brand（左上角读书人图+等级+进度条） ===== */
+.brand-logo-kingke{position:relative;overflow:hidden;cursor:default}
+.brand-logo-kingke .kk-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+.brand-logo-kingke img#kingkeImg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none;z-index:1}
+.brand-logo-kingke.has-img img#kingkeImg{display:block}
+.brand-logo-kingke.has-img .kk-fallback{display:none}
+.brand-text{min-width:0}
+.kk-bar{width:100%;max-width:120px;height:5px;border-radius:3px;background:rgba(127,127,127,.25);overflow:hidden;margin-top:3px}
+.kk-bar i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,var(--cyan),var(--magenta));transition:width .5s ease}
+
+/* ===== v20261018a 刷题中心（粉笔式目录） ===== */
+.db-row{display:flex;align-items:center;gap:8px;padding:11px 10px;border-radius:10px;cursor:pointer;transition:.15s;color:var(--txt)}
+.db-row:hover{background:var(--panel)}
+.db-row .db-arrow{flex:0 0 16px;width:16px;text-align:center;color:var(--cyan);font-size:13px;cursor:pointer}
+.db-row .db-name{font-weight:700;font-size:14px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.db-row .db-meta{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.db-row .db-cnt{font-size:11px;color:var(--txt-dim);font-weight:600}
+.db-row .db-acc{font-size:11px;font-weight:800;color:var(--cyan)}
+.db-row .kk-moons{font-size:11px;letter-spacing:-1px}
+.kk-moon-none{opacity:.55}
+.db-kids{border-left:2px solid var(--line);margin-left:14px}
+
+/* ===== v20261018a Q弹（duangduang）庆祝/鼓励弹窗 ===== */
+.kk-celebrate-mask{position:fixed;inset:0;z-index:99998;background:rgba(6,8,14,.55);display:flex;align-items:center;justify-content:center;animation:kkMaskIn .22s ease}
+.kk-celebrate-mask.out{opacity:0;transition:opacity .25s}
+.kk-celebrate-card{background:var(--panel,#141824);border:2px solid var(--line);border-radius:24px;padding:26px 30px;text-align:center;max-width:86vw;min-width:280px;
+  box-shadow:0 18px 60px rgba(0,0,0,.5),0 0 0 1px rgba(52,231,228,.15) inset;
+  animation:kkDuang .7s cubic-bezier(.22,1.6,.36,1)}
+.kk-celebrate-card.up{border-color:rgba(255,214,79,.6)}
+.kk-celebrate-card.down{border-color:rgba(52,231,228,.5)}
+.kk-celebrate-card .kk-c-emo{font-size:42px;animation:kkWiggle 1.1s ease-in-out .3s 2}
+.kk-celebrate-card .kk-c-title{font-size:21px;font-weight:900;margin-top:8px;color:var(--txt,#fff)}
+.kk-celebrate-card.up .kk-c-title{background:linear-gradient(90deg,#ffd64f,#ff8a3c);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.kk-celebrate-card .kk-c-word{font-size:14px;margin-top:8px;color:var(--txt,#eee);font-weight:600}
+.kk-celebrate-card .kk-c-sub{font-size:12px;margin-top:6px;color:var(--txt-dim,#9aa)}
+.kk-celebrate-card .btn{margin-top:16px;min-width:120px}
+@keyframes kkDuang{
+  0%{transform:scale(.2) rotate(-6deg);opacity:0}
+  55%{transform:scale(1.12) rotate(2deg);opacity:1}
+  75%{transform:scale(.94) rotate(-1deg)}
+  100%{transform:scale(1) rotate(0)}
+}
+@keyframes kkWiggle{
+  0%,100%{transform:rotate(0)}
+  25%{transform:rotate(-9deg) scale(1.08)}
+  75%{transform:rotate(9deg) scale(1.08)}
+}
+@keyframes kkMaskIn{from{opacity:0}to{opacity:1}}
 .sidebar-foot{padding:12px}
 .sync-btn{width:100%;border:1px solid var(--line);background:var(--panel);color:var(--txt-dim);
   border-radius:12px;padding:10px;cursor:pointer;font-weight:700;font-size:13px}
@@ -1478,10 +1535,32 @@ body.glass:not(.light)::after{ background:rgba(10,10,12,var(--g-overlay,0)); }
 .dr-pt b, .dr-emp{color:var(--red,#d4391e);font-weight:700}
 
 /* ===== 启动页（2s，主题横竖屏图，右下角小版本号） ===== */
-#kgSplash{position:fixed;inset:0;z-index:99999;background:#0b0b0c center/cover no-repeat;transition:opacity .45s ease}
+#kgSplash{position:fixed;inset:0;z-index:99999;background:#0b0b0c;overflow:hidden;transition:opacity .45s ease}
 #kgSplash.kg-splash-hide{opacity:0;pointer-events:none}
 #kgSplashVer{position:absolute;right:16px;bottom:calc(8px + env(safe-area-inset-bottom, 0px));font-size:10px;opacity:.85;color:#000;font-family:monospace;font-weight:700}
 #kgSplashVer.on-dark{color:#fff;text-shadow:0 0 3px rgba(0,0,0,.7)}
+/* v20261018a 开屏动画：背景往后退（缩小+微暗=浮起感），标题四字从里渐大浮出变清晰 */
+#kgSplashBg{position:absolute;inset:0;background:#0b0b0c center/cover no-repeat;transform:scale(1.08);animation:kgSplashBack 1.85s cubic-bezier(.22,.61,.36,1) forwards}
+@keyframes kgSplashBack{
+  0%{transform:scale(1.08);filter:brightness(1)}
+  55%{filter:brightness(.8)}
+  100%{transform:scale(.955);filter:brightness(.76)}
+}
+#kgSplashTitle{position:absolute;left:0;right:0;top:37%;text-align:center;color:#fff;
+  font-family:"黑体","SimHei","PingFang SC","Microsoft YaHei",sans-serif;font-weight:900;
+  font-size:min(11.5vw,64px);letter-spacing:.16em;white-space:nowrap;
+  text-shadow:0 4px 26px rgba(0,0,0,.6),0 1px 3px rgba(0,0,0,.45);
+  opacity:0;transform:scale(.55);filter:blur(12px);
+  animation:kgSplashRise 1.25s cubic-bezier(.19,.8,.28,1) .1s forwards}
+@keyframes kgSplashRise{
+  0%{opacity:0;transform:scale(.55);filter:blur(12px);letter-spacing:.16em}
+  62%{opacity:1;filter:blur(0)}
+  100%{opacity:1;transform:scale(1);filter:blur(0);letter-spacing:.22em}
+}
+@media (prefers-reduced-motion: reduce){
+  #kgSplashBg{animation:none;transform:scale(1);filter:brightness(.85)}
+  #kgSplashTitle{animation:none;opacity:1;transform:scale(1);filter:none}
+}
 
 
 /* ===== 主题化导航图标（水墨武侠 / 可爱贴纸 / 自定义emoji） ===== */

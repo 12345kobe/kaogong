@@ -3,7 +3,10 @@
   "use strict";
   const DB = window.DB, UI = window.UI, ICONS = window.ICONS, MODULES = window.MODULES;
 
-  const NAV = ["countdown", "timer", "current", "verbal", "data", "logic", "politics", "quantity", "common", "essay", "calendar", "wrongbook", "favorites", "stats", "ai", "settings"];
+  /* v20261018a 侧栏大改：①倒计时 ②上岸计时器 ③刷题 ④知识点学习(展开二级科目) ⑤AI咨询 ⑥设置
+     其余（日历/错题本/收藏/统计）保持原位；学习类模块全部收进「知识点学习」二级菜单（路由不变）。 */
+  const NAV = ["countdown", "timer", "drills", "knowledge", "ai", "settings", "calendar", "wrongbook", "favorites", "stats"];
+  const KNOWLEDGE_SUBS = ["verbal", "logic", "data", "quantity", "essay", "current", "politics", "common"];
   const GH_LABEL = "12345kobe/kaogong";
 
   /* ===== 主题系统：赛博朋克(默认) / 简约 / 可爱 / 武侠 / 自定义背景 =====
@@ -183,20 +186,60 @@
   function loadNav() {
     const nav = document.getElementById("nav"); nav.innerHTML = "";
     NAV.forEach(key => {
+      if (key === "knowledge") {
+        /* 知识点学习：点击自动展开二级科目菜单，点科目进入学习（路由 #/科目 不变） */
+        const wrap = el(`<div class="nav-group" id="kgKnowGroup"></div>`);
+        const item = el(`<div class="nav-item" data-key="knowledge"><span class="nav-ico-wrap">${ICONS.essays || ""}</span><span class="nav-txt">知识点学习</span><span class="nav-caret">▸</span></div>`);
+        const sub = el(`<div class="nav-sub" style="display:none"></div>`);
+        KNOWLEDGE_SUBS.forEach(k => {
+          const m = MODULES[k]; if (!m) return;
+          const it = el(`<div class="nav-item nav-sub-item" data-key="${k}"><span class="nav-sub-dot"></span><span class="nav-txt">${m.title}</span></div>`);
+          it.onclick = () => { location.hash = "#/" + k; closeSidebar(); };
+          sub.appendChild(it);
+        });
+        item.onclick = () => {
+          const open = !wrap.classList.contains("open");
+          wrap.classList.toggle("open", open);
+          sub.style.display = open ? "" : "none";
+          item.querySelector(".nav-caret").textContent = open ? "▾" : "▸";
+        };
+        wrap.appendChild(item); wrap.appendChild(sub);
+        nav.appendChild(wrap);
+        return;
+      }
       const m = MODULES[key]; if (!m) return;
       const item = el(`<div class="nav-item" data-key="${key}"><span class="nav-ico-wrap">${ICONS[m.icon] || ""}</span><span class="nav-txt">${m.title}</span></div>`);
       item.onclick = () => { location.hash = "#/" + key; closeSidebar(); };
       nav.appendChild(item);
     });
     try { window.Theme && Theme.apply && Theme.apply(); } catch (e) {} // 主题图标注入（武侠/可爱/自定义）
+    try { window.KGKingke && KGKingke.renderBrand(); } catch (e) {} // 科举等级 brand（读书人图+进度条）
   }
   function setActive(key) {
     document.querySelectorAll(".nav-item").forEach(n => n.classList.toggle("active", n.dataset.key === key));
+    /* 知识点学习二级：当前路由是学习科目时，父项高亮 + 自动展开二级菜单 */
+    try {
+      const grp = document.getElementById("kgKnowGroup");
+      if (grp) {
+        const isSub = KNOWLEDGE_SUBS.indexOf(key) >= 0 || key === "knowledge";
+        const item = grp.querySelector('.nav-item[data-key="knowledge"]');
+        const sub = grp.querySelector(".nav-sub");
+        if (isSub && item && sub) {
+          grp.classList.add("open");
+          sub.style.display = "";
+          const caret = item.querySelector(".nav-caret");
+          if (caret) caret.textContent = "▾";
+          item.classList.toggle("active", key === "knowledge" || !document.querySelector(`.nav-item[data-key="${key}"]`));
+        }
+      }
+    } catch (e) {}
     const m = MODULES[key];
     const pt = document.getElementById("pageTitle");
-    pt.innerHTML = `<span class="nav-ico-wrap pt-ico">${(window.Theme && Theme.themeIconHtml) ? Theme.themeIconHtml(key, m) : (ICONS[m.icon] || "")}</span><span class="nav-txt">${m.title}</span>`;
-    const img = pt.querySelector("img.t-ico");
-    if (img) img.onerror = () => { img.outerHTML = ICONS[m.icon] || ""; };
+    if (m) {
+      pt.innerHTML = `<span class="nav-ico-wrap pt-ico">${(window.Theme && Theme.themeIconHtml) ? Theme.themeIconHtml(key, m) : (ICONS[m.icon] || "")}</span><span class="nav-txt">${m.title}</span>`;
+      const img = pt.querySelector("img.t-ico");
+      if (img) img.onerror = () => { img.outerHTML = ICONS[m.icon] || ""; };
+    }
   }
   window.setActiveNav = setActive;   // 供子页面（Pager）复用导航高亮
 
@@ -261,7 +304,7 @@
     try { MODULES[key].render(body); }
     catch (e) { body.innerHTML = `<div class="card empty">模块加载出错：${UI.esc(e.message)}</div>`; console.error(e); }
     // 每个模块顶部常驻「PDF 录入题目」快捷入口（无需进设置即可录入，按学科归入对应题册）
-    if (key !== "pdfimport" && key !== "settings" && key !== "ai" && key !== "shuati") {
+    if (key !== "pdfimport" && key !== "settings" && key !== "ai" && key !== "shuati" && key !== "drills") {
       try {
         const entry = UI.el(`<div class="pdf-quick-entry">
           <button class="btn primary sm" id="pdfQuickBtn" data-guide-bypass>📥 录入题目（PDF / 文字 / AI 识图）</button>
