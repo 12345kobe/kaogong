@@ -486,13 +486,16 @@
   }
   window.KGSpeed = { open: openSpeedPicker };
 
-  /* ===== 资料分析入口：首页 = 方格（资料分析公式 / 速算背诵练习） ===== */
+  /* ===== 资料分析入口：首页 = 方格（资料分析公式 / 速算背诵练习 / 行测5000题知识点题目训练） ===== */
   window.MODULES.data = FormulaBoard("data", "data", "资料分析", window.BANKS.FORMULAS_DATA,
     "列出资料分析常用公式，支持自定义编辑、增删。", {
       notebook: true,
-      tiles: [{ ico: "📇", title: "速算背诵练习", href: "#/data-speed" }]
+      tiles: [{ ico: "📇", title: "速算背诵练习", href: "#/data-speed" },
+              { ico: "📗", title: "行测5000题 · 知识点题目训练", href: "#/data/x5" }]
     });
 
   window.MODULES.quantity = FormulaBoard("quantity", "quantity", "数量关系", window.BANKS.FORMULAS_QUANTITY,
-    "列出数量关系常用公式，支持自定义编辑、增删。", {});
+    "列出数量关系常用公式，支持自定义编辑、增删。", {
+      tiles: [{ ico: "📘", title: "行测5000题 · 知识点题目训练", href: "#/quantity/x5" }]
+    });
 })();

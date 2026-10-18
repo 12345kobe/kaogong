@@ -1001,5 +1001,20 @@
     }
   };
 
+  /* ===== 全屏图片查看器（v20261018c）：点缩略图看大图 + 保存到相册/桌面
+     手机：点「⬇ 保存」存入相册/文件（iOS 也可长按图片存相册）；电脑：下载到桌面/文件夹。 */
+  UI.viewImage = function (url, name) {
+    const ov = el('<div class="view-ov"></div>');
+    const box = el('<div class="view-box"><img class="view-img" src="' + esc(url) + '" alt="大图"></div>');
+    const save = el('<a class="view-save" href="' + esc(url) + '" download="' + esc(name || "image.jpg") + '" title="保存到相册/桌面">⬇</a>');
+    save.onclick = function (e) { e.stopPropagation(); try { UI.toast("已开始保存 · iPhone 也可长按图片存入相册"); } catch (er) {} };
+    const close = el('<button class="view-close" title="关闭">✕</button>');
+    ov.appendChild(box); ov.appendChild(save); ov.appendChild(close);
+    document.body.appendChild(ov);
+    const closeOv = function () { ov.remove(); };
+    close.onclick = closeOv;
+    ov.onclick = function (e) { if (e.target === ov) closeOv(); };
+  };
+
   window.UI = UI;
 })();

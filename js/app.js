@@ -5,7 +5,9 @@
 
   /* v20261018a 侧栏大改：①倒计时 ②上岸计时器 ③刷题 ④知识点学习(展开二级科目) ⑤AI咨询 ⑥设置
      其余（日历/错题本/收藏/统计）保持原位；学习类模块全部收进「知识点学习」二级菜单（路由不变）。 */
-  const NAV = ["countdown", "timer", "drills", "knowledge", "ai", "settings", "calendar", "wrongbook", "favorites", "stats"];
+  /* v20261018c（用户要求）：「设置」移到最后（学习统计下面），不再占高位；
+     上方只留日常高频入口，设置类收在底部避免误触。 */
+  const NAV = ["countdown", "timer", "drills", "knowledge", "ai", "calendar", "wrongbook", "favorites", "stats", "settings"];
   const KNOWLEDGE_SUBS = ["verbal", "logic", "data", "quantity", "essay", "current", "politics", "common"];
   const GH_LABEL = "12345kobe/kaogong";
 
@@ -118,23 +120,31 @@
     /* 主题图标 + 自定义板块表情（导航/页标题图标按主题切换）：
        cyber → 变形金刚角色图标；cute → 可爱贴纸图标；wuxia/minimal/custom → 水墨武侠图标；
        custom 且给某板块设了 emoji 时，用该 emoji 替换图标。 */
+    /* v20261018c：每个主题都有自己一整套「圆形图标」目录（wuxia/cute/cyber/minimal），
+       custom 主题若给某板块设了 emoji 则优先用 emoji，否则沿用武侠套图。
+       缺失的图标由调用方的 img.onerror 自动回落到内联 SVG。 */
+    const THEME_ICON_DIR = { cyber: "cyber", cute: "cute", wuxia: "wuxia", minimal: "minimal" };
+    const CYBER_FALLBACK = CYBER_ICON_MAP; // 赛博主题缺图时退回变形金刚三角色
     function themeIconHtml(key, m) {
       const s = getState();
-      const fallback = (window.ICONS && window.ICONS[m.icon]) || "";
-      if (s.name === "cyber") return '<img class="t-ico" src="assets/icons/cyber/' + (CYBER_ICON_MAP[key] || "optimus") + '.png" alt="">';
       const em = (s.name === "custom" && s.emojis && s.emojis[key]) || "";
       if (em) return '<span class="t-ico-emoji">' + em + "</span>";
-      const th = s.name === "cute" ? "cute" : "wuxia";
-      return '<img class="t-ico" src="assets/icons/' + th + '/' + key + '.png" alt="">';
+      const dir = THEME_ICON_DIR[s.name] || "wuxia";
+      let file = "assets/icons/" + dir + "/" + key + ".png";
+      if (dir === "cyber" && CYBER_FALLBACK[key]) file = "assets/icons/cyber/" + CYBER_FALLBACK[key] + ".png";
+      return '<img class="t-ico" src="' + file + '" alt="">';
     }
     function applyEmojis() {
       const s = getState();
       const em = (s.name === "custom" && s.emojis) || {};
       document.querySelectorAll("#nav .nav-item").forEach(n => {
-        const key = n.dataset.key, m = MODULES[key]; if (!m) return;
-        n.innerHTML = '<span class="nav-ico-wrap">' + themeIconHtml(key, m) + '</span><span class="nav-txt">' + m.title + "</span>";
+        const key = n.dataset.key, m = MODULES[key];
+        // 「知识点学习」不是模块（无固定 render），图标也按主题切换
+        if (!m && key !== "knowledge") return;
+        const mm = m || { icon: "essays", title: "知识点学习" };
+        n.innerHTML = '<span class="nav-ico-wrap">' + themeIconHtml(key, mm) + '</span><span class="nav-txt">' + (m ? m.title : "知识点学习") + "</span>";
         const img = n.querySelector("img.t-ico");
-        if (img) img.onerror = () => { img.outerHTML = (window.ICONS && window.ICONS[m.icon]) || ""; };
+        if (img) img.onerror = () => { img.outerHTML = (window.ICONS && window.ICONS[mm.icon]) || (window.ICONS && window.ICONS.essays) || ""; };
       });
       const cur = location.hash.replace("#/", "") || "countdown";
       const cm = MODULES[cur];
@@ -278,6 +288,8 @@
   function renderRoute() {
     const raw = (location.hash.replace("#/", "") || "countdown");
     try { if (window.Pager) window.Pager.exitSub(); } catch (e) {}
+    // 离开全屏刷题（路由切换 / 侧栏跳转）：清掉全屏标记，恢复侧栏与顶栏
+    try { if (raw.split("/")[0] !== "drills") document.body.classList.remove("kg-dq-full"); } catch (e) {}
     // 二级及以上子页面：方格入口跳转进来的「内容区全屏页」（子页在模块渲染后注册）
     if (raw.indexOf("/") > 0 && window.Pager && window.Pager.has(raw)) {
       try { if (window.Pager.render(raw)) { lastKey = raw; return; } } catch (e) { console.error(e); }

@@ -139,6 +139,68 @@
         }
         newSet();
       }
+      /* 单科目批量练习：自选题量（默认 10），从本科目收藏随机抽题（不按收藏顺序） */
+      function startSubjectBatch(subject, items, body) {
+        const pool = (items || []).map(it => ({ q: it.q, options: it.options, a: it.a, e: it.e, subject: it.subject || subject, qid: it.qid }));
+        if (!pool.length) { UI.toast("该科目还没有收藏题目"); return; }
+        const full = window.KGSubjectFull ? window.KGSubjectFull(subject) : subject;
+        const mask = UI.el(`<div class="modal-mask"><div class="modal" style="max-width:460px">
+          <h3>🎲 ${esc(full)} · 批量练习</h3>
+          <div class="muted small" style="margin:6px 0">共收藏 ${pool.length} 题，选择本次练习数量（随机抽取，不按收藏顺序）。</div>
+          <div class="row" style="gap:8px;margin:14px 0;flex-wrap:wrap">
+            ${[5, 10, 20, 30].map(n => `<button class="qm-chip${n === 10 ? " on" : ""}" data-n="${n}">${n} 题</button>`).join("")}
+            <button class="qm-chip" data-n="0">全部（${Math.min(pool.length, 200)} 题）</button>
+          </div>
+          <div class="row" style="gap:8px;margin:10px 0;align-items:center">
+            <span class="muted small">模式</span>
+            <button class="qm-chip on" id="sbP">📝 练题</button>
+            <button class="qm-chip" id="sbM">📖 背题</button>
+          </div>
+          <div class="row" style="justify-content:flex-end;gap:8px;margin-top:14px">
+            <button class="btn ghost" id="sbCancel">取消</button>
+            <button class="btn primary" id="sbStart">开始练习</button>
+          </div>
+        </div></div>`);
+        document.body.appendChild(mask);
+        let n = 10, mode = "practice";
+        mask.querySelectorAll("[data-n]").forEach(b => {
+          b.onclick = () => {
+            n = parseInt(b.dataset.n, 10) || 10;
+            mask.querySelectorAll("[data-n]").forEach(x => x.classList.toggle("on", x === b));
+          };
+        });
+        mask.querySelector("#sbP").onclick = () => { mode = "practice"; mask.querySelector("#sbP").classList.add("on"); mask.querySelector("#sbM").classList.remove("on"); };
+        mask.querySelector("#sbM").onclick = () => { mode = "memorize"; mask.querySelector("#sbM").classList.add("on"); mask.querySelector("#sbP").classList.remove("on"); };
+        const close = () => mask.remove();
+        mask.querySelector("#sbCancel").onclick = close;
+        mask.onclick = e => { if (e.target === mask) close(); };
+        mask.querySelector("#sbStart").onclick = () => {
+          const take = n > 0 ? Math.min(n, pool.length) : Math.min(pool.length, 200);
+          close();
+          runSubjectBatch(full + " · 收藏", pool, mode, take, body);
+        };
+      }
+      function runSubjectBatch(title, pool, mode, take, body) {
+        const mask = UI.el(`<div class="modal-mask"><div class="modal" style="max-width:880px;max-height:92vh;overflow:auto">
+          <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
+            <h3 style="margin:0">⭐ ${esc(title)}（${take}/${pool.length} 随机）</h3>
+            <button class="btn ghost" id="sbBack">返回收藏</button>
+          </div>
+          <div class="fav-quiz"></div>
+        </div></div>`);
+        document.body.appendChild(mask);
+        mask.querySelector("#sbBack").onclick = () => { mask.remove(); MODULES.favorites.render(body); };
+        mask.onclick = e => { if (e.target === mask) { mask.remove(); MODULES.favorites.render(body); } };
+        const host = mask.querySelector(".fav-quiz");
+        function newSet() {
+          const p = pool.slice();
+          for (let i = p.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = p[i]; p[i] = p[j]; p[j] = t; }
+          const picked = p.slice(0, Math.min(take, p.length));
+          try { window.Quiz.start(host, picked, title, { mode: mode, noStats: true, onAgain: newSet }); }
+          catch (e) { host.innerHTML = `<div class="card empty">练习启动失败：${UI.esc(e.message)}</div>`; }
+        }
+        newSet();
+      }
       let total = 0;
       SUBJECTS.forEach(subject => {
         const items = DB.state.favorites[subject] = DB.state.favorites[subject] || [];
@@ -157,7 +219,13 @@
             btns.querySelector(".fav-rm").onclick = () => { items.splice(i, 1); DB.save(); this.render(body); };
             list.appendChild(row);
           });
-          const top = UI.el(`<div class="row" style="margin-bottom:10px;gap:8px"><button class="btn primary fav-exp-subj">导出本科目PDF</button></div>`);
+          /* v20261018c（用户要求）：每个科目模块都能「批量练习」——
+             自选题量（默认 10），从本科目收藏里**随机**抽题，不按收藏顺序。 */
+          const top = UI.el(`<div class="row" style="margin-bottom:10px;gap:8px;flex-wrap:wrap">
+            <button class="btn primary fav-batch-subj">🎲 批量练习（随机抽题）</button>
+            <button class="btn ghost fav-exp-subj">导出本科目PDF</button>
+          </div>`);
+          top.querySelector(".fav-batch-subj").onclick = () => startSubjectBatch(subject, items, body);
           top.querySelector(".fav-exp-subj").onclick = () => exportItems(items, subject);
           card.insertBefore(top, list);
         }
