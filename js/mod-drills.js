@@ -175,6 +175,11 @@
       if (kids.length) subs.push({ id: "mybooks", name: "我的题册", icon: "📂", children: kids });
     } catch (e) { console.error("drills mybooks", e); }
 
+    /* 行测5000题 · 资料分析/数量关系（KGX5 注入，材料组走分栏刷题） */
+    try {
+      (window.KGX5 && window.KGX5.drillsSubjects() || []).forEach(s => subs.push(s));
+    } catch (e) { console.error("drills x5", e); }
+
     return subs;
   }
 

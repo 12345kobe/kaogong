@@ -30,9 +30,17 @@
   }
   function countQs(node) { return collectQs(node).length; }
 
+  function getX() {
+    let X = window.KG_X5000;
+    if (!X || typeof X !== "object") X = window.KG_X5000 = {};
+    if (window.KG_X5000_ZL_DATA && !X.zl) X.zl = window.KG_X5000_ZL_DATA;
+    if (window.KG_X5000_SL_DATA && !X.sl) X.sl = window.KG_X5000_SL_DATA;
+    return X;
+  }
+
   /* ---------- 知识点学习页（路由 #/data/x5 与 #/quantity/x5） ---------- */
   function renderBook(subjectKey, body) {
-    const book = (window.KG_X5000 || {})[subjectKey];
+    const book = getX()[subjectKey];
     body.innerHTML = "";
     if (!book || !book.tree) { body.appendChild(UI.el('<div class="card empty">题库数据尚未加载（x5000 数据文件缺失）。</div>')); return; }
     const root = book.tree;
@@ -165,7 +173,7 @@
   /* ---------- 注入刷题中心树 ---------- */
   function drillsSubjects() {
     const out = [];
-    const X = window.KG_X5000 || {};
+    const X = getX();
     [["zl", "行测5000题·资料分析"], ["sl", "行测5000题·数量关系"]].forEach(([k, name]) => {
       const b = X[k];
       if (!b || !b.tree) return;

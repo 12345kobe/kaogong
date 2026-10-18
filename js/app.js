@@ -1178,6 +1178,27 @@
     } catch (e) {}
     initSocial();
     window.addEventListener("hashchange", renderRoute);
+    /* ★v20261018e「返回刷题中心」全局兜底（用户反馈按钮仍失灵）：
+       不依赖模块内部绑定，document 级捕获阶段委托——任何含该文案的按钮点了都强制回刷题中心：
+       1) 清全屏标记；2) 路由已是 #/drills 就原地重渲染；3) 任何异常都退回 location.reload() 兜底。 */
+    document.addEventListener("click", function (e) {
+      try {
+        const t = e.target && e.target.closest ? e.target.closest("button, a, .btn") : null;
+        if (!t) return;
+        const txt = (t.textContent || "").trim();
+        if (t.id !== "dbBack" && txt.indexOf("返回刷题中心") < 0) return;
+        e.preventDefault(); e.stopPropagation();
+        document.body.classList.remove("kg-dq-full");
+        const body = document.getElementById("pageBody");
+        try {
+          if (String(location.hash || "") !== "#/drills") { location.hash = "#/drills"; }
+          else { MODULES.drills.render(body); try { window.setActiveNav && window.setActiveNav("drills"); } catch (er) {} }
+        } catch (er) {
+          location.hash = "#/drills";
+          setTimeout(function () { if (document.getElementById("pageBody") && !document.querySelector(".db-row")) location.reload(); }, 350);
+        }
+      } catch (err) {}
+    }, true);
     // 全局：给所有文字输入框加「清空」按钮（含后续动态生成的，由 MutationObserver 覆盖）
     if (UI.initClearButtons) UI.initClearButtons();
     if (!location.hash) location.hash = "#/countdown";
