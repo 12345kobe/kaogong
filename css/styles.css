@@ -1580,12 +1580,15 @@ body.kg-dq-full #pageBody{max-width:820px;margin:0 auto;padding:0 12px calc(40px
 /* ===== 分栏刷题视图（v20261018d 用户需求） =====
    竖屏：上=材料面板（独立滚动），下=题目面板（独立滚动），中间分隔杠可拖。
    横屏：左=材料，右=题目。比例存 localStorage，材料支持全屏手写笔迹固定显示。 */
-.sq-wrap{display:flex;min-height:0;width:100%}
+.sq-wrap{display:flex;min-height:0;width:100%;height:calc(100vh - 132px);height:calc(100dvh - 132px)}
 .sq-wrap.sq-v{flex-direction:column}
 .sq-wrap.sq-h{flex-direction:row}
-.sq-mat{flex:0 0 45%;min-height:0;min-width:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
+.sq-mat{flex:0 0 50%;min-height:0;min-width:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
   background:var(--panel);border-bottom:1px solid var(--line)}
 .sq-h .sq-mat{border-bottom:none;border-right:1px solid var(--line)}
+/* 材料为空时不要白占一半屏幕 */
+.sq-mat.sq-empty{flex:0 0 62px;overflow:hidden}
+.sq-mat.sq-empty .sq-mat-body{display:none}
 .sq-mat-head{position:sticky;top:0;z-index:4;display:flex;align-items:center;gap:8px;
   padding:8px 10px;background:var(--bg);border-bottom:1px solid var(--line)}
 .sq-badge{padding:3px 10px;border-radius:999px;background:linear-gradient(135deg,var(--cyan,#34e7e4),var(--purple,#9b6cff));

@@ -1188,6 +1188,7 @@
         const txt = (t.textContent || "").trim();
         if (t.id !== "dbBack" && txt.indexOf("返回刷题中心") < 0) return;
         e.preventDefault(); e.stopPropagation();
+        window.__kgBackAt = Date.now();   // 防返回后幽灵点击又进答题（mod-drills startQuiz 有 900ms 守卫）
         document.body.classList.remove("kg-dq-full");
         const body = document.getElementById("pageBody");
         try {

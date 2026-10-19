@@ -423,10 +423,11 @@
   function qSig(q) { const s = String((q && q.q) || "").slice(0, 60); let h = 0; for (let i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) >>> 0; } return h.toString(36); }
   function progGet() { try { return (window.DB.state.drillProgress = window.DB.state.drillProgress || {}); } catch (e) { return {}; } }
   function progRead(node) { const m = progGet(); return m[node.id] || null; }
-  function progSave(node, ids, at) {
+  /* v20261019a：progress 增加 answers（每题的用户作答 ua），未交卷退出也能原样续答 */
+  function progSave(node, ids, at, answers) {
     try {
       const m = progGet();
-      m[node.id] = { ids: ids, at: Math.max(0, Math.min(at, ids.length)), ts: Date.now() };
+      m[node.id] = { ids: ids, at: Math.max(0, Math.min(at, ids.length)), answers: answers || [], ts: Date.now() };
       window.DB.save();
     } catch (e) {}
   }
@@ -445,10 +446,10 @@
     return new Promise(resolve => {
       const mask = UI.el(`<div class="modal-mask"><div class="modal" style="max-width:380px;text-align:center">
         <h3 style="margin:0 0 6px">继续上次刷题？</h3>
-        <div class="muted small">「${esc(node.name)}」上次刷到第 <b>${at}</b> 题（共 ${total} 题）</div>
+        <div class="muted small">「${esc(node.name)}」上次刷到第 <b>${at}</b> 题（共 ${total} 题）<br>已答题目会原样填回，接着写就行</div>
         <div class="row" style="justify-content:center;gap:10px;margin-top:16px">
           <button class="btn ghost" id="rsNew">从头开始</button>
-          <button class="btn primary" id="rsGo">从第 ${at + 1} 题继续</button>
+          <button class="btn primary" id="rsGo">继续（答案已记住）</button>
         </div>
       </div></div>`);
       document.body.appendChild(mask);
@@ -467,6 +468,10 @@
      这里判定：hash 已是 #/drills 就原地重渲染，否则走路由跳转。 */
   function backToDrills(ctx) {
     exitFull();
+    /* ★v20261019a 修「返回后自动弹回刷题」：返回后页面重建，旧按钮同一坐标可能
+       延迟到来一次「幽灵点击」，正好落在新列表某一行上 → 又被当成进入答题。
+       记返回时间戳，startQuiz 在 900ms 内的进入请求直接忽略。 */
+    window.__kgBackAt = Date.now();
     if (String(location.hash || "").replace("#/", "") === "drills") { try { ctx.render(); } catch (e) { location.reload(); } }
     else { try { location.hash = "#/drills"; } catch (e) {} }
   }
@@ -483,6 +488,9 @@
 
   async function startQuiz(node, ctx) {
     const DB = window.DB, UI = window.UI;
+    /* ★v20261019a 幽灵点击/误触保护：刚点过「返回刷题中心」900ms 内的进入请求忽略
+       （返回后列表重建，旧按钮坐标上的延迟点击会落到新行上又进答题=「自动弹回刷题」） */
+    if (Date.now() - (window.__kgBackAt || 0) < 900) return;
     let qs = collectQs(node).slice();
     shuffle(qs);
     let per = ctx.per();
@@ -510,8 +518,11 @@
     body.insertBefore(back, wrap);
     back.querySelector("#dbBack").onclick = () => backToDrills(ctx);
     enterFull();
-    /* 答题进度：每答一题把「下一题下标」写回（+起始偏移），保证中途退出也能续上 */
+    /* 答题进度：每答一题把「下一题下标+已答答案」写回，未交卷退出也能原样续答 */
     let answered = 0;
+    const answers = new Array(ids.length).fill(null);
+    if (saved && Array.isArray(saved.answers)) { for (let i = 0; i < saved.answers.length && i < answers.length; i++) answers[i] = saved.answers[i]; }
+    const savedResume = { answers: answers, at: startAt };
     /* 记录每个 leaf 的刷前正确率（进步/退步弹窗用） */
     const beforeMap = {};
     list.forEach(q => { if (!(q.__leaf in beforeMap)) { const st = statMap()[q.__leaf]; beforeMap[q.__leaf] = st && st.done ? st.right / st.done : null; } });
@@ -536,18 +547,20 @@
       return;
     }
 
-    window.Quiz.start(wrap, list, "刷题中心", {
+      window.Quiz.start(wrap, list, "刷题中心", {
       returnLabel: "‹ 返回刷题中心",
       returnAction: () => backToDrills(ctx),
       onAgain: () => startQuiz(node, ctx),
-      onAnswer: (qq, right) => {
+      resume: savedResume,
+      onAnswer: (qq, right, ua) => {
         try { recordAnswer(qq.__leaf, right); } catch (e) {}
+        answers[startAt + answered] = (ua === undefined ? null : ua);
         answered++;
-        try { progSave(node, ids, startAt + answered); } catch (e) {}
+        try { progSave(node, ids, startAt + answered, answers); } catch (e) {}
       },
       onDone: () => {
         try {
-          progSave(node, ids, startAt + answered >= ids.length ? 0 : startAt + answered);
+          progSave(node, ids, startAt + answered >= ids.length ? 0 : startAt + answered, answers);
           DB.save();
           /* ①正确率进步/退步弹窗：取本组题目涉及 leaf 的「刷前正确率」vs「当前正确率」聚合对比 */
           let hasBefore = false, sumB = 0, nB = 0, sumA = 0, nA = 0;

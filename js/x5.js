@@ -1,9 +1,9 @@
 /* 模块：行测5000题 · 知识点题目训练（v20261018c）
    数据源：assets/data/x5000_zl.js / x5000_sl.js（tools/x5_build.py 从扫描版 PDF OCR 生成）
    结构：window.KG_X5000 = { zl:{title,tree}, sl:{title,tree} }
-   tree 节点：{ name, kp?:[{h,t}], kpImg?, mat?:{t,img}, qs?:[{q,options,a,e,img}], children? }
+   tree 节点：{ name, kp?:[{h,t}], kpImg?, kpImgs?:[路径], mat?:{t,img}, qs?:[{q,options,a,e,img}], children? }
    - kp：文本知识点（按 PDF 排版：小标题+段落）
-   - kpImg：思维导图/图表截图（点开大图，可保存到相册/桌面）
+   - kpImgs：思维导图/图表截图数组（可多张，点开大图，可保存到相册/桌面）；kpImg 为兼容单张字段
    - mat：材料（题组共用，题干图）
    - qs：题目（img=材料图或题干图）
    入口：资料分析/数量关系 模块顶部方格「📘 行测5000题 · 知识点题目训练」；
@@ -93,13 +93,16 @@
       });
       wrap.appendChild(kc);
     }
-    /* 思维导图/梳理截图 */
-    if (node.kpImg) {
-      const im = UI.el('<div class="card" style="text-align:center"><h3 style="margin:0 0 8px">🧠 知识梳理图（点击看大图）</h3>' +
-        '<img src="' + esc(node.kpImg) + '" style="max-width:100%;border-radius:10px;cursor:zoom-in" alt="知识梳理图"/></div>');
-      im.querySelector("img").onclick = () => { try { UI.viewImage(node.kpImg, "行测5000题-知识梳理.jpg"); } catch (e) {} };
+  /* 思维导图/梳理截图（支持多张：kpImgs 优先，兼容单张 kpImg） */
+  const imgs = (node.kpImgs && node.kpImgs.length) ? node.kpImgs : (node.kpImg ? [node.kpImg] : []);
+  if (imgs.length) {
+    imgs.forEach((src, ii) => {
+      const im = UI.el('<div class="card" style="text-align:center"><h3 style="margin:0 0 8px">🧠 知识梳理图' + (imgs.length > 1 ? "（" + (ii + 1) + "/" + imgs.length + "）" : "") + '（点击看大图）</h3>' +
+        '<img src="' + esc(src) + '" style="max-width:100%;border-radius:10px;cursor:zoom-in" alt="知识梳理图"/></div>');
+      im.querySelector("img").onclick = () => { try { UI.viewImage(src, "行测5000题-知识梳理.jpg"); } catch (e) {} };
       wrap.appendChild(im);
-    }
+    });
+  }
     /* 材料截图 */
     if (node.mat && node.mat.img) {
       const im = UI.el('<div class="card" style="text-align:center"><h3 style="margin:0 0 8px">📊 题目材料（点击看大图）</h3>' +

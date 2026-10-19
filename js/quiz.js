@@ -307,7 +307,7 @@
           exp.appendChild(askWrap);
           askWrap.querySelector(".ask-ai").onclick = () => askAI(qq, ua, qi);
         }
-        if (opts.onAnswer) opts.onAnswer(qq, right);
+        if (opts.onAnswer) opts.onAnswer(qq, right, ua);   // v20261019a：多传 ua，供调用方持久化「上次答到哪/答案」
         /* ★全部题目都已揭示 → 自动结算（v20261010a）：多选逐题「✓ 确认本题」后不必再找「交卷」，
            刷题记录（每日计划自动创建并打勾）也不会因为忘了交卷而丢失 */
         try {
@@ -492,6 +492,33 @@
         if (cfm) cfm.onclick = () => { if (card.dataset.done === "1") return; revealCard(qi); };
         container.appendChild(card);
       });
+
+      /* ★v20261019a 断点续答：opts.resume = {answers:[ua...], at:下一题下标}
+         把上次已答的题目原样填回（不揭示答案、不计重），并定位到第一道未答题。
+         ua：单选为 int，多选为 int 数组；null/undefined 表示该题未答。 */
+      if (opts.resume && Array.isArray(opts.resume.answers)) {
+        const ra = opts.resume.answers;
+        let firstUn = -1;
+        questions.forEach((qq, qi) => {
+          const ua = ra[qi];
+          if (ua == null) { if (firstUn < 0) firstUn = qi; return; }
+          const card = container.querySelector('.quiz-q[data-qi="' + qi + '"]');
+          if (!card) return;
+          const multi = isMulti(qq);
+          const list = multi ? (Array.isArray(ua) ? ua : []) : (isNaN(ua) ? [] : [ua]);
+          if (!list.length) { if (firstUn < 0) firstUn = qi; return; }
+          card.dataset.ua = JSON.stringify(list);
+          card.querySelectorAll(".opt").forEach((ob, oi) => { if (list.indexOf(oi) >= 0) ob.classList.add("selected"); });
+          results[qi] = { ua: multi ? list : list[0], right: null };
+          const cf = card.querySelector(".q-confirm"); if (cf) cf.style.display = list.length ? "" : "none";
+        });
+        Quiz._answered = answeredCount();
+        updateSubmitHint();
+        if (firstUn >= 0) {
+          const c = container.querySelector('.quiz-q[data-qi="' + firstUn + '"]');
+          if (c) setTimeout(() => { try { c.scrollIntoView({ behavior: "auto", block: "start" }); } catch (e) {} }, 60);
+        }
+      }
 
       function recordWrong(subject, qq, ua) {
         const arr = DB.state.wrongbook[subject] = DB.state.wrongbook[subject] || [];

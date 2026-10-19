@@ -13,7 +13,7 @@
 
   function getSplit(mode) {
     try { const v = parseFloat(localStorage.getItem("kg_sq_split_" + mode)); if (v >= 12 && v <= 88) return v; } catch (e) {}
-    return 45;
+    return 50;   /* v20261019a：默认材料/题目 1:1（用户要求） */
   }
   function setSplit(mode, v) { try { localStorage.setItem("kg_sq_split_" + mode, String(Math.round(v))); } catch (e) {} }
 
@@ -41,6 +41,7 @@
       matBody.appendChild(im);
     }
     matPane.appendChild(matBody);
+    if (!mat.t && !mat.img) matPane.classList.add("sq-empty");
     wrap.appendChild(matPane);
 
     /* ---- 分隔杠 ---- */
@@ -169,6 +170,7 @@
         im.onclick = () => { try { UI.viewImage(mat.img, "材料图.jpg"); } catch (e) {} };
         matBody.appendChild(im);
       }
+      matPane.classList.toggle("sq-empty", !mat.t && !mat.img);
       bigBtn.style.display = mat.img ? "" : "none";
       bigBtn.onclick = () => { try { UI.viewImage(mat.img, "材料图.jpg"); } catch (e) {} };
       idxLabel.textContent = "第 " + (gi + 1) + "/" + groups.length + " 篇";
