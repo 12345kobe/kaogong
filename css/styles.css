@@ -384,6 +384,11 @@ body.light:not(.glass) .good-words{background:#f4f7fc}
 .opt.correct{border-color:var(--green);background:rgba(61,220,151,.15);color:var(--green)}
 .opt.wrong{border-color:var(--red);background:rgba(255,107,129,.15);color:var(--red)}
 .opt.dim{opacity:.6}
+/* ★v20261019c 选项嵌图：A/B/C/D 是图片的选项——文字在左、图在右，图随选项按钮缩放 */
+.opt.opt-has-img{display:flex;align-items:center;gap:10px;padding:9px 12px}
+.opt.opt-has-img .opt-txt{flex:1 1 auto;min-width:0}
+.opt.opt-has-img .opt-img{flex:0 0 auto;max-width:46%;max-height:88px;width:auto;height:auto;
+  border-radius:8px;border:1px solid var(--line);background:#fff;cursor:zoom-in;object-fit:contain}
 .explain{margin-top:10px;padding:11px 13px;background:rgba(155,108,255,.12);
   border-left:3px solid var(--purple);border-radius:8px;font-size:13px}
 .kw{color:var(--yellow);font-weight:800}

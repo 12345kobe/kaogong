@@ -420,7 +420,15 @@
         };
 
         qq.options.forEach((o, i) => {
-          const b = UI.el(`<button class="opt" data-oi="${i}">${A(i)}. ${nl2br(optText(o))}</button>`);
+          /* ★v20261019c 选项嵌图（用户死命令）：A/B/C/D 是图片的选项，把图嵌进选项按钮右侧。
+             数据格式：qq.optImgs = { A:"assets/...jpg", B:..., C:..., D:... }（可缺某项）。 */
+          const oi = qq.optImgs && qq.optImgs[A(i)];
+          const oimg = oi ? '<img class="opt-img" src="' + UI.esc(oi) + '" alt="选项图" onerror="this.style.display=\'none\'"/>' : "";
+          const b = UI.el(`<button class="opt ${oimg ? "opt-has-img" : ""}" data-oi="${i}"><span class="opt-txt">${A(i)}. ${nl2br(optText(o))}</span>${oimg}</button>`);
+          if (oimg) {
+            const im = b.querySelector(".opt-img");
+            im.onclick = (ev) => { ev.stopPropagation(); const lb = document.createElement("div"); lb.className = "q-img-lightbox"; lb.innerHTML = '<img src="' + im.getAttribute("src") + '" alt="选项图放大"/>'; lb.onclick = () => { if (lb.parentNode) lb.parentNode.removeChild(lb); }; document.body.appendChild(lb); };
+          }
           /* 长按 1 秒划掉 / 恢复（仿粉笔）：划掉后整条划横变灰、暂时不可选；再长按恢复。
              只在未揭示的题上生效；pointer 事件统一处理（触屏 + 鼠标），长按不触发选中。 */
           let xTimer = 0, xFired = false;

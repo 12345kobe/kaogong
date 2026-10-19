@@ -17,9 +17,18 @@
   }
   function setSplit(mode, v) { try { localStorage.setItem("kg_sq_split_" + mode, String(Math.round(v))); } catch (e) {} }
 
+  /* ★v20261019c 用户死命令：材料图只准出现在材料面板，题目下面不再重复挂。
+     只清「与材料图相同」的 q.img（那才是重复）；题干自己的独立配图（数量关系几何图等）保留。 */
+  function stripDupImgs(qs, mat) {
+    const mi = (mat && mat.img) || "";
+    (qs || []).forEach(q => { if (q && q.img && mi && q.img === mi) { try { delete q.img; } catch (e) { q.img = ""; } } });
+    return qs;
+  }
+
   function start(host, mat, questions, subject, opts) {
     opts = opts || {};
     mat = mat || {};
+    stripDupImgs(questions, mat);
     const matId = mat.id || ("m" + hash((mat.t || "") + (mat.img || "")));
     const hwSubject = "sqmat|" + subject;
 
@@ -189,6 +198,7 @@
       gi = i;
       paintMat(groups[i]);
       const g = groups[i];
+      stripDupImgs(g.qs, g.mat);   /* ★每篇材料切换时再清一次重复材料图 */
       let done = 0;
       window.Quiz.start(quizPane, g.qs, subject, Object.assign({}, opts, {
         onAnswer: (qq, right) => {

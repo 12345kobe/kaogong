@@ -22,7 +22,8 @@
   function collectQs(node) {
     const out = [];
     (function walk(n) {
-      if (n.mat && n.qs) n.qs.forEach(q => { if (q && !q.img && n.mat.img) q.img = n.mat.img; });
+      /* ★v20261019c 用户死命令：每道题下面**不要**重复挂材料图——材料只在分栏的材料面板显示。
+         旧逻辑把 n.mat.img 塞进每个 q.img，导致同一篇材料在题目区反复出现（视频已实锤）。 */
       (n.qs || []).forEach(q => out.push(q));
       (n.children || []).forEach(walk);
     })(node);

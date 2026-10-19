@@ -193,6 +193,20 @@
 
   function el(html) { const d = document.createElement("div"); d.innerHTML = html.trim(); return d.firstElementChild; }
 
+  function navGo(key) {
+    /* ★v20261019c 用户死命令：刷题页里点抽屉「任何模块」都必须真正切走。
+       根因：location.hash 赋相同值不触发 hashchange → 页面纹丝不动（看起来"退不出刷题"）。
+       修法：目标 hash 与当前相同 → 强制原地 renderRoute()（清空 body 重渲染=退出刷题详情）。 */
+    const target = "#/" + key;
+    try { window.__kgBackAt = Date.now(); } catch (e) {}   // 防返回后幽灵点击误进答题
+    if (String(location.hash || "") === target) {
+      try { window.renderRoute && window.renderRoute(); } catch (e) { location.reload(); }
+    } else {
+      location.hash = target;
+    }
+    closeSidebar();
+  }
+
   function loadNav() {
     const nav = document.getElementById("nav"); nav.innerHTML = "";
     NAV.forEach(key => {
@@ -204,7 +218,7 @@
         KNOWLEDGE_SUBS.forEach(k => {
           const m = MODULES[k]; if (!m) return;
           const it = el(`<div class="nav-item nav-sub-item" data-key="${k}"><span class="nav-sub-dot"></span><span class="nav-txt">${m.title}</span></div>`);
-          it.onclick = () => { location.hash = "#/" + k; closeSidebar(); };
+          it.onclick = () => navGo(k);
           sub.appendChild(it);
         });
         item.onclick = () => {
@@ -219,7 +233,7 @@
       }
       const m = MODULES[key]; if (!m) return;
       const item = el(`<div class="nav-item" data-key="${key}"><span class="nav-ico-wrap">${ICONS[m.icon] || ""}</span><span class="nav-txt">${m.title}</span></div>`);
-      item.onclick = () => { location.hash = "#/" + key; closeSidebar(); };
+      item.onclick = () => navGo(key);
       nav.appendChild(item);
     });
     try { window.Theme && Theme.apply && Theme.apply(); } catch (e) {} // 主题图标注入（武侠/可爱/自定义）
