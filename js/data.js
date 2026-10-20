@@ -489,6 +489,8 @@
       } catch (e) {}
       try { state.qTotal = (state.qTotal || 0) + total; } catch (e) {}
       this.save();
+      // ★ 累计题数变了 → 左上角科举等级/进度条立即跟着走（不用等下次整页渲染）
+      try { if (window.KGKingke && KGKingke.renderBrand) KGKingke.renderBrand(); } catch (e) {}
     },
 
     /* 当天（或指定日期）正确率总览：{ subjects:{ 学科:{done,right,pct} }, total:{done,right,pct} } */
