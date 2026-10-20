@@ -341,7 +341,7 @@
             <button class="pen-btn ${hasNote ? "has" : ""}" title="手写标注（Apple Pencil）">✏️${hasNote ? "•" : ""}</button>
             <button class="star-btn ${isFav() ? "on" : ""}" title="收藏题目">${isFav() ? "★" : "☆"}</button>
           </div>
-          <div class="q">${nl2br(qq.q)}</div>
+          <div class="q"${qq.wholeImg ? ' style="display:none"' : ''}>${nl2br(qq.q)}</div>
           ${(qq.img ? '<div class="q-img-wrap"><img class="q-img" src="' + UI.esc(qq.img) + '" alt="配图" onerror="this.style.display=\'none\'"/></div>' : '')}
           ${isMulti(qq) ? `<div class="q-multi-bar"><button type="button" class="btn sm q-multi-toggle on">☑ 多选（已开启）</button><span class="muted small">多选题：点选项即勾选（再点取消），选完点「✓ 确认本题」</span></div>` : ""}
           <div class="opts"></div>
@@ -424,7 +424,10 @@
              数据格式：qq.optImgs = { A:"assets/...jpg", B:..., C:..., D:... }（可缺某项）。 */
           const oi = qq.optImgs && qq.optImgs[A(i)];
           const oimg = oi ? '<img class="opt-img" src="' + UI.esc(oi) + '" alt="选项图" onerror="this.style.display=\'none\'"/>' : "";
-          const b = UI.el(`<button class="opt ${oimg ? "opt-has-img" : ""}" data-oi="${i}"><span class="opt-txt">${A(i)}. ${nl2br(optText(o))}</span>${oimg}</button>`);
+          /* ★v20261020 整题截图模式（资料分析）：题干+选项已整块截进 q.img，
+             选项按钮只显示字母 A/B/C/D（不显示 OCR 易乱码的文本），用户看截图选答案。 */
+          const optTxt = qq.wholeImg ? A(i) : (A(i) + ". " + nl2br(optText(o)));
+          const b = UI.el(`<button class="opt ${oimg ? "opt-has-img" : ""}" data-oi="${i}"><span class="opt-txt">${optTxt}</span>${oimg}</button>`);
           if (oimg) {
             const im = b.querySelector(".opt-img");
             im.onclick = (ev) => { ev.stopPropagation(); const lb = document.createElement("div"); lb.className = "q-img-lightbox"; lb.innerHTML = '<img src="' + im.getAttribute("src") + '" alt="选项图放大"/>'; lb.onclick = () => { if (lb.parentNode) lb.parentNode.removeChild(lb); }; document.body.appendChild(lb); };

@@ -1864,3 +1864,9 @@ body.glass.light .opt.selected{
 .opt.opt-x{opacity:.42;filter:grayscale(.7)}
 .opt.opt-x .q-txt,.opt.opt-x{ text-decoration:line-through; text-decoration-thickness:2px; text-decoration-color:var(--red) }
 .opt.opt-x::after{content:"✕";float:right;margin-left:8px;color:var(--red);font-weight:800;font-size:15px}
+/* ===== v20261020 分栏刷题自带返回条（修"退不出刷题"）===== */
+.sq-back{flex:0 0 auto;padding:7px 10px;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:6;background:var(--bg)}
+.sq-back .btn{margin:0}
+/* 整题截图模式（资料分析）：题干整块图自适应，选项只显示字母 A/B/C/D */
+.quiz-q .opt .opt-txt{font-weight:700;font-size:15px}
+.q-img-wrap .q-img{cursor:zoom-in}

@@ -132,6 +132,12 @@
     const matBody = UI.el('<div class="sq-mat-body"></div>');
     matPane.appendChild(matBody);
     wrap.appendChild(matPane);
+    /* ★v20261020 返回条：split 自己渲染返回按钮（之前只靠外部 dbBack，x5 入口根本没有返回键 → 用户"退不出刷题"）。 */
+    if (opts.returnLabel || opts.returnAction) {
+      const back = UI.el('<div class="sq-back"><button class="btn xs ghost">' + esc(opts.returnLabel || "‹ 返回") + '</button></div>');
+      if (opts.returnAction) back.querySelector("button").onclick = opts.returnAction;
+      wrap.insertBefore(back, matPane);
+    }
 
     const bar = UI.el('<div class="sq-bar" title="拖动调整材料/题目比例"><i></i></div>');
     wrap.appendChild(bar);
