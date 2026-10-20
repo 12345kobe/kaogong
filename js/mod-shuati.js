@@ -88,6 +88,10 @@
       }
       const autoStart = (mode === "quiz" || mode === "combo" || mode === "review");
 
+      let pending = window.__pendingFocus;
+      window.__pendingFocus = null;
+      const pendingSubject = pending && pending.subject ? pending.subject : "";
+
       /* 会话轴：同一会话跨 render() 复用 SS；新会话（签名变化 / 上一轮已结算干净）才重置 */
       const sig = _sig(launch, pending);
       const stale = SS.ended && !DB.timerState().running && DB.timerElapsedMs() === 0;
