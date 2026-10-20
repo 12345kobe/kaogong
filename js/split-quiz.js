@@ -134,8 +134,13 @@
     wrap.appendChild(matPane);
     /* ★v20261020 返回条：split 自己渲染返回按钮（之前只靠外部 dbBack，x5 入口根本没有返回键 → 用户"退不出刷题"）。 */
     if (opts.returnLabel || opts.returnAction) {
-      const back = UI.el('<div class="sq-back"><button class="btn xs ghost">' + esc(opts.returnLabel || "‹ 返回") + '</button></div>');
-      if (opts.returnAction) back.querySelector("button").onclick = opts.returnAction;
+      const homeBtn = opts.homeLabel && opts.homeAction
+        ? `<button class="btn xs ghost" id="sqHome">${esc(opts.homeLabel)}</button>` : "";
+      const back = UI.el('<div class="sq-back">' + homeBtn
+        + '<button class="btn xs ghost">' + esc(opts.returnLabel || "‹ 返回") + '</button></div>');
+      if (opts.returnAction) back.querySelector("button:last-child").onclick = opts.returnAction;
+      const hb = back.querySelector("#sqHome");
+      if (hb) hb.onclick = () => { try { opts.homeAction(); } catch (e) {} };
       wrap.insertBefore(back, matPane);
     }
 

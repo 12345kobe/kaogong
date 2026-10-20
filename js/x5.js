@@ -143,17 +143,27 @@
         wrap.appendChild(host);
         window.Quiz.start(host, qs.slice(), "行测5000题·" + (node.name || bookTitle), {
           returnLabel: "‹ 返回知识点",
-          returnAction: () => { try { host.remove(); } catch (e) {} }
+          returnAction: () => { try { host.remove(); } catch (e) {} },
+          homeLabel: "🏠 返回刷题中心",
+          homeAction: () => { try { location.hash = "#/drills"; } catch (e) {} }
         });
       };
       wrap.appendChild(row);
     }
 
-    function startRandom(n, per) {
-      const opt = {
+    /* ★v20261021 「返回刷题中心」：用户反馈退回流于内环——能退回知识点页，
+       却到不了「选择科目」那一层。这里给答题界面直接挂一条通往刷题中心的捷径。 */
+    function goDrills() { try { location.hash = "#/drills"; } catch (e) {} }
+    function baseOpt(back) {
+      return {
         returnLabel: "‹ 返回知识点",
-        returnAction: () => { try { host.remove(); } catch (e) {} }
+        returnAction: back,
+        homeLabel: "🏠 返回刷题中心",
+        homeAction: goDrills
       };
+    }
+    function startRandom(n, per) {
+      const opt = baseOpt(() => { try { host.remove(); } catch (e) {} });
       const host = UI.el('<div></div>');
       wrap.appendChild(host);
       /* 材料类（资料分析/数量关系）：按整篇材料分组刷（选 10 题＝2 篇），分栏显示 */

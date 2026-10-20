@@ -145,8 +145,13 @@
       // 模式条重建（上面 innerHTML 清空会丢掉它）
       // ★v20261020 返回条：Quiz.start 自身渲染返回按钮（之前完全不渲染 → x5 刷题入口退不出刷题页面）
       if (opts.returnLabel || opts.returnAction) {
-        const qb = UI.el('<div class="quiz-back"><button class="btn xs ghost">' + UI.esc(opts.returnLabel || "‹ 返回") + '</button></div>');
-        if (opts.returnAction) qb.querySelector("button").onclick = opts.returnAction;
+        const homeBtn = opts.homeLabel && opts.homeAction
+          ? `<button class="btn xs ghost" id="qbHome">${UI.esc(opts.homeLabel)}</button>` : "";
+        const qb = UI.el('<div class="quiz-back">' + homeBtn
+          + '<button class="btn xs ghost">' + UI.esc(opts.returnLabel || "‹ 返回") + '</button></div>');
+        if (opts.returnAction) qb.querySelector("button:last-child").onclick = opts.returnAction;
+        const hb = qb.querySelector("#qbHome");
+        if (hb) hb.onclick = () => { try { opts.homeAction(); } catch (e) {} };
         container.appendChild(qb);
       }
       container.appendChild(modeBar);
