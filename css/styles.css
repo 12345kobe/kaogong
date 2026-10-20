@@ -1891,6 +1891,12 @@ body.glass.light .opt.selected{
 .imp-stage canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
 .imp-stage canvas:active{cursor:grabbing}
 .imp-phase{position:absolute;top:10px;left:10px;background:rgba(20,16,10,.62);color:#ffedd0;border-radius:10px;padding:6px 12px;font-size:13px;pointer-events:none;backdrop-filter:blur(4px)}
+/* ★v20261022c 小人说话气泡 + 晚安字幕 */
+.imp-bubble{position:absolute;left:50%;bottom:14px;transform:translateX(-50%) translateY(8px);background:rgba(255,252,242,.94);color:#4a3418;border:1px solid rgba(160,120,60,.4);border-radius:14px;padding:7px 14px;font-size:14px;font-weight:700;opacity:0;transition:opacity .45s,transform .45s;pointer-events:none;max-width:78%;text-align:center;box-shadow:0 4px 14px rgba(40,25,5,.25)}
+.imp-bubble:after{content:"";position:absolute;left:50%;bottom:-6px;transform:translateX(-50%);border:6px solid transparent;border-top-color:rgba(255,252,242,.94);border-bottom:0}
+.imp-bubble.on{opacity:1;transform:translateX(-50%) translateY(0)}
+.imp-goodnight{position:absolute;left:0;right:0;top:34%;text-align:center;font-size:44px;font-weight:900;color:#fff7e0;text-shadow:0 0 24px rgba(255,190,80,.85),0 2px 6px rgba(0,0,0,.5);opacity:0;transform:scale(.86);transition:opacity .8s,transform .8s;pointer-events:none;font-family:'Kaiti SC','STKaiti','KaiTi',serif;letter-spacing:8px}
+.imp-goodnight.on{opacity:1;transform:scale(1)}
 .imp-phase b{display:block;font-size:14px}
 .imp-phase span{opacity:.85;font-size:12px}
 .imp-hint{position:absolute;bottom:8px;left:0;right:0;text-align:center;color:rgba(255,240,210,.75);font-size:11px;pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,.6)}
