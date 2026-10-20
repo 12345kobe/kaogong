@@ -108,8 +108,11 @@
     /* 之前写过的笔迹直接显示 */
     setTimeout(() => { try { UI.Handwriting.renderInline(matBody, hwSubject, matId); } catch (e) {} }, 60);
 
-    /* ---- 题目区交给现有 Quiz 引擎（收藏/错题本/多选/计时全保留） ---- */
-    window.Quiz.start(quizPane, questions, subject, opts);
+    /* ---- 题目区交给现有 Quiz 引擎（收藏/错题本/多选/计时全保留） ----
+       ★v20261022c 修「返回刷题中心×2 叠两行」：返回条由 split 统一渲染（上面 sq-back），
+       内部 Quiz 引擎不再重复渲染——把返回类 opts 剥掉再传入。 */
+    const innerOpts = Object.assign({}, opts, { returnLabel: null, returnAction: null, homeLabel: null, homeAction: null });
+    window.Quiz.start(quizPane, questions, subject, innerOpts);
   }
 
   /* ===== 多组「材料+5题」逐组刷（v20261018d 用户要求：选 10 题＝2 篇材料，一组一组来） =====
@@ -211,7 +214,9 @@
       const g = groups[i];
       stripDupImgs(g.qs, g.mat);   /* ★每篇材料切换时再清一次重复材料图 */
       let done = 0;
-      window.Quiz.start(quizPane, g.qs, subject, Object.assign({}, opts, {
+      /* ★v20261022c 返回条由 startGroups 统一渲染（sq-back），Quiz 引擎不再重复出返回按钮 */
+      const noBack = { returnLabel: null, returnAction: null, homeLabel: null, homeAction: null };
+      window.Quiz.start(quizPane, g.qs, subject, Object.assign({}, opts, noBack, {
         onAnswer: (qq, right) => {
           try { if (opts.onAnswer) opts.onAnswer(qq, right); } catch (e) {}
           done++;

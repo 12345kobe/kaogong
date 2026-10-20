@@ -145,7 +145,7 @@
           returnLabel: "‹ 返回知识点",
           returnAction: () => { try { host.remove(); } catch (e) {} },
           homeLabel: "🏠 返回刷题中心",
-          homeAction: () => { try { location.hash = "#/drills"; } catch (e) {} }
+          homeAction: goDrills
         });
       };
       wrap.appendChild(row);
@@ -153,7 +153,21 @@
 
     /* ★v20261021 「返回刷题中心」：用户反馈退回流于内环——能退回知识点页，
        却到不了「选择科目」那一层。这里给答题界面直接挂一条通往刷题中心的捷径。 */
-    function goDrills() { try { location.hash = "#/drills"; } catch (e) {} }
+    /* ★v20261022c 「返回刷题中心」真正生效：答题发生在 #/drills 路由内，
+       直接赋相同 hash 不触发 hashchange（老 bug）——hash 相同就原地重渲染刷题中心。
+       全屏类先退全屏；异常时退回 hash 赋值兜底。 */
+    function goDrills() {
+      try { document.body.classList.remove("kg-dq-full"); } catch (e) {}
+      try {
+        window.__kgBackAt = Date.now();
+        if (String(location.hash || "") !== "#/drills") { location.hash = "#/drills"; return; }
+        const pb = document.getElementById("pageBody");
+        if (pb && window.MODULES && window.MODULES.drills && window.MODULES.drills.render) {
+          window.MODULES.drills.render(pb);
+          try { window.setActiveNav && window.setActiveNav("drills"); } catch (er) {}
+        } else { location.reload(); }
+      } catch (e) { try { location.hash = "#/drills"; } catch (e2) {} }
+    }
     function baseOpt(back) {
       return {
         returnLabel: "‹ 返回知识点",

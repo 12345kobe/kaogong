@@ -24,7 +24,7 @@
     const s = f * f * (3 - 2 * f); // smoothstep 丝滑过渡
     const mix = (x, y) => x + (y - x) * s;
     const near = f < 0.5 ? a : b;
-    return { label: near.label, sub: near.sub, sleep: near.sleep, sun: mix(a.sun, b.sun), sunC: a.sunC, amb: mix(a.amb, b.amb), lamp: mix(a.lamp, b.lamp), h };
+    return { key: near.key, label: near.label, sub: near.sub, sleep: near.sleep, sun: mix(a.sun, b.sun), sunC: a.sunC, amb: mix(a.amb, b.amb), lamp: mix(a.lamp, b.lamp), h };
   }
 
   /* ================= 工具 ================= */
@@ -48,6 +48,13 @@
   function box(w, h, d, color, x, y, z) { return M(new THREE.BoxGeometry(w, h, d), mat(color), x, y, z); }
   function cyl(rt, rb, h, color, x, y, z, seg) { return M(new THREE.CylinderGeometry(rt, rb, h, seg || 20), mat(color), x, y, z); }
   function sph(r, color, x, y, z, w, h) { return M(new THREE.SphereGeometry(r, w || 18, h || 14), mat(color), x, y, z); }
+  function disposeGroup(g) {
+    g.traverse(o => {
+      if (o.geometry) { try { o.geometry.dispose(); } catch (e) {} }
+      const ms = Array.isArray(o.material) ? o.material : (o.material ? [o.material] : []);
+      ms.forEach(m => { if (m.map) { try { m.map.dispose(); } catch (e) {} } try { m.dispose(); } catch (e) {} });
+    });
+  }
 
   /* ================= Canvas 贴图 ================= */
   function plaqueTexture() {
@@ -105,6 +112,29 @@
     g.font = "700 92px sans-serif"; g.fillText("Z", 64, 68);
     return new THREE.CanvasTexture(cv);
   }
+  function scrollTexture() {
+    /* ★v20261022c 右墙挂轴：水墨远山+孤舟（贴参考图书房） */
+    const cv = document.createElement("canvas"); cv.width = 256; cv.height = 448;
+    const g = cv.getContext("2d");
+    g.fillStyle = "#f6f0dd"; g.fillRect(0, 0, 256, 448);
+    g.strokeStyle = "rgba(96,96,108,.85)";
+    for (let layer = 0; layer < 3; layer++) {
+      g.lineWidth = 2.6 - layer * 0.7;
+      g.beginPath();
+      const base = 280 - layer * 44;
+      g.moveTo(12, base);
+      g.bezierCurveTo(62, base - 62 - layer * 10, 102, base + 14, 128, base - 26);
+      g.bezierCurveTo(162, base - 64, 212, base + 6, 244, base - 42);
+      g.stroke();
+    }
+    g.lineWidth = 2.2;
+    g.beginPath(); g.moveTo(92, 322); g.quadraticCurveTo(128, 314, 164, 322); g.stroke();
+    g.beginPath(); g.moveTo(128, 322); g.lineTo(128, 306); g.stroke();
+    g.fillStyle = "#a03a2e"; g.fillRect(112, 392, 32, 32);
+    g.fillStyle = "#f6f0dd"; g.font = "20px serif"; g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillText("勤", 128, 408);
+    return new THREE.CanvasTexture(cv);
+  }
 
   /* ================= 角色（Q版坐姿） ================= */
   function buildCharacter(gender) {
@@ -120,6 +150,12 @@
       skirt.geometry.translate(0, 0, 0);
       root.add(skirt);
       root.add(cyl(0.19, 0.30, 0.14, skirtC, 0, 0.40, 0, 24)); // 腰裙过渡
+      /* ★v20261022c 腰后双飘带（贴参考图） */
+      const rbM = mat(bandF, { side: THREE.DoubleSide });
+      [[-0.09, 0.16], [0.08, -0.12]].forEach(([bx, rot]) => {
+        const rb = M(new THREE.BoxGeometry(0.045, 0.34, 0.008), rbM, bx, 0.16, -0.24);
+        rb.rotation.set(0.18, 0, rot); root.add(rb);
+      });
     } else {
       root.add(cyl(0.17, 0.21, 0.30, skirtC, -0.10, 0.18, 0.02, 18)); // 左袴
       root.add(cyl(0.17, 0.21, 0.30, skirtC, 0.10, 0.18, 0.02, 18));  // 右袴
@@ -234,17 +270,30 @@
     scene.add(box(R * 2, 0.22, 0.26, C.woodD, 0, H - 0.15, R - 0.5));
     scene.add(box(0.26, H, 0.26, C.woodD, -R + 0.5, H / 2, -R + 0.5));
     scene.add(box(0.26, H, 0.26, C.woodD, R - 0.5, H / 2, -R + 0.5));
-    /* 匾额「天道酬勤」 */
-    const plaque = M(new THREE.PlaneGeometry(2.6, 0.76), new THREE.MeshStandardMaterial({ map: plaqueTexture(), roughness: 0.9 }), 0, 3.35, -R + 0.09);
+    /* ★v20261022c 匾额「天道酬勤」加大加醒目（用户点名必须挂上）+ 两侧挂穗 */
+    const plaque = M(new THREE.PlaneGeometry(3.1, 0.9), new THREE.MeshStandardMaterial({ map: plaqueTexture(), roughness: 0.85 }), 0, 3.42, -R + 0.09);
     scene.add(plaque);
-    /* 左墙木格窗（发光随昼夜） */
+    scene.add(box(3.3, 0.1, 0.08, C.woodD, 0, 3.92, -R + 0.08));   // 匾顶横梁
+    [[-1.62], [1.62]].forEach(([px]) => {
+      scene.add(cyl(0.012, 0.012, 0.42, 0xa33, px, 3.24, -R + 0.08, 6));   // 红穗绳
+      scene.add(M(new THREE.ConeGeometry(0.035, 0.14, 8), mat(0xb5452e), px, 2.96, -R + 0.08));
+    });
+    /* 左墙木格窗 ×2（参考图：连排格扇窗，暖光透入） */
     const winMat = new THREE.MeshBasicMaterial({ map: windowTexture(), color: 0xfff2cf });
-    const win = M(new THREE.PlaneGeometry(2.5, 1.9), winMat, -R + 0.06, 2.35, -0.6);
-    win.rotation.y = Math.PI / 2; scene.add(win);
-    const winFrame = box(0.1, 2.06, 2.66, C.woodD, -R + 0.05, 2.35, -0.6); scene.add(winFrame);
-    /* 右墙格扇门 */
+    [[-0.9], [1.7]].forEach(([wz]) => {
+      const win = M(new THREE.PlaneGeometry(2.2, 1.8), winMat, -R + 0.06, 2.35, wz);
+      win.rotation.y = Math.PI / 2; scene.add(win);
+      scene.add(box(0.1, 1.96, 2.36, C.woodD, -R + 0.05, 2.35, wz));
+    });
+    /* 右墙格扇门 + 挂轴 */
     const door = M(new THREE.PlaneGeometry(1.7, 3.2), new THREE.MeshStandardMaterial({ map: doorTexture(), roughness: 0.95 }), R - 0.06, 1.6, 0.6);
     door.rotation.y = -Math.PI / 2; scene.add(door);
+    const scroll = M(new THREE.PlaneGeometry(1.05, 1.85), new THREE.MeshStandardMaterial({ map: scrollTexture(), roughness: 0.95 }), R - 0.06, 2.3, -1.5);
+    scroll.rotation.y = -Math.PI / 2; scene.add(scroll);
+    const rod = cyl(0.035, 0.035, 1.15, C.woodD, R - 0.09, 3.26, -1.5, 10);   // 挂轴天杆
+    rod.rotation.x = Math.PI / 2; scene.add(rod);
+    scene.add(cyl(0.03, 0.03, 1.15, C.woodD, R - 0.09, 1.34, -1.5, 10));      // 地杆
+    scene.add(cyl(0.012, 0.012, 0.16, 0xa33, R - 0.11, 1.22, -1.5, 6));       // 轴头穗绳
     /* 书架 ×2 */
     function shelf(x, z) {
       const g = new THREE.Group(); g.position.set(x, 0, z); if (x < 0) g.rotation.y = 0; scene.add(g);
@@ -338,8 +387,9 @@
   }
 
   /* ================= 页面 ================= */
-  let _stop = null;   // 当前运行中的 3D 停止器
-  function stop3D() { if (_stop) { try { _stop(); } catch (e) {} _stop = null; } }
+  let _stop = null;        // 当前运行中的 3D 停止器
+  let _swapCharacter = null; // ★v20261022c 性别切换：只换小人 mesh，不重建场景
+  function stop3D() { if (_stop) { try { _stop(); } catch (e) {} _stop = null; _swapCharacter = null; } }
 
   window.MODULES.imperial = {
     title: "科举进度", icon: "imperial",
@@ -359,6 +409,8 @@
         <div class="imp-stage-wrap">
           <div id="impStage" class="imp-stage"></div>
           <div class="imp-phase" id="impPhase"></div>
+          <div class="imp-bubble" id="impBubble"></div>
+          <div class="imp-goodnight" id="impNight">晚安 💤</div>
           <label class="imp-gender">小人
             <select id="impGender">
               <option value="男"${gender === "男" ? " selected" : ""}>男</option>
@@ -371,11 +423,14 @@
         <div id="impStats"></div>
       </div>`;
 
-      body.querySelector("#impBack").onclick = () => { location.hash = "#/countdown"; };
+      body.querySelector("#impBack").onclick = () => { stop3D(); location.hash = "#/countdown"; };
+      /* ★v20261022c 性别切换只重建小人（不重启页面/场景）——重启整页又慢又闪，
+         且 iOS 上反复重建 WebGL 上下文会触发「只能看一次」 bug */
       body.querySelector("#impGender").onchange = (e) => {
         prof.gender = e.target.value; DB.save();
         UI.toast("已切换为" + e.target.value + "版小人");
-        window.MODULES.imperial.render(body);
+        if (_swapCharacter) { try { _swapCharacter(prof.gender); } catch (er) { window.MODULES.imperial.render(body); } }
+        else window.MODULES.imperial.render(body);
       };
       body.querySelector("#impEdit").onclick = () => openProfile(body);
 
@@ -473,9 +528,19 @@
 
     buildRoom(scene);
     const furn = buildFurniture(scene);
-    const ch = buildCharacter(gender);
+    let ch = buildCharacter(gender);
     ch.root.position.set(0, 0, -0.05);
     scene.add(ch.root);
+
+    /* ★v20261022c 性别热切换：只换小人 mesh（WebGL 上下文/场景/相机全保留） */
+    _swapCharacter = (g) => {
+      const old = ch;
+      scene.remove(old.root);
+      try { disposeGroup(old.root); } catch (e) {}
+      ch = buildCharacter(g);
+      ch.root.position.set(0, 0, -0.05 + 0.30 * sleepAmt);
+      scene.add(ch.root);
+    };
 
     /* Zzz 精灵 */
     const zzzTex = zzzTexture();
@@ -527,8 +592,24 @@
 
     /* 昼夜 + 动画循环 */
     const phaseEl = body.querySelector("#impPhase");
+    const bubbleEl = body.querySelector("#impBubble");
+    const nightEl = body.querySelector("#impNight");
     const clock = new THREE.Clock();
     let sleepAmt = phaseAt(new Date()).sleep ? 1 : 0;   // 0 学习 ↔ 1 趴睡 的平滑值
+    let wasSleep = !!sleepAmt, nightShown = !!sleepAmt, bubbleTimer = 0, nightTimer = 0;
+    function sayBubble(txt) {
+      if (!bubbleEl) return;
+      bubbleEl.textContent = txt;
+      bubbleEl.classList.add("on");
+      clearTimeout(bubbleTimer);
+      bubbleTimer = setTimeout(() => bubbleEl.classList.remove("on"), 3400);
+    }
+    function showNight() {
+      if (!nightEl) return;
+      nightEl.classList.add("on");
+      clearTimeout(nightTimer);
+      nightTimer = setTimeout(() => nightEl.classList.remove("on"), 3000);
+    }
     let raf = 0, phaseTimer = 0, dead = false;
 
     function frame() {
@@ -555,20 +636,31 @@
       const winMesh = scene.children.find(o => o.isMesh && o.material && o.material.map && o.material.color && o.material.map.image && o.material.map.image.width === 512);
       if (winMesh) winMesh.material.color.setScalar(0.25 + ph.sun / 1.6 * 0.75);
 
-      /* —— 睡 / 醒 平滑过渡 —— */
+      /* —— 睡 / 醒 平滑过渡 + 叙事（v20261022c 用户定版：
+         到点时先说「夜深了，我要休息了…」→ 慢慢趴下 → 趴平弹「晚安」字幕） —— */
       const wantSleep = ph.sleep ? 1 : 0;
-      sleepAmt += (wantSleep - sleepAmt) * Math.min(1, dt * 1.6);
+      if (!wasSleep && wantSleep === 1 && sleepAmt < 0.1) {
+        sayBubble(ph.key === "nap" ? "吃完午饭啦，我趴一会儿~" : "夜深了，我要休息了…");
+      }
+      if (wasSleep && wantSleep === 0) sayBubble("天亮啦，新的一天继续加油！");
+      wasSleep = wantSleep === 1;
+      sleepAmt += (wantSleep - sleepAmt) * Math.min(1, dt * 0.9);   // 慢慢趴下（约2秒）
+      if (sleepAmt > 0.92 && !nightShown) { nightShown = true; showNight(); }
+      if (sleepAmt < 0.3) nightShown = false;
       const isNapping = ph.key === "nap" || ph.key === "sleep";
-      ch.torso.rotation.x = -1.18 * sleepAmt;                 // 前倾趴桌
-      ch.torso.position.y = 0.5 - 0.10 * sleepAmt;
-      ch.head.rotation.x = 0.35 * sleepAmt;
-      ch.neck.rotation.x = 0.15 * sleepAmt;
+      /* 趴睡姿势：前倾 + 整体向桌前移 + 头埋向手臂（修「像枷锁砍头」） */
+      ch.torso.rotation.x = -1.32 * sleepAmt;
+      ch.torso.position.y = 0.5 - 0.13 * sleepAmt;
+      ch.root.position.z = -0.05 + 0.30 * sleepAmt;
+      ch.root.position.y = -0.02 * sleepAmt;
+      ch.head.rotation.x = 0.55 * sleepAmt;
+      ch.neck.rotation.x = 0.20 * sleepAmt;
 
       /* —— 呼吸 —— */
       const brA = 0.012 + 0.03 * sleepAmt, brF = isNapping ? 1.1 : 2.1;
       ch.torso.scale.y = 1 + Math.sin(t * brF * 2 * Math.PI / (isNapping ? 3 : 2)) * brA;
 
-      /* —— 写字 / 睡手 —— */
+      /* —— 写字 / 睡手（趴平后手臂前伸枕头下） —— */
       if (sleepAmt < 0.5) {
         const w = Math.sin(t * 5.2) * 0.10;
         ch.armR.g.rotation.x = 0.85 + w;
@@ -577,8 +669,11 @@
         ch.head.rotation.z = Math.sin(t * 0.8) * 0.03;
         ch.head.rotation.y = Math.sin(t * 0.5) * 0.06;
       } else {
-        ch.armR.g.rotation.x += (0.55 - ch.armR.g.rotation.x) * dt * 3;
-        ch.armL.g.rotation.x += (0.55 - ch.armL.g.rotation.x) * dt * 3;
+        ch.armR.g.rotation.x += (1.30 - ch.armR.g.rotation.x) * dt * 2.2;
+        ch.armL.g.rotation.x += (1.30 - ch.armL.g.rotation.x) * dt * 2.2;
+        ch.armR.fore.rotation.x += (0.85 - ch.armR.fore.rotation.x) * dt * 2.2;
+        ch.armL.fore.rotation.x += (0.85 - ch.armL.fore.rotation.x) * dt * 2.2;
+        ch.head.rotation.z *= 0.95; ch.head.rotation.y *= 0.95;
       }
 
       /* —— 眨眼（睡觉时不眨）—— */
@@ -611,9 +706,26 @@
     }
 
     function cleanup() {
+      if (dead) return;
       dead = true; cancelAnimationFrame(raf);
+      clearTimeout(bubbleTimer); clearTimeout(nightTimer);
+      /* ★v20261022c 根治「只能看一次」：iOS 上 WebGL 上下文有硬上限（~8 个），
+         之前只 dispose geometry，context 从不释放 → 进出两三次后新建 renderer 必失败。
+         现在完整释放：material+texture+geometry → forceContextLoss → 移除 canvas。 */
+      try {
+        scene.traverse(o => {
+          if (o.geometry) { try { o.geometry.dispose(); } catch (e) {} }
+          const mats = Array.isArray(o.material) ? o.material : (o.material ? [o.material] : []);
+          mats.forEach(m => {
+            if (m.map) { try { m.map.dispose(); } catch (e) {} }
+            try { m.dispose(); } catch (e) {}
+          });
+        });
+      } catch (e) {}
+      try { zzZs.forEach(sp => { try { sp.material.dispose(); } catch (e) {} }); } catch (e) {}
       try { renderer.dispose(); } catch (e) {}
-      try { scene.traverse(o => { if (o.geometry) o.geometry.dispose(); }); } catch (e) {}
+      try { renderer.forceContextLoss(); } catch (e) {}
+      try { const cv = renderer.domElement; if (cv && cv.parentNode) cv.parentNode.removeChild(cv); } catch (e) {}
     }
     _stop = cleanup;
     phaseEl.innerHTML = "";
