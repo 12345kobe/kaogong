@@ -6,6 +6,9 @@
     title: "学习统计", icon: "stats",
     render(body) {
       const DB = window.DB, UI = window.UI;
+      /* 局部重渲染（旧代码裸调 render()/refreshTop() 会 ReferenceError 导致 save(true) 不执行） */
+      const rerender = () => { try { window.MODULES.stats.render(body); } catch (e) {} };
+      const refreshBrand = () => { try { window.KGKingke && KGKingke.renderBrand(); } catch (e) {} };
       // 以中文科目名为统一主键（与答题/错题本/每日时长存储一致）
       const SUBJECTS = ["言语", "资料", "逻辑", "政治", "数量", "常识", "申论"];
       const palette = ["#34e7e4", "#ff5cf0", "#ffd166", "#9b6cff", "#3ddc97", "#ff6b81", "#5b9bff"];
@@ -147,9 +150,9 @@
         const reset = DB.resetAccuracy();
         UI.toast("已重置 " + reset.length + " 个科目的累计答题数，正在同步…");
         // 立即重新渲染 + 推送云端，确保被污染的云端数值被覆盖
-        render();
+        rerender();
         DB.save(true);
-        refreshTop();
+        refreshBrand();
       };
 
       // ===== 学习计划 可编辑 =====
@@ -171,7 +174,7 @@
           const v = Math.max(0, +e.target.value || 0);
           DB.state.studyPlan = DB.state.studyPlan || {};
           DB.state.studyPlan[k] = v; DB.save();
-          render();
+          rerender();
         };
         planGrid.appendChild(card);
       });
@@ -214,7 +217,7 @@
         DB.recordAccuracy(DB.subjectShort(subjName), isNaN(correct) ? 0 : correct, total);
         DB.save(true);
         UI.toast("已录入：" + subjName + " " + total + " 题 · 对 " + (isNaN(correct) ? "?" : correct) + " 题");
-        render();
+        rerender(); refreshBrand();
       };
     }
   };
