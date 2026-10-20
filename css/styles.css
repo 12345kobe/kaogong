@@ -1057,6 +1057,8 @@ body.light:not(.glass) .ai-chip{ background:#fff }
 body.light:not(.glass) .ai-att{ background:#fff }
 
 /* ===== 答题：模式切换 + 交卷（左下角固定） + 询问AI ===== */
+.quiz-back{flex:0 0 auto;padding:8px 2px 6px}
+.quiz-back .btn{margin:0}
 .quiz-modebar{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 2px }
 .qz-mlabel{ font-size:12px; color:var(--txt-dim); font-weight:700 }
 .qm-chip{ padding:6px 12px; border-radius:999px; border:1px solid var(--line); background:var(--panel2); color:var(--txt); font-size:13px; cursor:pointer }

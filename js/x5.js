@@ -141,7 +141,10 @@
       row.querySelector("#x5seq").onclick = () => {
         const host = UI.el('<div></div>');
         wrap.appendChild(host);
-        window.Quiz.start(host, qs.slice(), "行测5000题·" + (node.name || bookTitle), {});
+        window.Quiz.start(host, qs.slice(), "行测5000题·" + (node.name || bookTitle), {
+          returnLabel: "‹ 返回知识点",
+          returnAction: () => { try { host.remove(); } catch (e) {} }
+        });
       };
       wrap.appendChild(row);
     }

@@ -143,6 +143,12 @@
       const results = new Array(questions.length).fill(null); // {ua, right}
       container.innerHTML = "";
       // 模式条重建（上面 innerHTML 清空会丢掉它）
+      // ★v20261020 返回条：Quiz.start 自身渲染返回按钮（之前完全不渲染 → x5 刷题入口退不出刷题页面）
+      if (opts.returnLabel || opts.returnAction) {
+        const qb = UI.el('<div class="quiz-back"><button class="btn xs ghost">' + UI.esc(opts.returnLabel || "‹ 返回") + '</button></div>');
+        if (opts.returnAction) qb.querySelector("button").onclick = opts.returnAction;
+        container.appendChild(qb);
+      }
       container.appendChild(modeBar);
 
       // 计时条
