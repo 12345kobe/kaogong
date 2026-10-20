@@ -1881,7 +1881,9 @@ body.glass.light .opt.selected{
 .q-img-wrap .q-img{cursor:zoom-in}
 
 /* ================= 科举进度 · 3D 书斋养成（v20261022a） ================= */
-.imp-page{padding:10px 2px 30px}
+/* 全屏沉浸：科举页直接铺满视口，左上角自带返回键（v20261022b） */
+.imp-page{position:fixed;inset:0;z-index:1200;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--bg,#f6efdc);padding:10px 12px calc(28px + env(safe-area-inset-bottom))}
+.imp-topbar{position:sticky;top:0;z-index:5;background:inherit;padding-top:calc(6px + env(safe-area-inset-top))}
 .imp-topbar{display:flex;align-items:center;gap:10px;padding:2px 2px 10px}
 .imp-topbar .imp-title{flex:1;text-align:center;font-weight:700;font-size:16px}
 .imp-stage-wrap{position:relative;border-radius:16px;overflow:hidden;border:1px solid var(--line,rgba(120,90,40,.25));background:#241d15}
