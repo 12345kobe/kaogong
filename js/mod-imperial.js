@@ -200,7 +200,7 @@
       const tie = M(new THREE.TorusGeometry(0.036, 0.010, 8, 14), mat(bandF), 0, 0.10, -0.155); tie.rotation.x = 0.25; head.add(tie);
     } else {
       const tuft = sph(0.052, C.hair, 0, 0.225, -0.03, 14, 12); tuft.scale.set(1, 0.8, 0.9); head.add(tuft);
-      const band = M(new THREE.TorusGeometry(0.048, 0.014, 10, 18), mat(bandM), 0, 0.192, -0.005); band.rotation.x = Math.PI / 2.3; head.add(band);
+      const band = M(new THREE.TorusGeometry(0.048, 0.014, 10, 18), mat(bandC), 0, 0.192, -0.005); band.rotation.x = Math.PI / 2.3; head.add(band);
       const pin = cyl(0.006, 0.006, 0.13, 0xd9a441, 0.05, 0.24, -0.01, 8); pin.rotation.z = -1.2; head.add(pin);
     }
 
