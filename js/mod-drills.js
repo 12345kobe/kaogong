@@ -256,6 +256,12 @@
     return n;
   }
   function doneCount() {
+    /* ★v20261021：统一用 DB.state.qTotal（唯一权威累计刷题数，所有答题路径各计一次）——
+       这样「刷题模式」手动记录的题数、以及 App 内各模块答题都会推进科举等级/进度条。 */
+    try {
+      const q = window.DB && DB.state && DB.state.qTotal;
+      if (typeof q === "number" && isFinite(q)) return q;
+    } catch (e) {}
     let n = 0;
     const m = statMap();
     Object.keys(m).forEach(k => { n += (m[k] && m[k].done) || 0; });

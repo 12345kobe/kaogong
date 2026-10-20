@@ -1059,6 +1059,13 @@ body.light:not(.glass) .ai-att{ background:#fff }
 /* ===== 答题：模式切换 + 交卷（左下角固定） + 询问AI ===== */
 .quiz-back{flex:0 0 auto;padding:8px 2px 6px}
 .quiz-back .btn{margin:0}
+/* ★v20261021 学习统计 · 今日正确率小板块 */
+.today-acc-big{padding:7px 12px;border-radius:10px;font-size:15px;line-height:1.5}
+.today-acc-big b{font-size:18px}
+.today-acc-big.good{background:rgba(40,167,69,.14);color:#2bb673}
+.today-acc-big.mid{background:rgba(255,193,7,.14);color:#e0a800}
+.today-acc-big.bad{background:rgba(220,53,69,.13);color:#e05260}
+body.glass .today-acc-big{border:1px solid var(--line)}
 .quiz-modebar{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 2px }
 .qz-mlabel{ font-size:12px; color:var(--txt-dim); font-weight:700 }
 .qm-chip{ padding:6px 12px; border-radius:999px; border:1px solid var(--line); background:var(--panel2); color:var(--txt); font-size:13px; cursor:pointer }

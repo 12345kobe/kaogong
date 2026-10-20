@@ -25,6 +25,10 @@
 
       let wrongTotal = 0; Object.values(DB.state.wrongbook || {}).forEach(a => wrongTotal += a.length);
 
+      // ★v20261021 当天各模块正确率（与「累计正确率」并列，互不混淆）
+      const dayAcc = (DB.dayAccuracy ? DB.dayAccuracy() : { subjects: {}, total: { done: 0, right: 0, pct: null } });
+      const todayPctNum = dayAcc.total.pct;
+
       const acc = (DB.state.accuracy || []).slice(-20);
       const plan = DB.state.studyPlan = DB.state.studyPlan || {};
       const todaySubject = (DB.state.timer.subjectSessions && DB.state.timer.subjectSessions[DB.today()]) || {};
@@ -36,12 +40,38 @@
         { n: (totalMin / 60).toFixed(1), l: "累计学习(小时)" },
         { n: todayMin, l: "今日学习(分钟)" },
         { n: totalAnswered, l: "累计答题数" },
+        { n: dayAcc.total.done, l: "今日答题数" },
+        { n: (todayPctNum == null ? "—" : todayPctNum + "%"), l: "今日正确率" },
         { n: overallPct + "%", l: "总体正确率" },
         { n: wrongTotal, l: "错题总数" }
       ];
       let html = `<div class="grid g3">`;
       cards.forEach(c => html += `<div class="card stat-card"><div class="stat-num">${c.n}</div><div class="muted small">${c.l}</div></div>`);
       html += `</div>`;
+
+      // ===== ★v20261021 今日正确率（当天各模块，单独小板块） =====
+      const tRow = (k, i) => {
+        const s = dayAcc.subjects[k];
+        const pct = s && s.done ? Math.round(s.right / s.done * 100) : null;
+        const color = palette[i % palette.length];
+        const wide = Math.round((pct == null ? 0 : pct));
+        return `<div class="acc-row">
+          <div class="acc-name">${(window.KGSubjectFull ? KGSubjectFull(k) : k)}</div>
+          <div class="acc-bar"><i style="width:${wide}%;background:${color}"></i></div>
+          <div class="acc-pct">${pct == null ? "—" : pct + "%"}</div>
+          <div class="acc-vol muted small">${s ? (s.right + "/" + s.done) : "0/0"} 题</div>
+        </div>`;
+      };
+      html += `<div class="card today-acc">
+        <h3>📅 今日正确率 <span class="muted small">${UI.esc(DB.today())}</span></h3>
+        <div class="row" style="justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+          <span class="muted small">只统计今天（含 App 内答题、刷题模式记录，多选题同样计入）。</span>
+          <span class="today-acc-big ${todayPctNum == null ? "" : (todayPctNum >= 70 ? "good" : (todayPctNum >= 50 ? "mid" : "bad"))}">
+            ${todayPctNum == null ? "今天还没有答题记录" : "今日 <b>" + dayAcc.total.right + "</b>/<b>" + dayAcc.total.done + "</b> 题 · 正确率 <b>" + todayPctNum + "%</b>"}
+          </span>
+        </div>
+        <div>${SUBJECTS.map(tRow).join("")}</div>
+      </div>`;
 
       // ===== 图表区 =====
       html += `<div class="grid g2">

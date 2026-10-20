@@ -85,6 +85,11 @@
     timer: { sessions: {}, subjectSessions: {} }, // sessions: { 'YYYY-MM-DD': minutes }; subjectSessions: { 'YYYY-MM-DD': { subject: minutes } }
     timerGoal: {}, // { module: minutes }
     accuracyCumulative: {}, // { subject: { correct, total } }  自使用以来各科目累计
+    /* ★v20261021 当天正确率 + 累计刷题数（错题321与统计统一入口）
+       qDaily: { 'YYYY-MM-DD': { subject: {done, right} } }  当天各模块作答/答对题数
+       qTotal: number  累计已刷题数（唯一权威计数，所有答题路径各计一次） */
+    qDaily: {},
+    qTotal: 0,
     studyPlan: { 言语: 60, 资料: 60, 逻辑: 45, 政治: 45, 数量: 45, 常识: 30, 申论: 30 }, // 各科每日目标(分钟)
     todos: {}, // { module: [ {id,text,done,day} ] }
     formulas: { data: [], quantity: [] },
@@ -208,6 +213,17 @@
           if (EXAM_DATES[ex.id] && !ex.date) { ex.date = EXAM_DATES[ex.id]; migrated = true; }
         });
       }
+      /* ★v20261021 迁移：累计刷题数 qTotal 首次启用时用刷题树历史作答数做种子，
+         保证老用户的科举等级/进度条不会因为换了新计数器而回退到「秀才」。 */
+      try {
+        if (typeof state.qTotal !== "number" || !isFinite(state.qTotal)) {
+          let seed = 0;
+          const ds = state.drillStat || {};
+          Object.keys(ds).forEach(k => { seed += (ds[k] && ds[k].done) || 0; });
+          state.qTotal = seed;
+          migrated = true;
+        }
+      } catch (e) {}
       if (migrated) this.save(true);
 
       this.dailyResetIfNeeded();
@@ -457,7 +473,36 @@
       state.accuracy = state.accuracy || [];
       state.accuracy.push({ date: this.today(), subject: subject, pct: total ? Math.round(correct / total * 100) : 0 });
       if (state.accuracy.length > 500) state.accuracy = state.accuracy.slice(-500);
+      /* ★v20261021 当天各模块正确率 + 累计刷题数：集中在本入口维护，
+         保证「刷题模式手动记录」与「App 内答题」两条路径口径完全一致。 */
+      try {
+        const d = this.today();
+        state.qDaily = state.qDaily || {};
+        const day = state.qDaily[d] = state.qDaily[d] || {};
+        const rec = day[subject] = day[subject] || { done: 0, right: 0 };
+        rec.done += total;
+        rec.right += correct;
+        if (state.qDaily && Object.keys(state.qDaily).length > 120) {
+          const ks = Object.keys(state.qDaily).sort();
+          ks.slice(0, ks.length - 120).forEach(k => { delete state.qDaily[k]; });
+        }
+      } catch (e) {}
+      try { state.qTotal = (state.qTotal || 0) + total; } catch (e) {}
       this.save();
+    },
+
+    /* 当天（或指定日期）正确率总览：{ subjects:{ 学科:{done,right,pct} }, total:{done,right,pct} } */
+    dayAccuracy(date) {
+      const d = date || this.today();
+      const day = (state.qDaily || {})[d] || {};
+      const out = { subjects: {}, total: { done: 0, right: 0, pct: null } };
+      Object.keys(day).forEach(s => {
+        const r = day[s] || { done: 0, right: 0 };
+        out.subjects[s] = { done: r.done, right: r.right, pct: r.done ? Math.round(r.right / r.done * 100) : null };
+        out.total.done += r.done; out.total.right += r.right;
+      });
+      out.total.pct = out.total.done ? Math.round(out.total.right / out.total.done * 100) : null;
+      return out;
     },
 
     /* ===== 每日计划 ===== */

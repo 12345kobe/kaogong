@@ -13,6 +13,27 @@
   window.MODULES = window.MODULES || {};
   let iv = null, buzzed = false, lastOt = false;
 
+  /* ★v20261021 会话状态提到模块级（原来是 render() 闭包里的局部变量）。
+     病根：App 任何时候整体重渲染（云端同步落地、计划变更、 sliceUI 刷新…）都会重新执行
+     render()，闭包里的 started/ended/planId 全部回到初始值；autoStart 模式随即判定
+     「没开始过」→ 再次 startLaunched() → 又放一遍 3→2→1→GO 重新计时。
+     用户描述的「对答案那十几秒，页面突然又 321 go」正是这个。提到模块级后，
+     重渲染只重绘界面，不会重启计时，也不会丢掉 planId（导致计划打不上勾）。 */
+  const SS = {
+    key: "",            // 本次会话标识（进入配置签名）
+    started: false,     // 已开始计时
+    ended: false,       // 已结束、填写记录中
+    finalElapsedMs: 0,  // 结束时刻的实际总时长（含超时段）
+    finalLaps: [],
+    planId: null,
+    task: "",
+    subject: "",
+    lastCount: 0        // 上次的答题数，用于记录表单预填（★不再让用户每次重填）
+  };
+  function _sig(launch, pending) {
+    try { return JSON.stringify(launch || {}) + "|" + ((pending && pending.planId) || ""); } catch (e) { return ""; }
+  }
+
   function esc(s) { return (s == null ? "" : String(s)).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
   function fmtMsFull(ms) {
@@ -67,24 +88,27 @@
       }
       const autoStart = (mode === "quiz" || mode === "combo" || mode === "review");
 
-      let pending = window.__pendingFocus;
-      window.__pendingFocus = null;
-      const pendingSubject = pending && pending.subject ? pending.subject : "";
-      let planId = pending ? pending.planId : null;
-      let task = pending ? pending.text : (mode === "plain" ? (DB.timerState().task || "刷题") : "");
-      let subject = "";   // 短名（quiz/review/plain 用；combo 为空）
+      /* 会话轴：同一会话跨 render() 复用 SS；新会话（签名变化 / 上一轮已结算干净）才重置 */
+      const sig = _sig(launch, pending);
+      const stale = SS.ended && !DB.timerState().running && DB.timerElapsedMs() === 0;
+      if (SS.key !== sig || stale) {
+        SS.key = sig; SS.started = false; SS.ended = false;
+        SS.finalElapsedMs = 0; SS.finalLaps = [];
+        SS.planId = pending ? pending.planId : null;
+        SS.task = pending ? pending.text : (mode === "plain" ? (DB.timerState().task || "刷题") : "");
+        SS.subject = "";
+        SS.lastCount = 0;
+      }
+      let planId = SS.planId;      // 本地别名（同一 render 内多处使用）
+      let task = SS.task;
+      let subject = SS.subject;    // 短名（quiz/review/plain 用；combo 为空）
+      const syncSession = () => { SS.planId = planId; SS.task = task; SS.subject = subject; };
 
       let bg = getBg();
       let fontColor = getFontColor();
 
-      // 状态机：started（已开始计时）/ ended（已结束、填写记录中）
-      let started = false;
-      let ended = false;
-      let finalElapsedMs = 0;
-      let finalLaps = [];
-
       // 若此前已在计时（异常残留 / 刷新续接），视为已 started
-      if (DB.timerState().running) started = true;
+      if (DB.timerState().running) SS.started = true;
 
       function goBack() {
         // 返回 = 退出全屏到小屏（上岸计时器），计时继续（见 app.js：shuati→timer 不结算）
@@ -113,8 +137,8 @@
           const it = exist || DB.addPlanItem(DB.today(), { module: subj || "计时器", type: "focus", text: planTask, minutes: 0, focusMin: Math.round((target || 0) / 60000) });
           pId = it && it.id;
         } catch (e) {}
-        planId = pId; subject = subj; task = planTask;
-        started = true;   // 先标记，render 才会渲染计时 UI（倒计时遮罩盖在其上）
+        SS.planId = planId = pId; SS.subject = subject = subj; SS.task = task = planTask;
+        SS.started = true;   // 先标记，render 才会渲染计时 UI（倒计时遮罩盖在其上）
 
         // 真正开始计时（先建计划项，倒计时结束后再启动，保证「3→2→1→GO 后才开始答题」）
         const reallyStart = () => {
@@ -169,7 +193,7 @@
         // 自动开始（限时 / 复盘 / 综合）：只启动一次（以 started 为准）。
         // 之前用 !running 判断 —— 暂停后 running=false 会再次触发 startLaunched()，
         // 造成：① 重复创建计划项（多出空白任务）② 计时被重启、超时基准被重置、暂停失效
-        if (autoStart && !started && !ended) startLaunched();
+        if (autoStart && !SS.started && !SS.ended) startLaunched();
 
         const s = DB.timerState();
         const running = s.running;
@@ -187,9 +211,9 @@
         else { statusTxt = running ? "⏱ 计时中（毫秒）" : (hasTime ? "⏸ 已暂停" : "未开始"); subTxt = ""; }
 
         let inner = "";
-        if (ended) {
+        if (SS.ended) {
           inner = endFormInner();
-        } else if (started) {
+        } else if (SS.started) {
           inner = `<div class="shuati-center">
               <div id="stElapsed" class="shuati-time" style="${taskColor()}">${fmtMsFull(bigMs)}</div>
               <div class="shuati-sub" id="stStatus">${statusTxt}</div>
@@ -226,7 +250,7 @@
           <div class="shuati-mask"></div>
           <div class="shuati-top">
             <button class="shuati-back" id="backBtn">← 返回</button>
-            <div class="shuati-task" style="${taskColor()}">📚 ${esc(ended ? (s.task || task) : (started ? (s.task || task) : (task || "刷题")))}</div>
+            <div class="shuati-task" style="${taskColor()}">📚 ${esc(SS.ended ? (s.task || task) : (SS.started ? (s.task || task) : (task || "刷题")))}</div>
             <span id="topOverdue" class="shuati-otpill" style="display:${overtime ? 'inline-block' : 'none'}">⏰ 已延迟 ${fmtMsFull(bigMs)}</span>
             <button class="shuati-wn ${wnOn ? 'on' : ''}" id="wnBtn">🎧${wnOn ? ' · 播放中' : ''}</button>
           </div>
@@ -235,14 +259,14 @@
             <button class="btn ghost sm" id="bgBtn">🖼 自定义背景图片</button>
             ${bg ? `<button class="btn ghost sm" id="bgClear">🗑 清除背景</button>` : ''}
             <label class="shuati-fontrow" style="color:#cdd6f0">🎨 字体颜色 <input type="color" id="fontColor" value="${fontColor || "#ffffff"}" style="width:36px;height:28px;border:none;background:none;vertical-align:middle;cursor:pointer"/></label>
-            <span class="muted small" style="color:#cdd6f0">${ended ? '保存记录将返回打卡日历' : (autoStart ? '结束计时返回打卡日历；「↩ 退出全屏」可回小屏继续计时' : '结束计时返回打卡日历；退出本界面即结束计时')}</span>
+            <span class="muted small" style="color:#cdd6f0">${SS.ended ? '保存记录将返回打卡日历' : (autoStart ? '结束计时返回打卡日历；「↩ 退出全屏」可回小屏继续计时' : '结束计时返回打卡日历；退出本界面即结束计时')}</span>
           </div>
           <input type="file" id="bgFile" accept="image/*" style="display:none"/>
         </div>`;
 
         // 毫秒级刷新（仅 started 且 running）
         const el = body.querySelector("#stElapsed");
-        if (started && running && !ended) {
+        if (SS.started && running && !SS.ended) {
           iv = setInterval(() => {
             const cur = DB.timerState();
             if (!cur.running) { render(); return; }
@@ -264,18 +288,38 @@
         wire();
       }
 
+      /* ★v20261021 结束后：正中间大字显示本次计时总时长。
+         若超出计划时限，大数 = 计划段 + 超时段 相加（即本次实际总时长），并用小字拆开给你看，
+         再补一行「超时 X:XX」—— 以前这块是空白的，用户看不到这次刷了多久。 */
+      function endBigTime() {
+        const total = SS.finalElapsedMs || 0;
+        const tgt = targetMsOf();
+        const over = tgt > 0 ? Math.max(0, total - tgt) : 0;
+        let sub = "⏹ 本次计时（总时长）";
+        if (tgt > 0) {
+          sub = over > 0
+            ? `⏹ 本次计时：计划 ${Math.round(tgt / 60000)} 分钟 + 超时 ${fmtMsFull(over)} ＝ <b>${fmtMsFull(total)}</b>`
+            : `⏹ 本次计时（限时 ${Math.round(tgt / 60000)} 分钟内完成，未超时）`;
+        }
+        return `<div class="shuati-center st-end">
+            <div class="shuati-time st-end-time" style="${taskColor()}">${fmtMsFull(total)}</div>
+            <div class="shuati-sub">${sub}</div>
+            ${over > 0 ? `<div class="shuati-overdue" style="display:block">⏰ 已超时 ${fmtMsFull(over)}</div>` : ""}
+          </div>`;
+      }
+
       function endFormInner() {
         if (mode === "combo") {
           const rows = combo.map((c, i) => `
             <div class="combo-row" style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
               <b style="min-width:84px;text-align:left">${UI.esc(c.subject)}</b>
-              <span class="muted small" style="color:#cdd6f0">${c.count} 题 / 建议 ${c.mins} 分</span>
-              <label class="muted small" style="color:#cdd6f0">刷<input id="cCount${i}" type="number" min="0" class="shuati-input" style="width:64px;display:inline-block;margin:0 4px" placeholder="${c.count}"/>道</label>
+              <span class="muted small" style="color:#cdd6f0">建议 ${c.mins} 分</span>
+              <label class="muted small" style="color:#cdd6f0">刷<input id="cCount${i}" type="number" min="0" class="shuati-input" style="width:64px;display:inline-block;margin:0 4px" value="${c.count || 0}"/>道</label>
               <label class="muted small" style="color:#cdd6f0">对<input id="cCorrect${i}" type="number" min="0" class="shuati-input" style="width:64px;display:inline-block;margin:0 4px" placeholder="0"/>道</label>
             </div>`).join("");
-          return `<div class="shuati-center"><div class="shuati-sub">⏹ 已结束 · 综合刷题逐模块记录</div></div>
+          return `${endBigTime()}
             <div class="shuati-form">
-              <div class="muted small" style="margin-bottom:8px;color:#cdd6f0">各模块正确率将分别记入对应学科的学习统计。</div>
+              <div class="muted small" style="margin-bottom:8px;color:#cdd6f0">题数已按计划预填（可自行改成实际刷的题数），各模块正确率将分别记入对应学科的学习统计。</div>
               ${rows}
             </div>
             <div class="shuati-btns">
@@ -283,8 +327,9 @@
               <button class="btn big ghost" id="skipBtn">跳过</button>
             </div>`;
         }
-        const defCount = (mode === "quiz" && quizCount) ? quizCount : "";
-        return `<div class="shuati-center"><div class="shuati-sub">⏹ 已结束 · 记录本次刷题</div></div>
+        /* prefill 优先级：本次进入配置带的题数 > 上次记录的题数 > 空（★不再每次强制手填） */
+        const defCount = (mode === "quiz" && quizCount) ? quizCount : (SS.lastCount || "");
+        return `${endBigTime()}
           <div class="shuati-form">
             <label class="fld" style="color:#cdd6f0;text-align:left">本次刷题数量（道）</label>
             <input id="qCount" class="shuati-input" type="number" min="0" inputmode="numeric" placeholder="例如 30" value="${defCount}"/>
@@ -299,20 +344,21 @@
       }
 
       function wire() {
-        if (ended) {
+        if (SS.ended) {
           body.querySelector("#saveBtn").onclick = () => doSave();
           body.querySelector("#skipBtn").onclick = () => doSkip();
           return;
         }
-        if (!started) {
+        if (!SS.started) {
           body.querySelector("#startBtn").onclick = () => {
             const t = body.querySelector("#taskInput").value.trim();
             const subjName = body.querySelector("#subjSel").value;
-            subject = subjName ? DB.subjectShort(subjName) : "";
+            SS.subject = subject = subjName ? DB.subjectShort(subjName) : "";
             DB.timerStart(t || "刷题", planId, 0, subject);
             const tt = DB.timerState(); tt.shuati = true;
             try { DB.save(); } catch (e) {}
-            started = true;
+            SS.task = task = (t || "刷题");
+            SS.started = true;
             render(); window.__updateTopTimer && window.__updateTopTimer();
           };
           const relateBtn = body.querySelector("#relateBtn");
@@ -331,7 +377,7 @@
         body.querySelector("#lapBtn").onclick = () => { DB.timerLap(); render(); window.__updateTopTimer && window.__updateTopTimer(); };
         body.querySelector("#exitBtn").onclick = () => exitFull();
         const resetBtn = body.querySelector("#resetBtn");
-        if (resetBtn) resetBtn.onclick = () => { DB.timerReset(); started = false; render(); window.__updateTopTimer && window.__updateTopTimer(); };
+        if (resetBtn) resetBtn.onclick = () => { DB.timerReset(); SS.started = false; render(); window.__updateTopTimer && window.__updateTopTimer(); };
       }
 
       function openRelate() {
@@ -352,9 +398,9 @@
         box.querySelectorAll(".rel-item").forEach(r => r.onclick = () => {
           const it = DB.getPlan(DB.today()).items.find(x => x.id === r.dataset.id);
           if (it) {
-            planId = it.id; task = it.text;
+            planId = SS.planId = it.id; task = SS.task = it.text;
             const known = (window.KG_SUBJECTS || []).indexOf(it.module) >= 0;
-            subject = known ? DB.subjectShort(it.module) : (DB.subjectShort(it.module) || "");
+            subject = SS.subject = known ? DB.subjectShort(it.module) : (DB.subjectShort(it.module) || "");
             document.querySelector(".modal-mask") && document.querySelector(".modal-mask").remove();
             UI.toast("已关联：" + it.text);
             render();
@@ -377,7 +423,7 @@
               const text = box.querySelector("#nText").value.trim() || (subjName ? subjName + " 刷题" : "刷题任务");
               const subj = subjName ? DB.subjectShort(subjName) : "";
               const it = DB.addPlanItem(DB.today(), { module: subj || "刷题", type: "quiz", text: text, focusMin: 0, count: null });
-              planId = it.id; task = text; subject = subj;
+              planId = SS.planId = it.id; task = SS.task = text; subject = SS.subject = subj;
               c(); render(); UI.toast("已创建并关联：" + text);
             } }
           ]
@@ -386,19 +432,37 @@
 
       function doEnd() {
         if (iv) { clearInterval(iv); iv = null; }
-        finalLaps = DB.timerState().laps.slice();
-        finalElapsedMs = DB.timerElapsedMs();
+        SS.finalLaps = DB.timerState().laps.slice();
+        SS.finalElapsedMs = DB.timerElapsedMs();
+        /* ★必须在 timerStop() 之前留存 planId —— timerStop 会把 planId 清成 null，
+           之后 timerSettle 就找不到计划项 → 每日计划永远打不上勾（用户反馈的病根）。 */
+        SS.planId = planId || DB.timerState().planId;
         DB.timerStop(); // 冻结计时（flush 末段 + 清 laps），不再自动累计
         window.__updateTopTimer && window.__updateTopTimer();
-        ended = true;
+        SS.ended = true;
         render(); // 切到记录表单
       }
 
       function finalize(mins, creditActual) {
-        // timerSettle 内部已把实际专注分钟写入绑定计划项并打勾（it.minutes += mins; it.done = true），
-        // 这里绝不能再加一次 —— 之前这段重复累加正是「时长翻倍」的病根
+        /* ★计划打勾兜底：timerSettle 内部会调 timerStop()，而 timerStop 把 planId 清成 null，
+           导致它再也命中不到计划项 → 每日计划不会自动划掉。这里用 doEnd 时留存下来的 id 显式补刀。 */
+        const pid = SS.planId || planId;
         const r = DB.timerSettle("刷题模式", creditActual);
-        if (r && r.planId) planId = r.planId;
+        try {
+          const id = pid || (r && r.planId);
+          if (id) {
+            const it = DB.getPlan(DB.today()).items.find(x => x.id === id);
+            if (it) {
+              // 若 timerSettle 已命中同一项（罕见），就不要再加一次分钟，防止时长翻倍
+              if (!(r && r.planId === id)) it.minutes = (it.minutes || 0) + mins;
+              it.done = true;
+              DB.save();
+              // 通知打卡日历实时刷新
+              try { window.dispatchEvent(new Event("kg-plan-changed")); } catch (e) {}
+            }
+            SS.planId = planId = id;
+          }
+        } catch (e) {}
         window.__updateTopTimer && window.__updateTopTimer();
         return r;
       }
@@ -415,7 +479,7 @@
           if (!planId) return;
           const t = targetMsOf();
           if (!t) return;
-          const over = finalElapsedMs - t;
+          const over = SS.finalElapsedMs - t;
           if (over <= 0) return;
           const it = DB.getPlan(DB.today()).items.find(x => x.id === planId);
           if (it) { it.overtime = Math.round(over / 1000); DB.save(); }
@@ -432,12 +496,15 @@
             if (!isNaN(cor) && cor > cnt) { UI.toast(combo[i].subject + "：答对数量不能大于刷题数量"); return; }
           }
         } else if (mode !== "review") {
-          const cnt = parseInt(body.querySelector("#qCount").value, 10);
-          if (isNaN(cnt) || cnt < 0) { UI.toast("请填写有效的刷题数量"); return; }
+          /* ★v20261021 题数已预填，且「留空」不再拦截保存（按 0 处理），
+             避免用户已经填了 P1 却被反复要求先填刷题数量。 */
+          const cntRaw = body.querySelector("#qCount").value;
+          const cnt = cntRaw === "" ? 0 : parseInt(cntRaw, 10);
+          if (!isNaN(cnt) && cnt < 0) { UI.toast("刷题数量不能为负"); return; }
           const cor = parseInt(body.querySelector("#qCorrect").value, 10);
-          if (!isNaN(cor) && cor > cnt) { UI.toast("答对数量不能大于刷题数量"); return; }
+          if (!isNaN(cor) && cor > Math.max(0, cnt || 0)) { UI.toast("答对数量不能大于刷题数量"); return; }
         }
-        const mins = Math.max(1, Math.round(finalElapsedMs / 60000));
+        const mins = Math.max(1, Math.round(SS.finalElapsedMs / 60000));
         finalize(mins, true); // 实际用时计（计划段+延迟段相加）
         recordOvertime();
         if (mode === "combo") {
@@ -453,28 +520,41 @@
               DB.save();
             }
           }
-        } else if (mode === "quiz") {
+        } else if (mode === "review") {
+          if (window.KGExam && KGExam.logReview) KGExam.logReview(subject, mins);
+        } else {
+          /* ★v20261021 普通刷题（plain，手动从计时器进入）以前完全没有记账，
+             导致这类刷题的正确率永远看不到。现在与 quiz 统一统计到所选学科。 */
+          const cnt = parseInt(body.querySelector("#qCount").value, 10) || 0;
+          const cor = parseInt(body.querySelector("#qCorrect").value, 10);
+          if (cnt > 0) {
+            const sub = subject || (DB.subjectShort(DB.timerState().subject || "") || "");
+            if (sub) DB.recordAccuracy(sub, isNaN(cor) ? 0 : cor, cnt);
+          }
+          SS.lastCount = cnt;   // 记住本次题数，下次记录表单自动预填
+          if (planId) { const it = DB.getPlan(DB.today()).items.find(x => x.id === planId); if (it) { it.count = cnt; it.correct = isNaN(cor) ? null : cor; DB.save(); } }
+        }
+        if (mode === "quiz") {
           const cnt = parseInt(body.querySelector("#qCount").value, 10) || 0;
           const cor = parseInt(body.querySelector("#qCorrect").value, 10);
           if (subject) DB.recordAccuracy(subject, isNaN(cor) ? 0 : cor, cnt);
+          SS.lastCount = cnt;
           if (planId) { const it = DB.getPlan(DB.today()).items.find(x => x.id === planId); if (it) { it.count = cnt; it.correct = isNaN(cor) ? null : cor; DB.save(); } }
-        } else if (mode === "review") {
-          if (window.KGExam && KGExam.logReview) KGExam.logReview(subject, mins);
         }
         // 清理持久化的 launch（已结束）
         if (DB.state && DB.state.shuatiLaunch) { DB.state.shuatiLaunch = null; try { DB.save(); } catch (e) {} }
         const extra = (mode === "combo") ? " · 综合刷题 " + combo.length + " 模块" : (subject ? " · 学科 " + DB.fullSubject(subject) : "");
-        const rec = finalElapsedMs ? ` · 专注 ${fmtMsFull(finalElapsedMs)}` : "";
+        const rec = SS.finalElapsedMs ? ` · 专注 ${fmtMsFull(SS.finalElapsedMs)}` : "";
         UI.toast(`刷题模式结束${rec}${extra}${planId ? "，已记入今日计划 ✓" : ""}`);
         location.hash = "#/calendar";
       }
 
       function doSkip() {
-        const mins = Math.max(1, Math.round(finalElapsedMs / 60000));
+        const mins = Math.max(1, Math.round(SS.finalElapsedMs / 60000));
         finalize(mins, true);
         recordOvertime();
         if (DB.state && DB.state.shuatiLaunch) { DB.state.shuatiLaunch = null; try { DB.save(); } catch (e) {} }
-        UI.toast(`刷题模式结束：专注 ${fmtMsFull(finalElapsedMs)}${planId ? "，已记入今日计划 ✓" : ""}`);
+        UI.toast(`刷题模式结束：专注 ${fmtMsFull(SS.finalElapsedMs)}${planId ? "，已记入今日计划 ✓" : ""}`);
         location.hash = "#/calendar";
       }
 
