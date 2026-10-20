@@ -92,16 +92,51 @@
       window.__pendingFocus = null;
       const pendingSubject = pending && pending.subject ? pending.subject : "";
 
+      /* 把会话状态落到 DB.state.shuatiSession：连「页面被系统重载」也能正确续上，
+         不会把已经跑过的 3→2→1→GO 再放一遍（用户反馈的重启计时，最后一重保险）。 */
+      function _persistSS() {
+        try {
+          DB.state.shuatiSession = {
+            key: SS.key, started: SS.started, ended: SS.ended,
+            finalElapsedMs: SS.finalElapsedMs, finalLaps: SS.finalLaps,
+            planId: SS.planId, task: SS.task, subject: SS.subject, lastCount: SS.lastCount
+          };
+          DB.save();
+        } catch (e) {}
+      }
+      function _clearSS() {
+        try { SS.started = false; SS.ended = false; SS.finalElapsedMs = 0; SS.finalLaps = []; DB.state.shuatiSession = null; DB.save(); } catch (e) {}
+      }
+
       /* 会话轴：同一会话跨 render() 复用 SS；新会话（签名变化 / 上一轮已结算干净）才重置 */
       const sig = _sig(launch, pending);
-      const stale = SS.ended && !DB.timerState().running && DB.timerElapsedMs() === 0;
-      if (SS.key !== sig || stale) {
+      const persisted = (DB.state && DB.state.shuatiSession) || null;
+      if (persisted && persisted.key === sig) {
+        // 同一会话（含重载）：原样恢复，保证不重放倒计时、不丢 planId
+        SS.key = sig;
+        SS.started = !!persisted.started;
+        SS.ended = !!persisted.ended;
+        SS.finalElapsedMs = persisted.finalElapsedMs || 0;
+        SS.finalLaps = persisted.finalLaps || [];
+        SS.planId = persisted.planId || null;
+        SS.task = persisted.task || "";
+        SS.subject = persisted.subject || "";
+        SS.lastCount = persisted.lastCount || 0;
+      } else if (SS.key !== sig) {
         SS.key = sig; SS.started = false; SS.ended = false;
         SS.finalElapsedMs = 0; SS.finalLaps = [];
         SS.planId = pending ? pending.planId : null;
         SS.task = pending ? pending.text : (mode === "plain" ? (DB.timerState().task || "刷题") : "");
         SS.subject = "";
         SS.lastCount = 0;
+      }
+      // 上一轮已经彻底结算干净（已结束且计时器已清空）→ 允许同签名重新开始新的一轮
+      if (SS.ended && !DB.timerState().running && DB.timerElapsedMs() === 0) {
+        SS.started = false; SS.ended = false; SS.finalElapsedMs = 0; SS.finalLaps = [];
+        SS.planId = pending ? pending.planId : null;
+        SS.task = pending ? pending.text : (mode === "plain" ? (DB.timerState().task || "刷题") : "");
+        SS.subject = "";
+        if (DB.state) { DB.state.shuatiSession = null; try { DB.save(); } catch (e) {} }
       }
       let planId = SS.planId;      // 本地别名（同一 render 内多处使用）
       let task = SS.task;
@@ -142,7 +177,7 @@
           pId = it && it.id;
         } catch (e) {}
         SS.planId = planId = pId; SS.subject = subject = subj; SS.task = task = planTask;
-        SS.started = true;   // 先标记，render 才会渲染计时 UI（倒计时遮罩盖在其上）
+        SS.started = true; _persistSS();   // 先标记，render 才会渲染计时 UI（倒计时遮罩盖在其上）
 
         // 真正开始计时（先建计划项，倒计时结束后再启动，保证「3→2→1→GO 后才开始答题」）
         const reallyStart = () => {
@@ -362,7 +397,7 @@
             const tt = DB.timerState(); tt.shuati = true;
             try { DB.save(); } catch (e) {}
             SS.task = task = (t || "刷题");
-            SS.started = true;
+            SS.started = true; _persistSS();
             render(); window.__updateTopTimer && window.__updateTopTimer();
           };
           const relateBtn = body.querySelector("#relateBtn");
@@ -381,7 +416,7 @@
         body.querySelector("#lapBtn").onclick = () => { DB.timerLap(); render(); window.__updateTopTimer && window.__updateTopTimer(); };
         body.querySelector("#exitBtn").onclick = () => exitFull();
         const resetBtn = body.querySelector("#resetBtn");
-        if (resetBtn) resetBtn.onclick = () => { DB.timerReset(); SS.started = false; render(); window.__updateTopTimer && window.__updateTopTimer(); };
+        if (resetBtn) resetBtn.onclick = () => { DB.timerReset(); SS.started = false; if (DB.state) DB.state.shuatiSession = null; render(); window.__updateTopTimer && window.__updateTopTimer(); };
       }
 
       function openRelate() {
@@ -402,7 +437,7 @@
         box.querySelectorAll(".rel-item").forEach(r => r.onclick = () => {
           const it = DB.getPlan(DB.today()).items.find(x => x.id === r.dataset.id);
           if (it) {
-            planId = SS.planId = it.id; task = SS.task = it.text;
+            planId = SS.planId = it.id; task = SS.task = it.text; _persistSS();
             const known = (window.KG_SUBJECTS || []).indexOf(it.module) >= 0;
             subject = SS.subject = known ? DB.subjectShort(it.module) : (DB.subjectShort(it.module) || "");
             document.querySelector(".modal-mask") && document.querySelector(".modal-mask").remove();
@@ -427,7 +462,7 @@
               const text = box.querySelector("#nText").value.trim() || (subjName ? subjName + " 刷题" : "刷题任务");
               const subj = subjName ? DB.subjectShort(subjName) : "";
               const it = DB.addPlanItem(DB.today(), { module: subj || "刷题", type: "quiz", text: text, focusMin: 0, count: null });
-              planId = SS.planId = it.id; task = SS.task = text; subject = SS.subject = subj;
+              planId = SS.planId = it.id; task = SS.task = text; subject = SS.subject = subj; _persistSS();
               c(); render(); UI.toast("已创建并关联：" + text);
             } }
           ]
@@ -443,7 +478,7 @@
         SS.planId = planId || DB.timerState().planId;
         DB.timerStop(); // 冻结计时（flush 末段 + 清 laps），不再自动累计
         window.__updateTopTimer && window.__updateTopTimer();
-        SS.ended = true;
+        SS.ended = true; _persistSS();
         render(); // 切到记录表单
       }
 
@@ -536,17 +571,19 @@
             if (sub) DB.recordAccuracy(sub, isNaN(cor) ? 0 : cor, cnt);
           }
           SS.lastCount = cnt;   // 记住本次题数，下次记录表单自动预填
+          _persistSS();
           if (planId) { const it = DB.getPlan(DB.today()).items.find(x => x.id === planId); if (it) { it.count = cnt; it.correct = isNaN(cor) ? null : cor; DB.save(); } }
         }
         if (mode === "quiz") {
           const cnt = parseInt(body.querySelector("#qCount").value, 10) || 0;
           const cor = parseInt(body.querySelector("#qCorrect").value, 10);
           if (subject) DB.recordAccuracy(subject, isNaN(cor) ? 0 : cor, cnt);
-          SS.lastCount = cnt;
+          SS.lastCount = cnt; _persistSS();
           if (planId) { const it = DB.getPlan(DB.today()).items.find(x => x.id === planId); if (it) { it.count = cnt; it.correct = isNaN(cor) ? null : cor; DB.save(); } }
         }
         // 清理持久化的 launch（已结束）
         if (DB.state && DB.state.shuatiLaunch) { DB.state.shuatiLaunch = null; try { DB.save(); } catch (e) {} }
+        _clearSS();
         const extra = (mode === "combo") ? " · 综合刷题 " + combo.length + " 模块" : (subject ? " · 学科 " + DB.fullSubject(subject) : "");
         const rec = SS.finalElapsedMs ? ` · 专注 ${fmtMsFull(SS.finalElapsedMs)}` : "";
         UI.toast(`刷题模式结束${rec}${extra}${planId ? "，已记入今日计划 ✓" : ""}`);
@@ -558,6 +595,7 @@
         finalize(mins, true);
         recordOvertime();
         if (DB.state && DB.state.shuatiLaunch) { DB.state.shuatiLaunch = null; try { DB.save(); } catch (e) {} }
+        _clearSS();
         UI.toast(`刷题模式结束：专注 ${fmtMsFull(SS.finalElapsedMs)}${planId ? "，已记入今日计划 ✓" : ""}`);
         location.hash = "#/calendar";
       }
