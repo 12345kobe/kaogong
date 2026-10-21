@@ -597,7 +597,7 @@
       scene.remove(old.root);
       try { disposeGroup(old.root); } catch (e) {}
       ch = buildCharacter(g);
-      ch.root.position.set(0, 0, -0.05 + 0.30 * sleepAmt);
+      ch.root.position.set(0, 0, -0.05 + 0.16 * sleepAmt);
       scene.add(ch.root);
     };
 
