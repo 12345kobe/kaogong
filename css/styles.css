@@ -1900,7 +1900,7 @@ body.glass.light .opt.selected{
 .imp-phase b{display:block;font-size:14px}
 .imp-phase span{opacity:.85;font-size:12px}
 .imp-hint{position:absolute;bottom:8px;left:0;right:0;text-align:center;color:rgba(255,240,210,.75);font-size:11px;pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,.6)}
-.imp-gender{position:absolute;top:10px;right:10px;background:rgba(20,16,10,.62);color:#ffedd0;border-radius:10px;padding:5px 10px;font-size:12px;display:flex;align-items:center;gap:6px}
+.imp-gender{position:absolute;bottom:10px;right:10px;background:rgba(20,16,10,.62);color:#ffedd0;border-radius:10px;padding:5px 10px;font-size:12px;display:flex;align-items:center;gap:6px}
 .imp-gender select{background:#3a2f1e;color:#ffedd0;border:1px solid rgba(255,220,160,.4);border-radius:8px;padding:3px 6px;font-size:12px}
 .imp-level{margin-top:12px}
 .imp-lv-now{font-size:22px;font-weight:800;color:var(--accent,#a33)}

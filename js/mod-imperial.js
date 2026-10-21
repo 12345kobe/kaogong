@@ -23,8 +23,11 @@
     const f = Math.min(1, Math.max(0, (h - a.t0) / Math.max(0.001, b.t0 - a.t0)));
     const s = f * f * (3 - 2 * f); // smoothstep 丝滑过渡
     const mix = (x, y) => x + (y - x) * s;
-    const near = f < 0.5 ? a : b;
-    return { key: near.key, label: near.label, sub: near.sub, sleep: near.sleep, sun: mix(a.sun, b.sun), sunC: a.sunC, amb: mix(a.amb, b.amb), lamp: mix(a.lamp, b.lamp), h };
+    /* ★v20261022d 修「上午就趴桌」bug：near 必须恒取当前所在时段 a。
+       旧代码 f≥0.5 时取下一时段 b → 每天 9:30–12:00（morning→nap 过渡后半段）
+       就被判定成午睡，角色大上午趴桌睡觉、Zzz 乱飘。光照数值仍可跨时段
+       smoothstep 混合（丝滑），但 label/key/sleep 只认当前时段。 */
+    return { key: a.key, label: a.label, sub: a.sub, sleep: a.sleep, sun: mix(a.sun, b.sun), sunC: a.sunC, amb: mix(a.amb, b.amb), lamp: mix(a.lamp, b.lamp), h };
   }
 
   /* ================= 工具 ================= */
@@ -58,19 +61,49 @@
 
   /* ================= Canvas 贴图 ================= */
   function plaqueTexture() {
-    const cv = document.createElement("canvas"); cv.width = 1024; cv.height = 300;
+    /* ★v20261022d 用户死令：「天道酬勤」必须书法字 + 图片化贴上 */
+    const cv = document.createElement("canvas"); cv.width = 1600; cv.height = 460;
     const g = cv.getContext("2d");
-    g.fillStyle = "#8a4a26"; g.fillRect(0, 0, 1024, 300);           // 匾框
-    g.fillStyle = "#f6ecd4"; g.fillRect(22, 22, 980, 256);          // 匾心
-    g.strokeStyle = "#c9a25e"; g.lineWidth = 6; g.strokeRect(40, 40, 944, 220);
-    g.fillStyle = "#2a2018"; g.textAlign = "center"; g.textBaseline = "middle";
-    g.font = "700 150px 'Kaiti SC','STKaiti','KaiTi',serif";
+    /* 匾框：深木框 */
+    const fg = g.createLinearGradient(0, 0, 0, 460);
+    fg.addColorStop(0, "#a5602f"); fg.addColorStop(0.5, "#8a4a22"); fg.addColorStop(1, "#6e3a1c");
+    g.fillStyle = fg; g.fillRect(0, 0, 1600, 460);
+    /* 匾心：做旧宣纸 */
+    const pg = g.createLinearGradient(0, 30, 0, 430);
+    pg.addColorStop(0, "#f8f1de"); pg.addColorStop(1, "#eee1c0");
+    g.fillStyle = pg; g.fillRect(30, 30, 1540, 400);
+    for (let i = 0; i < 2600; i++) {           // 纸纹噪点
+      g.fillStyle = "rgba(120,95,60," + (0.03 + Math.random() * 0.05) + ")";
+      g.fillRect(30 + Math.random() * 1540, 30 + Math.random() * 400, 2, 2);
+    }
+    g.strokeStyle = "#c9a25e"; g.lineWidth = 7; g.strokeRect(56, 56, 1488, 348);
+    g.strokeStyle = "rgba(201,162,94,.45)"; g.lineWidth = 2; g.strokeRect(70, 70, 1460, 320);
+    /* ★书法四字：行楷/楷体 + 多层墨韵（涨墨/飞白感），欹侧错落 */
     const chars = ["天", "道", "酬", "勤"];
-    chars.forEach((ch, i) => g.fillText(ch, 230 + i * 190, 160));
-    g.font = "36px 'Kaiti SC','STKaiti',serif"; g.fillStyle = "#7a3020";
-    g.fillText("右军", 950, 90);
-    g.fillStyle = "#a33"; g.fillRect(928, 200, 44, 44);             // 印章
-    g.fillStyle = "#f6ecd4"; g.font = "24px serif"; g.fillText("勤", 950, 222);
+    const FS = "'Xingkai SC','STXingkai','HanziPen SC','KaiTi','Kaiti SC','STKaiti','FZKai-Z03S',serif";
+    g.textAlign = "center"; g.textBaseline = "middle";
+    chars.forEach((ch, i) => {
+      g.save();
+      g.translate(268 + i * 356, 238 + (i % 2 ? 8 : -6));
+      g.rotate((i - 1.5) * 0.014);
+      g.font = "700 296px " + FS;
+      g.fillStyle = "rgba(42,32,24,.15)"; g.fillText(ch, 0, 0);      // 涨墨外廓
+      g.fillStyle = "rgba(42,32,24,.5)";  g.fillText(ch, 3, 4);      // 墨影
+      g.fillStyle = "#241c14";            g.fillText(ch, 0, 0);      // 浓墨主体
+      g.restore();
+    });
+    /* 落款 + 朱砂印 */
+    g.font = "44px " + FS; g.fillStyle = "#6a3020"; g.textAlign = "right";
+    g.fillText("壬寅年 秋", 1500, 108);
+    function seal(x, y, s, txt) {
+      g.fillStyle = "#b03a2a"; g.fillRect(x, y, s, s);
+      g.strokeStyle = "rgba(255,240,220,.9)"; g.lineWidth = Math.max(3, s * 0.07);
+      g.strokeRect(x + s * 0.1, y + s * 0.1, s * 0.8, s * 0.8);
+      g.fillStyle = "#f6ecd4"; g.textAlign = "center"; g.textBaseline = "middle";
+      g.font = "700 " + Math.round(s * 0.5) + "px " + FS;
+      g.fillText(txt, x + s / 2, y + s / 2 + 2);
+    }
+    seal(1408, 306, 82, "勤"); seal(112, 306, 82, "学");
     return new THREE.CanvasTexture(cv);
   }
   function windowTexture() {
@@ -143,6 +176,7 @@
     const bandC = female ? C.bandF : C.bandM;
     const skirtC = female ? C.skirtF : C.pantsM;
     const beltC = female ? C.beltF : C.beltM;
+    root.rotation.y = -0.20;                       // ★身体微侧（参考图四分之三坐姿）
 
     /* —— 下身（铺地裙 / 袴）—— */
     if (female) {
@@ -151,7 +185,7 @@
       root.add(skirt);
       root.add(cyl(0.19, 0.30, 0.14, skirtC, 0, 0.40, 0, 24)); // 腰裙过渡
       /* ★v20261022c 腰后双飘带（贴参考图） */
-      const rbM = mat(bandF, { side: THREE.DoubleSide });
+      const rbM = mat(C.bandF, { side: THREE.DoubleSide });
       [[-0.09, 0.16], [0.08, -0.12]].forEach(([bx, rot]) => {
         const rb = M(new THREE.BoxGeometry(0.045, 0.34, 0.008), rbM, bx, 0.16, -0.24);
         rb.rotation.set(0.18, 0, rot); root.add(rb);
@@ -181,30 +215,38 @@
     const tas = cyl(0.012, 0.012, 0.13, beltC, 0, -0.03, 0.19, 8); torso.add(tas);
     torso.add(sph(0.02, 0xf0e2c0, 0, 0.035, 0.19, 8, 8));
 
-    /* —— 手臂（肩部 pivot）—— */
-    function arm(side, withBrush) {
+    /* ★★★手臂（v20261022d 用户死令：手必须长在身前，像人一样前伸写字）★★★
+       绕 X 负旋转 = 下垂手臂倒向 +Z（角色面朝的方向 = 桌面方向）。
+       旧版 +0.85 正旋转把手甩到 -Z 背后（用户截图「手长在背部/后面弯曲」根因）。 */
+    function arm(side, mode) {           // mode: "brush" 右手握笔 / "press" 左手压纸
       const g = new THREE.Group(); g.position.set(side * 0.165, 0.40, 0); torso.add(g);
-      const upper = M(new THREE.CylinderGeometry(0.052, 0.062, 0.22, 14), gownM, 0, -0.11, 0); g.add(upper);
-      const fore = new THREE.Group(); fore.position.set(0, -0.21, 0); g.add(fore);
-      fore.add(M(new THREE.CylinderGeometry(0.048, 0.055, 0.20, 14), gownM, 0, -0.10, 0));
-      const cuff = M(new THREE.TorusGeometry(0.055, 0.014, 8, 16), mat(0xfdf8ec), 0, -0.19, 0); cuff.rotation.x = Math.PI / 2; fore.add(cuff);
-      const hand = sph(0.038, C.skin, 0, -0.235, 0.01, 12, 10); fore.add(hand);
-      if (withBrush) {
-        const brush = new THREE.Group(); brush.position.set(0, -0.235, 0.02); fore.add(brush);
-        brush.add(M(new THREE.CylinderGeometry(0.008, 0.008, 0.20, 8), mat(0xb58a4e), 0, 0.06, 0.03));
-        brush.children[0].rotation.x = 1.15;
-        const tip = M(new THREE.ConeGeometry(0.014, 0.05, 8), mat(0x2a2a2a), 0, -0.05, 0.115);
-        tip.rotation.x = 1.15; brush.add(tip);
+      const upper = M(new THREE.CylinderGeometry(0.052, 0.062, 0.24, 14), gownM, 0, -0.12, 0); g.add(upper);
+      const fore = new THREE.Group(); fore.position.set(0, -0.23, 0); g.add(fore);
+      fore.add(M(new THREE.CylinderGeometry(0.048, 0.055, 0.24, 14), gownM, 0, -0.12, 0));
+      /* 垂坠宽袖 + 袖口 */
+      const sleeve = M(new THREE.ConeGeometry(0.078, 0.15, 12), gownM, 0, -0.21, 0); fore.add(sleeve);
+      const cuff = M(new THREE.TorusGeometry(0.058, 0.014, 8, 16), mat(0xfdf8ec), 0, -0.23, 0); cuff.rotation.x = Math.PI / 2; fore.add(cuff);
+      const hand = sph(0.042, C.skin, 0, -0.28, 0.012, 12, 10); fore.add(hand);
+      if (mode === "brush") {
+        /* 毛笔：竖握，笔尖朝下正落纸面（参考图写字姿势）。
+           rotation.x=2.2 经无头脚本反解：使笔尖方向 ≈ (0,-0.99,+0.14)（正下方微前倾） */
+        const brush = new THREE.Group(); brush.position.set(0, -0.277, 0.012); brush.rotation.x = 2.2; fore.add(brush);
+        brush.add(M(new THREE.CylinderGeometry(0.009, 0.008, 0.17, 8), mat(0xb58a4e), 0, 0.03, 0));
+        const tip = M(new THREE.ConeGeometry(0.016, 0.07, 8), mat(0x2a2a2a), 0, -0.08, 0);
+        tip.rotation.x = Math.PI; brush.add(tip);
       }
-      g.rotation.x = 0.85; fore.rotation.x = 0.55;   // 手落到桌面
-      return { g, fore };
+      /* 基准姿势：右臂前伸摸桌 + 前臂上抬握笔；左臂前伸压纸（数值经无头脚本验证） */
+      if (mode === "brush") { g.rotation.x = -0.72; fore.rotation.x = -1.62; }
+      else { g.rotation.x = -0.72; fore.rotation.x = -1.40; }
+      return { g, fore, hand, mode };
     }
-    const armL = arm(-1, false), armR = arm(1, true);
+    const armL = arm(-1, "press"), armR = arm(1, "brush");
 
     /* —— 头（pivot 在脖）—— */
     const neck = new THREE.Group(); neck.position.set(0, 0.50, 0); torso.add(neck);
     neck.add(cyl(0.045, 0.05, 0.07, C.skin, 0, 0.03, 0, 12));
     const head = new THREE.Group(); head.position.set(0, 0.075, 0); neck.add(head);
+    head.rotation.y = 0.80; head.rotation.x = 0.26;   // ★转向镜头露脸 + 低头看纸（参考图）
     const face = sph(0.155, C.skin, 0, 0.09, 0, 26, 20); face.scale.set(1, 0.96, 0.96); head.add(face);
     /* 头发：后脑勺壳 + 刘海 */
     const hairM = mat(C.hair, { roughness: 0.6 });
@@ -228,23 +270,37 @@
     /* 发髻 / 发带 / 簪 */
     if (female) {
       const bun = sph(0.085, C.hair, 0, 0.235, -0.02, 18, 14); bun.scale.set(1, 0.85, 0.9); head.add(bun);
-      const band = M(new THREE.TorusGeometry(0.062, 0.016, 10, 20), mat(bandF), 0, 0.185, 0.01); band.rotation.x = Math.PI / 2.25; head.add(band);
+      const band = M(new THREE.TorusGeometry(0.062, 0.016, 10, 20), mat(C.bandF), 0, 0.185, 0.01); band.rotation.x = Math.PI / 2.25; head.add(band);
       const pin = cyl(0.007, 0.007, 0.16, 0xd9a441, 0.07, 0.245, 0.02, 8); pin.rotation.z = -1.25; head.add(pin);
       head.add(sph(0.014, 0xf0c060, 0.145, 0.275, 0.02, 8, 8));
       /* 垂在脑后的小辫 */
       const tail = cyl(0.035, 0.012, 0.20, C.hair, 0, 0.02, -0.15, 10); tail.rotation.x = 0.25; head.add(tail);
-      const tie = M(new THREE.TorusGeometry(0.036, 0.010, 8, 14), mat(bandF), 0, 0.10, -0.155); tie.rotation.x = 0.25; head.add(tie);
+      const tie = M(new THREE.TorusGeometry(0.036, 0.010, 8, 14), mat(C.bandF), 0, 0.10, -0.155); tie.rotation.x = 0.25; head.add(tie);
     } else {
-      const tuft = sph(0.052, C.hair, 0, 0.225, -0.03, 14, 12); tuft.scale.set(1, 0.8, 0.9); head.add(tuft);
-      const band = M(new THREE.TorusGeometry(0.048, 0.014, 10, 18), mat(bandC), 0, 0.192, -0.005); band.rotation.x = Math.PI / 2.3; head.add(band);
-      const pin = cyl(0.006, 0.006, 0.13, 0xd9a441, 0.05, 0.24, -0.01, 8); pin.rotation.z = -1.2; head.add(pin);
+      /* ★男娃丸子髻（贴参考图：圆润发髻 + 发带 + 簪） */
+      const bun = sph(0.082, C.hair, 0, 0.235, -0.02, 18, 14); bun.scale.set(1, 0.88, 0.92); head.add(bun);
+      const band = M(new THREE.TorusGeometry(0.058, 0.015, 10, 20), mat(bandC), 0, 0.183, 0.005); band.rotation.x = Math.PI / 2.2; head.add(band);
+      const pin = cyl(0.006, 0.006, 0.14, 0xd9a441, 0.06, 0.245, -0.01, 8); pin.rotation.z = -1.2; head.add(pin);
+      head.add(sph(0.013, 0xf0c060, 0.13, 0.278, -0.01, 8, 8));
     }
 
     /* 接触假阴影 */
     const shadow = M(new THREE.CircleGeometry(0.42, 24), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.13 }), 0, 0.006, 0.02);
     shadow.rotation.x = -Math.PI / 2; root.add(shadow);
 
-    return { root, torso, neck, head, eyeL, eyeR, armL, armR, female };
+    /* ★基准姿势常量（动画在此基础上叠加，防止被 idle 动画覆盖） */
+    const base = {
+      headY: 0.80, headX: 0.26,
+      armRG: -0.72, armRF: -1.62,                   // 右：握笔
+      armLG: -0.72, armLF: -1.40,                   // 左：压纸
+      /* ★v20261022d 趴睡常数（无头脚本数值求解）：
+         · 躯干前倾 0.70 → 脸球底 y≈0.79 正好搁案面（0.80），不陷桌斗也不悬空
+         · 双臂 sleepArmG=-2.79/sleepArmF=0.69 → 世界方向前伸略下垂，手落案面
+           (y≈0.87 贴案面、z≈0.84 不越案前沿)；旧值 0.95/-2.2/-0.6 头会塞进桌斗（截图里人消失）
+         · 睡姿头 pitch -0.10（近似水平）→ 脸转向相机右前 63°，趴桌上脸仍可见 */
+      sleepTorso: 0.70, sleepArmG: -2.79, sleepArmF: 0.69, sleepHeadX: -0.10
+    };
+    return { root, torso, neck, head, eyeL, eyeR, armL, armR, female, base };
   }
 
   /* ================= 书斋场景 ================= */
@@ -270,20 +326,22 @@
     scene.add(box(R * 2, 0.22, 0.26, C.woodD, 0, H - 0.15, R - 0.5));
     scene.add(box(0.26, H, 0.26, C.woodD, -R + 0.5, H / 2, -R + 0.5));
     scene.add(box(0.26, H, 0.26, C.woodD, R - 0.5, H / 2, -R + 0.5));
-    /* ★v20261022c 匾额「天道酬勤」加大加醒目（用户点名必须挂上）+ 两侧挂穗 */
-    const plaque = M(new THREE.PlaneGeometry(3.1, 0.9), new THREE.MeshStandardMaterial({ map: plaqueTexture(), roughness: 0.85 }), 0, 3.42, -R + 0.09);
+    /* ★v20261022d 匾额「天道酬勤」（真书法贴图）挂 -Z 远景墙：
+      默认相机在角色右前方，这道墙在角色身后 —— 参考图书案后方墙上挂字匾的构图。
+      ★v20261022d 二次修正：相机推近（radius 2.62）后匾顶出画，整体下移 0.45 */
+    const plaque = M(new THREE.PlaneGeometry(3.2, 0.9), new THREE.MeshStandardMaterial({ map: plaqueTexture(), roughness: 0.85 }), 0, 1.80, -R + 0.09);
     scene.add(plaque);
-    scene.add(box(3.3, 0.1, 0.08, C.woodD, 0, 3.92, -R + 0.08));   // 匾顶横梁
-    [[-1.62], [1.62]].forEach(([px]) => {
-      scene.add(cyl(0.012, 0.012, 0.42, 0xa33, px, 3.24, -R + 0.08, 6));   // 红穗绳
-      scene.add(M(new THREE.ConeGeometry(0.035, 0.14, 8), mat(0xb5452e), px, 2.96, -R + 0.08));
+    scene.add(box(3.4, 0.1, 0.08, C.woodD, 0, 2.21, -R + 0.08));   // 匾顶横梁
+    [[-1.66], [1.66]].forEach(([px]) => {
+      scene.add(cyl(0.012, 0.012, 0.42, 0xa33, px, 1.19, -R + 0.08, 6));   // 红穗绳
+      scene.add(M(new THREE.ConeGeometry(0.035, 0.14, 8), mat(0xb5452e), px, 0.89, -R + 0.08));
     });
-    /* 左墙木格窗 ×2（参考图：连排格扇窗，暖光透入） */
+    /* 左墙木格窗 ×2（参考图：连排格扇窗，暖光透入）★v20261022d 下移 2.35→2.18 防顶部出画 */
     const winMat = new THREE.MeshBasicMaterial({ map: windowTexture(), color: 0xfff2cf });
     [[-0.9], [1.7]].forEach(([wz]) => {
-      const win = M(new THREE.PlaneGeometry(2.2, 1.8), winMat, -R + 0.06, 2.35, wz);
+      const win = M(new THREE.PlaneGeometry(2.2, 1.8), winMat, -R + 0.06, 2.18, wz);
       win.rotation.y = Math.PI / 2; scene.add(win);
-      scene.add(box(0.1, 1.96, 2.36, C.woodD, -R + 0.05, 2.35, wz));
+      scene.add(box(0.1, 1.96, 2.36, C.woodD, -R + 0.05, 2.18, wz));
     });
     /* 右墙格扇门 + 挂轴 */
     const door = M(new THREE.PlaneGeometry(1.7, 3.2), new THREE.MeshStandardMaterial({ map: doorTexture(), roughness: 0.95 }), R - 0.06, 1.6, 0.6);
@@ -314,7 +372,7 @@
         }
       });
     }
-    shelf(-2.75, -3.35); shelf(2.75, -3.35);
+    shelf(-2.75, -3.35); shelf(1.9, -3.35);
     /* 盆栽松 ×2 */
     function plant(x, z, s) {
       const g = new THREE.Group(); g.position.set(x, 0, z); g.scale.setScalar(s); scene.add(g);
@@ -327,36 +385,37 @@
       const table = box(0.5, 0.05, 0.5, C.woodM, 0, 0.025, 0); g.add(table);
       [[-0.2, -0.2], [0.2, -0.2], [-0.2, 0.2], [0.2, 0.2]].forEach(([px, pz]) => g.add(box(0.05, 0.42, 0.05, C.woodM, px, 0.21, pz)));
     }
-    plant(-2.7, -1.4, 1.15); plant(2.7, -1.4, 1.3);
+    plant(-2.7, -1.4, 1.15); plant(1.7, -1.4, 1.2);
   }
 
   function buildFurniture(scene) {
-    /* —— 书案（仿参考图：厚桌面 + 弯腿感）—— */
+    /* —— 书案（v20261022d 仿参考图：原木厚面 + 侧板 + 四腿）—— */
     const desk = new THREE.Group(); scene.add(desk);
-    desk.add(box(1.9, 0.09, 0.85, C.woodL, 0, 0.755, 0.62));
-    desk.add(box(1.9, 0.05, 0.10, C.woodM, 0, 0.665, 0.62 + 0.36));   // 牙板前
-    desk.add(box(1.9, 0.05, 0.10, C.woodM, 0, 0.665, 0.62 - 0.36));
-    [[-0.82, 0.30], [0.82, 0.30], [-0.82, -0.30], [0.82, -0.30]].forEach(([px, pz]) =>
-      desk.add(box(0.10, 0.72, 0.12, C.woodM, px, 0.36, 0.62 + pz)));
-    /* 案上文房 */
-    const paper = M(new THREE.PlaneGeometry(0.62, 0.44), mat(C.paper, { roughness: 1 }), 0.05, 0.803, 0.60);
-    paper.rotation.x = -Math.PI / 2; desk.add(paper);   // 摊开的书纸
-    desk.add(cyl(0.10, 0.115, 0.045, 0x3a3a3a, -0.42, 0.828, 0.42, 20));   // 砚台
-    desk.add(cyl(0.075, 0.075, 0.14, 0x9a6a40, -0.55, 0.875, 0.85, 14));   // 笔筒
-    for (let i = 0; i < 3; i++) {
-      const br = cyl(0.008, 0.008, 0.26, 0xd9a441, -0.57 + i * 0.055, 1.02, 0.85, 6);
+    const DZ = 0.56;                                                    // 案心 z（前缘 0.17，角色在 -0.05 正好够到）
+    desk.add(box(2.0, 0.10, 0.78, C.woodL, 0, 0.75, DZ));                // 厚桌面
+    desk.add(box(2.0, 0.06, 0.12, C.woodM, 0, 0.655, DZ + 0.40));        // 牙板（前后）
+    desk.add(box(2.0, 0.06, 0.12, C.woodM, 0, 0.655, DZ - 0.40));
+    [-0.9, 0.9].forEach(px => desk.add(box(0.08, 0.60, 0.60, C.woodM, px, 0.36, DZ)));   // 侧板
+    [[-0.82, DZ + 0.26], [0.82, DZ + 0.26], [-0.82, DZ - 0.26], [0.82, DZ - 0.26]].forEach(([px, pz]) =>
+      desk.add(box(0.11, 0.70, 0.12, C.woodM, px, 0.35, pz)));           // 腿
+    /* 案上文房（★纸在角色正前，手正好落在纸上）*/
+    const paper = M(new THREE.PlaneGeometry(0.62, 0.44), mat(C.paper, { roughness: 1 }), 0.02, 0.803, 0.30);
+    paper.rotation.x = -Math.PI / 2; desk.add(paper);                   // 摊开的书纸
+    desk.add(box(0.26, 0.03, 0.05, 0x5a4a6a, 0.17, 0.822, 0.24));        // 镇纸（压纸右上）
+    desk.add(cyl(0.10, 0.115, 0.045, 0x3a3a3a, -0.45, 0.828, 0.24, 20)); // 砚台
+    desk.add(cyl(0.075, 0.075, 0.14, 0x9a6a40, -0.64, 0.875, 0.44, 14)); // 笔筒
+    for (let i = 0; i < 3; i++) {                                        // 笔筒里的笔
+      const br = cyl(0.008, 0.008, 0.26, 0xd9a441, -0.66 + i * 0.055, 1.02, 0.44, 6);
       br.rotation.z = (i - 1) * 0.16; desk.add(br);
-      desk.add(M(new THREE.ConeGeometry(0.013, 0.05, 6), mat(0x2a2a2a), -0.57 + i * 0.055 - (i - 1) * 0.03, 1.14, 0.85));
+      desk.add(M(new THREE.ConeGeometry(0.013, 0.05, 6), mat(0x2a2a2a), -0.66 + i * 0.055 - (i - 1) * 0.03, 1.14, 0.44));
     }
-    desk.add(box(0.30, 0.035, 0.06, 0x5a4a6a, 0.5, 0.822, 0.40));          // 镇纸
-    [[-0.28, 0.95], [-0.10, 0.98]].forEach(([px, py], i) => {              // 卷轴×2
-      const sc = cyl(0.035, 0.035, 0.5, 0xe8d8b0, px, 0.80, i ? 0.98 : 0.92, 12);
-      sc.rotation.z = Math.PI / 2; desk.add(sc);
-    });
-    /* 笔架（小）*/
-    desk.add(box(0.04, 0.16, 0.04, C.woodD, -0.2, 0.88, 0.38));
-    desk.add(box(0.04, 0.16, 0.04, C.woodD, 0.06, 0.88, 0.38));
-    desk.add(box(0.14, 0.03, 0.04, C.woodD, -0.07, 0.955, 0.38));
+    /* 书册×2（右侧）*/
+    desk.add(box(0.30, 0.05, 0.22, 0x8a6a4a, 0.58, 0.825, 0.40));
+    desk.add(box(0.28, 0.045, 0.20, 0x6a4a6a, 0.58, 0.872, 0.40));
+    /* 小笔架 */
+    desk.add(box(0.04, 0.16, 0.04, C.woodD, -0.28, 0.88, 0.14));
+    desk.add(box(0.04, 0.16, 0.04, C.woodD, -0.12, 0.88, 0.14));
+    desk.add(box(0.20, 0.03, 0.04, C.woodD, -0.20, 0.955, 0.14));
 
     /* —— 圈椅（人物坐）—— */
     const chair = new THREE.Group(); scene.add(chair);
@@ -515,7 +574,7 @@
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x241d15);
-    const camera = new THREE.PerspectiveCamera(45, W / H, 0.1, 60);
+    const camera = new THREE.PerspectiveCamera(55, W / H, 0.1, 60);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(W, H);
@@ -553,9 +612,13 @@
       scene.add(sp); zzZs.push(sp);
     }
 
-    /* 相机轨道（自写 orbit：azimuth / polar / radius + 惯性 + 双指缩放） */
-    const target = new THREE.Vector3(0, 0.95, 0.25);
-    let theta = 0.55, phi = 1.12, radius = 4.3;
+    /* 相机轨道（自写 orbit：azimuth / polar / radius + 惯性 + 双指缩放）
+       ★v20261022d 默认右前三-quarters：脸正对镜头（用户死令「他有脸」），
+       书案在前景、天道酬勤匾额在角色身后远景墙上（参考图构图）。
+       ★v20261022d 推近构图：radius 2.9→2.62、target y 0.95→0.92 —— 角色占画面更大
+       （用户「做得太抽象/粗糙」→ 先让人物成为视觉主体），边框元素已经投影验证不出界 */
+    const target = new THREE.Vector3(0, 0.92, 0.15);
+    let theta = 0.38, phi = 1.15, radius = 2.62;
     let vTheta = 0, vPhi = 0, dragging = false, lastX = 0, lastY = 0;
     const touches = new Map();
     let pinchD = 0;
@@ -648,32 +711,38 @@
       if (sleepAmt > 0.92 && !nightShown) { nightShown = true; showNight(); }
       if (sleepAmt < 0.3) nightShown = false;
       const isNapping = ph.key === "nap" || ph.key === "sleep";
-      /* 趴睡姿势：前倾 + 整体向桌前移 + 头埋向手臂（修「像枷锁砍头」） */
-      ch.torso.rotation.x = -1.32 * sleepAmt;
-      ch.torso.position.y = 0.5 - 0.13 * sleepAmt;
-      ch.root.position.z = -0.05 + 0.30 * sleepAmt;
+      /* ★趴睡姿势（v20261022d）：躯干前倾趴桌。
+         —— 正旋转 = 前倾（+Y 倒向 +Z 桌面方向）；旧版 -1.32 是后仰，
+         就是用户吐槽的「像带着枷锁要被砍头」。 */
+      const B = ch.base;
+      ch.torso.rotation.x = B.sleepTorso * sleepAmt;
+      ch.torso.position.y = 0.5;                    // 趴睡不降腰（降了头就塞进桌斗）
+      ch.root.position.z = -0.05 + 0.16 * sleepAmt; // 整个人前挪趴上案
       ch.root.position.y = -0.02 * sleepAmt;
-      ch.head.rotation.x = 0.55 * sleepAmt;
-      ch.neck.rotation.x = 0.20 * sleepAmt;
+      ch.head.rotation.x = B.sleepHeadX * sleepAmt + (1 - sleepAmt) * B.headX;  // 睡姿头近似水平露脸
+      ch.head.rotation.y = B.headY + 0.30 * sleepAmt;   // 0.80→1.10 侧脸朝相机
+      ch.neck.rotation.x = 0.15 * sleepAmt;
 
       /* —— 呼吸 —— */
       const brA = 0.012 + 0.03 * sleepAmt, brF = isNapping ? 1.1 : 2.1;
       ch.torso.scale.y = 1 + Math.sin(t * brF * 2 * Math.PI / (isNapping ? 3 : 2)) * brA;
 
-      /* —— 写字 / 睡手（趴平后手臂前伸枕头下） —— */
+      /* —— 写字 / 睡手 —— */
       if (sleepAmt < 0.5) {
-        const w = Math.sin(t * 5.2) * 0.10;
-        ch.armR.g.rotation.x = 0.85 + w;
-        ch.armR.fore.rotation.x = 0.55 + w * 0.7;
-        ch.armL.g.rotation.x = 0.85 - w * 0.4;
+        const w = Math.sin(t * 5.2) * 0.07;
+        ch.armR.g.rotation.x = B.armRG + w;
+        ch.armR.fore.rotation.x = B.armRF + w * 0.6;
+        ch.armL.g.rotation.x = B.armLG - w * 0.5;
+        ch.armL.fore.rotation.x = B.armLF + w * 0.3;
         ch.head.rotation.z = Math.sin(t * 0.8) * 0.03;
-        ch.head.rotation.y = Math.sin(t * 0.5) * 0.06;
+        ch.head.rotation.y += Math.sin(t * 0.5) * 0.05;
       } else {
-        ch.armR.g.rotation.x += (1.30 - ch.armR.g.rotation.x) * dt * 2.2;
-        ch.armL.g.rotation.x += (1.30 - ch.armL.g.rotation.x) * dt * 2.2;
-        ch.armR.fore.rotation.x += (0.85 - ch.armR.fore.rotation.x) * dt * 2.2;
-        ch.armL.fore.rotation.x += (0.85 - ch.armL.fore.rotation.x) * dt * 2.2;
-        ch.head.rotation.z *= 0.95; ch.head.rotation.y *= 0.95;
+        /* 趴平后手臂上折当枕头 */
+        ch.armR.g.rotation.x += (B.sleepArmG - ch.armR.g.rotation.x) * dt * 2.2;
+        ch.armL.g.rotation.x += (B.sleepArmG - ch.armL.g.rotation.x) * dt * 2.2;
+        ch.armR.fore.rotation.x += (B.sleepArmF - ch.armR.fore.rotation.x) * dt * 2.2;
+        ch.armL.fore.rotation.x += (B.sleepArmF - ch.armL.fore.rotation.x) * dt * 2.2;
+        ch.head.rotation.z *= 0.95;
       }
 
       /* —— 眨眼（睡觉时不眨）—— */
