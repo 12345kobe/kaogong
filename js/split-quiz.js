@@ -25,6 +25,29 @@
     return qs;
   }
 
+  /* ★v20261023c 材料断句重排（用户死命令）：题库原始 mat.t 的硬换行大量截在句中（「卫/星」「美/元」）。
+     规则：以空两格（半角 2 空格以上 / 全角空格）开头的行 = 新自然段；其余行一律并入上一段（句意完整才断）。
+     输出 HTML：每段一个 div，原带缩进的段加 text-indent:2em。 */
+  function matHtml(t) {
+    const lines = String(t || "").split(/\r?\n/);
+    const paras = [];
+    let cur = null;
+    lines.forEach(raw => {
+      const s = raw.replace(/\s+$/, "");
+      if (!s.trim()) return;
+      const indented = /^(?:[ \t]{2,}|　+)/.test(raw);
+      if (indented || !cur) {
+        cur = { indent: indented, text: s.replace(/^(?:[ \t]+|　+)/, "") };
+        paras.push(cur);
+      } else {
+        cur.text += s;   // 无缩进 = 上一段未写完，接排（不额外加空格，中文直接连）
+      }
+    });
+    return paras.map(p =>
+      '<div class="sq-mat-p"' + (p.indent ? ' style="text-indent:2em"' : "") + ">" + esc(p.text) + "</div>"
+    ).join("");
+  }
+
   function start(host, mat, questions, subject, opts) {
     opts = opts || {};
     mat = mat || {};
@@ -43,7 +66,7 @@
       '<button class="btn xs ghost sq-pen" title="全屏手写，笔迹固定在材料上">✍ 书写</button></div>');
     matPane.appendChild(matHead);
     const matBody = UI.el('<div class="sq-mat-body"></div>');
-    if (mat.t) matBody.appendChild(UI.el('<div class="sq-mat-t">' + esc(mat.t).replace(/\n/g, "<br>") + "</div>"));
+    if (mat.t) matBody.appendChild(UI.el('<div class="sq-mat-t">' + matHtml(mat.t) + "</div>"));
     if (mat.img) {
       const im = UI.el('<img class="sq-mat-img" src="' + esc(mat.img) + '" alt="材料图"/>');
       im.onclick = () => { try { UI.viewImage(mat.img, "材料图.jpg"); } catch (e) {} };
@@ -187,7 +210,7 @@
       const mat = (g && g.mat) || {};
       curMatId = mat.id || ("m" + hash((mat.t || "") + (mat.img || "")));
       matBody.innerHTML = "";
-      if (mat.t) matBody.appendChild(UI.el('<div class="sq-mat-t">' + esc(mat.t).replace(/\n/g, "<br>") + "</div>"));
+      if (mat.t) matBody.appendChild(UI.el('<div class="sq-mat-t">' + matHtml(mat.t) + "</div>"));
       if (mat.img) {
         const im = UI.el('<img class="sq-mat-img" src="' + esc(mat.img) + '" alt="材料图"/>');
         im.onclick = () => { try { UI.viewImage(mat.img, "材料图.jpg"); } catch (e) {} };

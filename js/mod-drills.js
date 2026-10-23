@@ -555,8 +555,8 @@
         if (per !== 0 && n >= (per || 10)) break;
       }
       window.SplitQuiz.startGroups(wrap, sel, "刷题中心", {
-        returnLabel: "‹ 返回刷题中心",
-        returnAction: () => backToHome(),
+        returnLabel: "‹ 返回刷题",
+        returnAction: () => backToDrills(ctx),
         onAnswer: (qq, right) => { try { recordAnswer(qq.__leaf, right); } catch (e) {} },
         onDone: () => { try { DB.save(); checkLevelPopup(); renderBrand(); } catch (e) {} }
       });
@@ -565,8 +565,8 @@
     }
 
       window.Quiz.start(wrap, list, "刷题中心", {
-      returnLabel: "‹ 返回刷题中心",
-      returnAction: () => backToHome(),
+      returnLabel: "‹ 返回刷题",
+      returnAction: () => backToDrills(ctx),
       onAgain: () => startQuiz(node, ctx),
       resume: savedResume,
       onAnswer: (qq, right, ua) => {
@@ -623,7 +623,7 @@
               <option value="100">100 题</option>
               <option value="0">不限（全部）</option>
             </select>
-            <span class="muted small">默认 10 题 · 全屏刷题，点顶部「返回刷题中心」直接退出</span>
+            <span class="muted small">默认 10 题 · 全屏刷题，点顶部「‹ 返回刷题」直接退出</span>
           </div>
         </div>
         <div id="dbList" style="margin-top:10px"></div>
