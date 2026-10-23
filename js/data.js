@@ -687,7 +687,10 @@
     },
     timerReset() {
       const tt = state.taskTimer;
-      tt.accumulated = 0; tt.startTs = 0; tt.running = false; tt.task = ""; tt.planId = null; tt.laps = []; tt.lastTs = 0;
+      /* ★v20261024f 用户死令：清空=全清。旧版漏清 targetMs —— 55 分钟倒计时按「清空」
+         （或被陈旧清理走 timerReset）后 targetMs 残留，而 hasData 又判成「没数据」不清理
+         → 每次打开都是 55:00「未开始（倒计时）」。 */
+      tt.accumulated = 0; tt.startTs = 0; tt.running = false; tt.task = ""; tt.planId = null; tt.targetMs = 0; tt.laps = []; tt.lastTs = 0;
       this.save();
     },
     /* ★v20261023d 陈旧计时清理（用户死令：只保留最新一次；没计时完的才准留下；其他一律不准留）：
@@ -696,16 +699,21 @@
     _purgeStaleTimer() {
       const tt = state.taskTimer;
       if (!tt) return false;
-      const hasData = tt.running || tt.accumulated > 0 || tt.task || tt.startTs > 0 || (tt.laps && tt.laps.length);
+      const hasData = tt.running || tt.accumulated > 0 || tt.task || tt.startTs > 0 || (tt.laps && tt.laps.length) || tt.targetMs > 0;
       if (!hasData) return false;
-      // 运行中看开始时间；暂停/停止态看最后活动时间
-      const last = tt.running ? (tt.startTs || 0) : (tt.lastTs || tt.startTs || 0);
-      if (!last) {                                   // 无时间戳的老数据 → 直接清
+      /* ★v20261024f 只剩 targetMs 的残留态（旧版 timerReset 漏清的历史污染数据）
+         → 整条清，自愈入口：旧机打开一次即归零。 */
+      if (!tt.running && !(tt.accumulated > 0) && !tt.task && !tt.startTs && !(tt.laps && tt.laps.length)) {
         this.timerReset(); return true;
       }
-      if (this.fmtDate(new Date(last)) !== this.today()) {
-        this.timerReset(); return true;
+      // 运行中看开始时间：跨天还在跑 = 忘了停的旧节 → 清
+      if (tt.running) {
+        const st = tt.startTs || 0;
+        if (!st || this.fmtDate(new Date(st)) !== this.today()) { this.timerReset(); return true; }
+        return false;
       }
+      /* ★v20261024f 暂停中未结算 = 「最新一次且未完成」→ 按死令原样保留（含剩余时间：
+         上次停剩 4:58，重开就是 4:58，跨天也保留）；结算走 timerStop 全清 → 显示 0:00。 */
       return false;
     },
     getTodaySubjectMinutes(subject) {
