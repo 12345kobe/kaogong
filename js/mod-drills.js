@@ -396,6 +396,13 @@
     const p = pctOf(node);
     const s = aggStat(node);
     const hasKids = kids.length > 0;
+    /* ★v20261024j 续刷标记：该目录有未完成的刷题进度 → 行右侧蓝色「继续刷 ›」。
+       点蓝字 = 恢复上次进度（题目顺序/已答答案原样填回）；点行其它位置 = 抽新题。 */
+    let resumeHtml = "";
+    if (progResumable(node)) {
+      const sv = progRead(node);
+      resumeHtml = `<span class="db-resume" title="从上次刷到的地方继续（已答 ${sv.at}/${sv.ids.length}，点此续刷）">继续刷 ›</span>`;
+    }
     const row = document.createElement("div");
     row.className = "db-row" + (hasKids ? " has-kids" : "");
     row.style.paddingLeft = (8 + depth * 18) + "px";
@@ -405,8 +412,11 @@
       <span class="db-meta">
         <span class="db-cnt">${s.done}/${total} 题</span>
         ${p != null ? `<span class="db-acc">${Math.round(p * 100)}%</span>` : ""}
+        ${resumeHtml}
         ${moons(node)}
       </span>`;
+    const rsBtn = row.querySelector(".db-resume");
+    if (rsBtn) rsBtn.onclick = (e) => { e.stopPropagation(); startQuiz(node, ctx, true); };
     if (hasKids) {
       const childBox = document.createElement("div");
       childBox.className = "db-kids";
@@ -436,10 +446,13 @@
   function progGet() { try { return (window.DB.state.drillProgress = window.DB.state.drillProgress || {}); } catch (e) { return {}; } }
   function progRead(node) { const m = progGet(); return m[node.id] || null; }
   /* v20261019a：progress 增加 answers（每题的用户作答 ua），未交卷退出也能原样续答 */
+  /* ★v20261024j：全部答完（at >= ids.length）→ 直接删除该条进度记录（续刷标记消失）；
+     只要有提交过的就留记录，刷完了就不该再显示「继续刷」。 */
   function progSave(node, ids, at, answers) {
     try {
       const m = progGet();
-      m[node.id] = { ids: ids, at: Math.max(0, Math.min(at, ids.length)), answers: answers || [], ts: Date.now() };
+      if (!ids || !ids.length || at >= ids.length) { delete m[node.id]; }
+      else m[node.id] = { ids: ids, at: Math.max(0, Math.min(at, ids.length)), answers: answers || [], ts: Date.now() };
       window.DB.save();
     } catch (e) {}
   }
@@ -453,28 +466,36 @@
     qs.forEach(q => { if (out.indexOf(q) < 0) out.push(q); });
     return out;
   }
-  /* 继续/重来 询问弹窗：返回 Promise<boolean>（true=从上次继续） */
-  function askResume(node, at, total) {
-    return new Promise(resolve => {
-      const mask = UI.el(`<div class="modal-mask"><div class="modal" style="max-width:380px;text-align:center">
-        <h3 style="margin:0 0 6px">继续上次刷题？</h3>
-        <div class="muted small">「${esc(node.name)}」上次刷到第 <b>${at}</b> 题（共 ${total} 题）<br>已答题目会原样填回，接着写就行</div>
-        <div class="row" style="justify-content:center;gap:10px;margin-top:16px">
-          <button class="btn ghost" id="rsNew">从头开始</button>
-          <button class="btn primary" id="rsGo">继续（答案已记住）</button>
-        </div>
-      </div></div>`);
-      document.body.appendChild(mask);
-      const close = v => { mask.remove(); resolve(v); };
-      mask.querySelector("#rsGo").onclick = () => close(true);
-      mask.querySelector("#rsNew").onclick = () => close(false);
-      mask.onclick = e => { if (e.target === mask) close(false); };
+  /* ★v20261024j 按上次保存的题目顺序还原「材料组」顺序 + 组内顺序：
+     组排序键 = 组内题目在 ids 中最早出现的位置；组内题目也按 ids 顺序排回。 */
+  function orderGroupsBySaved(groups, ids) {
+    if (!ids || !ids.length) return groups;
+    const pos = {};
+    ids.forEach((s, i) => { if (!(s in pos)) pos[s] = i; });
+    const keyed = groups.map((g, gi) => {
+      const qs = (g.qs || []).slice();
+      qs.sort((a, b) => {
+        const pa = (qSig(a) in pos) ? pos[qSig(a)] : 1e9;
+        const pb = (qSig(b) in pos) ? pos[qSig(b)] : 1e9;
+        return pa - pb;
+      });
+      let min = Infinity;
+      qs.forEach(q => { const p = pos[qSig(q)]; if (p != null && p < min) min = p; });
+      return { mat: g.mat, qs: qs, key: min === Infinity ? (ids.length + gi) : min };
     });
+    keyed.sort((a, b) => a.key - b.key);
+    return keyed;
+  }
+  /* ★v20261024j 判断某目录是否有「可续刷」的未完成进度 */
+  function progResumable(node) {
+    const s = progRead(node);
+    return !!(s && Array.isArray(s.ids) && s.ids.length && s.at > 0 && s.at < s.ids.length);
   }
 
   /* 全屏刷题（v20261018c 用户要求）：进入答题隐藏侧栏/顶栏铺满屏，点返回即退出并回到刷题中心 */
   function enterFull() { document.body.classList.add("kg-dq-full"); window.scrollTo(0, 0); }
-  function exitFull() { document.body.classList.remove("kg-dq-full"); }
+  /* ★v20261024j 同时摘掉「分栏铺满」标记（kg-sq-wide），恢复列表页 820px 居中排版 */
+  function exitFull() { document.body.classList.remove("kg-dq-full"); document.body.classList.remove("kg-sq-wide"); }
   /* ★返回刷题中心：路由本来就是 #/drills（答题是原地重画 body），
      直接赋同样的 hash 不会触发 hashchange → 老版本按钮「点了没反应」。
      这里判定：hash 已是 #/drills 就原地重渲染，否则走路由跳转。 */
@@ -513,79 +534,145 @@
     return out;
   }
 
-  async function startQuiz(node, ctx) {
+  async function startQuiz(node, ctx, forceResume) {
     const DB = window.DB, UI = window.UI;
     /* ★v20261019a 幽灵点击/误触保护：刚点过「返回刷题中心」900ms 内的进入请求忽略
        （返回后列表重建，旧按钮坐标上的延迟点击会落到新行上又进答题=「自动弹回刷题」） */
     if (Date.now() - (window.__kgBackAt || 0) < 900) return;
-    let qs = collectQs(node).slice();
-    shuffle(qs);
-    let per = ctx.per();
-    if (per !== 0) { per = per || 10; if (qs.length > per) qs = qs.slice(0, per); } // per=0 表示不限题量
-    if (!qs.length) { UI.toast("该目录暂无题目"); return; }
-
-    /* ---- 上次进度：顺序还原 + 询问是否继续 ---- */
+    /* ★v20261024j 续刷模式：只有点行右侧蓝色「继续刷 ›」才 forceResume=true；
+       点行其它位置一律抽新题（旧进度被新会话覆盖）。 */
     const saved = progRead(node);
-    if (saved && saved.ids && saved.ids.length) qs = orderBySaved(qs, saved.ids);
-    let startAt = 0;
-    if (saved && saved.at > 0 && saved.at < qs.length) {
-      try { const go = await askResume(node, saved.at, qs.length); startAt = go ? saved.at : 0; } catch (e) { startAt = 0; }
-    }
-    const ids = qs.map(qSig);
-    const list = qs.slice(startAt);
-    if (!list.length) { UI.toast("本组题目已刷完，已从头开始"); progSave(node, ids, 0); }
+    const resumeMode = !!forceResume && progResumable(node);
 
     const body = ctx.body;
     body.innerHTML = "";
     const wrap = UI.el(`<div class="quiz-host"></div>`);
     body.appendChild(wrap);
-    const back = UI.el(`<div class="dq-topbar">
-      <span class="muted small">「${esc(node.name)}」随机 ${list.length} 题${startAt ? " · 从第 " + (startAt + 1) + " 题继续" : ""}</span></div>`);
-    body.insertBefore(back, wrap);
-    enterFull();
-    /* 答题进度：每答一题把「下一题下标+已答答案」写回，未交卷退出也能原样续答 */
-    let answered = 0;
-    const answers = new Array(ids.length).fill(null);
-    if (saved && Array.isArray(saved.answers)) { for (let i = 0; i < saved.answers.length && i < answers.length; i++) answers[i] = saved.answers[i]; }
-    const savedResume = { answers: answers, at: startAt };
-    /* 记录每个 leaf 的刷前正确率（进步/退步弹窗用） */
-    const beforeMap = {};
-    list.forEach(q => { if (!(q.__leaf in beforeMap)) { const st = statMap()[q.__leaf]; beforeMap[q.__leaf] = st && st.done ? st.right / st.done : null; } });
 
     /* ★材料类题目（资料分析/数量关系）：按「整篇材料」分组，分栏刷题（上材料/下题目，横屏左右）
-       题量 N 决定取材篇数：累加到 ≥N 篇为止（选 10 题＝2 篇材料，每组 5 题）。 */
+       题量 N 决定取材篇数：累加到 ≥N 篇为止（选 10 题＝2 篇材料，每组 5 题）。
+       ★v20261024j 材料组接入进度记忆：ids=按组顺序展开的扁平题指纹；at=刷到的扁平下标；
+       answers=每题用户作答。续刷时按保存顺序还原组顺序+组内顺序，已答原样填回。 */
     const groups = collectGroups(node);
     if (groups.length && window.SplitQuiz) {
-      shuffle(groups);
-      let sel = [], n = 0;
-      for (let i = 0; i < groups.length; i++) {
-        sel.push(groups[i]); n += groups[i].qs.length;
-        if (per !== 0 && n >= (per || 10)) break;
+      let sel;
+      if (resumeMode) {
+        sel = orderGroupsBySaved(groups, saved.ids);
+      } else {
+        shuffle(groups);
+        sel = [];
+        let per = ctx.per(); if (per !== 0) per = per || 10;
+        let n = 0;
+        for (let i = 0; i < groups.length; i++) {
+          sel.push(groups[i]); n += groups[i].qs.length;
+          if (per !== 0 && n >= per) break;
+        }
       }
+      const flat = [];
+      sel.forEach(g => g.qs.forEach(q => flat.push(q)));
+      const ids = flat.map(qSig);
+      if (!ids.length) { UI.toast("该目录暂无题目"); return; }
+      let startAt = 0;
+      const answers = new Array(ids.length).fill(null);
+      if (resumeMode) {
+        startAt = Math.min(saved.at, ids.length - 1);
+        if (Array.isArray(saved.answers)) { for (let i = 0; i < saved.answers.length && i < answers.length; i++) answers[i] = saved.answers[i]; }
+      } else {
+        progSave(node, ids, 0, answers);   // 新开一组：旧进度记录清掉（没提交过的本来就不留）
+      }
+      const back = UI.el(`<div class="dq-topbar">
+        <span class="muted small">「${esc(node.name)}」${resumeMode ? "续刷" : "随机"} ${ids.length - startAt} 题${resumeMode ? " · 从第 " + (startAt + 1) + " 题继续（已答原样填回）" : ""}</span></div>`);
+      body.insertBefore(back, wrap);
+      enterFull();
+      /* 记录每个 leaf 的刷前正确率（进步/退步弹窗用） */
+      const beforeMap = {};
+      flat.forEach(q => { if (q.__leaf && !(q.__leaf in beforeMap)) { const st = statMap()[q.__leaf]; beforeMap[q.__leaf] = st && st.done ? st.right / st.done : null; } });
+
+      /* 每答一题把「扁平下标的作答」写回进度（提交过的才算数：at 推进到该题之后）。
+         题目指纹全树唯一 → 直接按指纹定位组/组内下标，不依赖组序号回传。 */
+      let curAt = startAt;
+      const flatOffsets = [];
+      { let off = 0; sel.forEach(g => { flatOffsets.push(off); off += g.qs.length; }); }
+      const saveAnswer = (qq, ua) => {
+        try {
+          const sig = qSig(qq);
+          for (let gi = 0; gi < sel.length; gi++) {
+            const g = sel[gi];
+            for (let li = 0; li < g.qs.length; li++) {
+              if (qSig(g.qs[li]) !== sig) continue;
+              const fi = flatOffsets[gi] + li;
+              answers[fi] = (ua === undefined ? null : ua);
+              if (fi + 1 > curAt) curAt = fi + 1;
+              progSave(node, ids, curAt, answers);
+              return;
+            }
+          }
+        } catch (e) {}
+      };
       window.SplitQuiz.startGroups(wrap, sel, "刷题中心", {
         returnLabel: "‹ 返回刷题",
         returnAction: () => backToDrills(ctx),
-        onAnswer: (qq, right) => { try { recordAnswer(qq.__leaf, right); } catch (e) {} },
+        resumeAnswers: answers,
+        onAnswer: (qq, right, ua) => {
+          try { if (qq.__leaf) recordAnswer(qq.__leaf, right); } catch (e) {}
+          saveAnswer(qq, ua);
+        },
         onDone: () => { try { DB.save(); checkLevelPopup(); renderBrand(); } catch (e) {} }
       });
       window.scrollTo(0, 0);
       return;
     }
 
-      window.Quiz.start(wrap, list, "刷题中心", {
+    /* ---- 普通题列表 ---- */
+    let qs = collectQs(node).slice();
+    if (resumeMode) qs = orderBySaved(qs, saved.ids); else shuffle(qs);
+    let per = ctx.per();
+    if (per !== 0) { per = per || 10; if (qs.length > per) qs = qs.slice(0, per); } // per=0 表示不限题量
+    if (!qs.length) { UI.toast("该目录暂无题目"); return; }
+    const ids = qs.map(qSig);
+    let startAt = 0;
+    const answers = new Array(ids.length).fill(null);
+    if (resumeMode) {
+      startAt = Math.min(saved.at, ids.length - 1);
+      if (Array.isArray(saved.answers)) { for (let i = 0; i < saved.answers.length && i < answers.length; i++) answers[i] = saved.answers[i]; }
+    } else {
+      progSave(node, ids, 0, answers);   // 新开一组：旧进度记录清掉
+    }
+    const list = qs.slice(startAt);
+    if (!list.length) { UI.toast("本组题目已刷完，已从头开始"); startAt = 0; progSave(node, ids, 0, answers); }
+
+    const back = UI.el(`<div class="dq-topbar">
+      <span class="muted small">「${esc(node.name)}」${resumeMode ? "续刷" : "随机"} ${list.length} 题${resumeMode ? " · 从第 " + (startAt + 1) + " 题继续" : ""}</span></div>`);
+    body.insertBefore(back, wrap);
+    enterFull();
+    /* 记录每个 leaf 的刷前正确率（进步/退步弹窗用） */
+    const beforeMap = {};
+    list.forEach(q => { if (q.__leaf && !(q.__leaf in beforeMap)) { const st = statMap()[q.__leaf]; beforeMap[q.__leaf] = st && st.done ? st.right / st.done : null; } });
+
+    /* 已答计数（续刷的预填题不重复计数；按指纹定位推进） */
+    let answered = 0;
+    window.Quiz.start(wrap, list, "刷题中心", {
       returnLabel: "‹ 返回刷题",
       returnAction: () => backToDrills(ctx),
       onAgain: () => startQuiz(node, ctx),
-      resume: savedResume,
+      resume: { answers: answers.slice(startAt) },
       onAnswer: (qq, right, ua) => {
-        try { recordAnswer(qq.__leaf, right); } catch (e) {}
-        answers[startAt + answered] = (ua === undefined ? null : ua);
-        answered++;
-        try { progSave(node, ids, startAt + answered, answers); } catch (e) {}
+        try { if (qq.__leaf) recordAnswer(qq.__leaf, right); } catch (e) {}
+        /* 按「题目指纹」定位扁平下标（顺序被打乱/截断也能对上）；提交过的才算数 */
+        try {
+          const sig = qSig(qq);
+          let fi = -1;
+          for (let i = startAt; i < qs.length; i++) { if (ids[i] === sig) { fi = i; break; } }
+          if (fi >= 0) {
+            answers[fi] = (ua === undefined ? null : ua);
+            answered++;
+            progSave(node, ids, Math.min(ids.length, fi + 1), answers);
+          }
+        } catch (e) {}
       },
       onDone: () => {
         try {
-          progSave(node, ids, startAt + answered >= ids.length ? 0 : startAt + answered, answers);
+          progSave(node, ids, ids.length, answers);   // 交卷=全部提交 → 续刷标记清除
           DB.save();
           /* ①正确率进步/退步弹窗：取本组题目涉及 leaf 的「刷前正确率」vs「当前正确率」聚合对比 */
           let hasBefore = false, sumB = 0, nB = 0, sumA = 0, nA = 0;

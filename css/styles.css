@@ -103,6 +103,10 @@ h1,#pageTitle,.page-title,.fc-big,.countdown-num{ font-weight:700; }
 .db-row .db-meta{display:flex;align-items:center;gap:8px;flex:0 0 auto}
 .db-row .db-cnt{font-size:11px;color:var(--txt-dim);font-weight:600}
 .db-row .db-acc{font-size:11px;font-weight:800;color:var(--cyan)}
+/* ★v20261024j 续刷标记：目录行右侧蓝色「继续刷 ›」，点它恢复上次进度；点行其它位置=抽新题 */
+.db-row .db-resume{font-size:12px;font-weight:800;color:#1e6fff;cursor:pointer;white-space:nowrap;
+  padding:2px 8px;border-radius:999px;background:rgba(30,111,255,.10)}
+.db-row .db-resume:active{opacity:.65}
 .db-row .kk-moons{font-size:11px;letter-spacing:-1px}
 .kk-moon-none{opacity:.55}
 .db-kids{border-left:2px solid var(--line);margin-left:14px}
@@ -1620,6 +1624,11 @@ body.kg-dq-full #pageBody{max-width:820px;margin:0 auto;padding:0 12px calc(40px
 .sq-quiz{flex:1 1 0;min-height:0;min-width:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:10px 12px 60px}
 /* 分栏内 Quiz 卡片稍收紧 */
 .sq-quiz .quiz-q{padding:12px 12px}
+/* ★v20261024j 写题页铺满屏幕（用户死命令）：分栏刷题时 820px 居中限宽取消，
+   左右空白全部让给材料/题目两栏；高度只扣顶部两条返回/标题栏，写题观感更满 */
+body.kg-dq-full.kg-sq-wide #pageBody{max-width:none;padding:0}
+body.kg-dq-full.kg-sq-wide .sq-wrap{height:calc(100vh - 92px);height:calc(100dvh - 92px)}
+body.kg-dq-full.kg-sq-wide .sq-mat-body{padding:12px 14px 70px}
 
 /* ===== 主题化导航图标（水墨武侠 / 可爱贴纸 / 自定义emoji） ===== */
 .nav-ico-wrap{display:inline-flex;align-items:center;justify-content:center}

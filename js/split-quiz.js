@@ -50,6 +50,7 @@
 
   function start(host, mat, questions, subject, opts) {
     opts = opts || {};
+    try { document.body.classList.add("kg-sq-wide"); } catch (e) {}   /* ★v20261024j 写题页铺满左右 */
     mat = mat || {};
     stripDupImgs(questions, mat);
     const matId = mat.id || ("m" + hash((mat.t || "") + (mat.img || "")));
@@ -140,9 +141,12 @@
 
   /* ===== 多组「材料+5题」逐组刷（v20261018d 用户要求：选 10 题＝2 篇材料，一组一组来） =====
      groups = [{ mat:{t,img,id}, qs:[...] }, ...]
-     答完当前组的全部题目 → 材料面板换成下一组，题目区重建；最后一组答完才调 opts.onDone。 */
+     答完当前组的全部题目 → 材料面板换成下一组，题目区重建；最后一组答完才调 opts.onDone。
+     ★v20261024j 断点续答：opts.resumeAnswers = 扁平数组（按 groups 顺序展开的全部题目答案，
+     单选 int / 多选 int 数组 / null 未答），每组进入时切片传给 Quiz 引擎原样填回。 */
   function startGroups(host, groups, subject, opts) {
     opts = opts || {};
+    try { document.body.classList.add("kg-sq-wide"); } catch (e) {}   /* ★v20261024j 写题页铺满左右 */
     groups = (groups || []).filter(g => g && g.qs && g.qs.length);
     if (!groups.length) { UI.toast("该目录暂无题目"); return; }
     host.innerHTML = "";
@@ -202,6 +206,9 @@
     window.addEventListener("mouseup", mu); window.addEventListener("touchend", mu);
 
     let gi = 0, hwSubject = "sqmat|" + subject;
+    /* ★v20261024j 每组在扁平答案数组里的起始下标（供续答切片） */
+    const groupOffsets = [];
+    { let off = 0; groups.forEach(g => { groupOffsets.push(off); off += g.qs.length; }); }
     const bigBtn = matHead.querySelector(".sq-bigimg");
     const idxLabel = matHead.querySelector(".sq-midx");
     let curMatId = "";
@@ -239,9 +246,16 @@
       let done = 0;
       /* ★v20261022c 返回条由 startGroups 统一渲染（sq-back），Quiz 引擎不再重复出返回按钮 */
       const noBack = { returnLabel: null, returnAction: null, homeLabel: null, homeAction: null };
+      /* ★v20261024j 断点续答：把扁平答案数组切出本组那段，交给 Quiz 引擎原样填回 */
+      let resume = null;
+      if (opts.resumeAnswers && Array.isArray(opts.resumeAnswers)) {
+        const slice = opts.resumeAnswers.slice(groupOffsets[i], groupOffsets[i] + g.qs.length);
+        if (slice.some(x => x != null)) resume = { answers: slice };
+      }
       window.Quiz.start(quizPane, g.qs, subject, Object.assign({}, opts, noBack, {
-        onAnswer: (qq, right) => {
-          try { if (opts.onAnswer) opts.onAnswer(qq, right); } catch (e) {}
+        resume: resume,
+        onAnswer: (qq, right, ua) => {
+          try { if (opts.onAnswer) opts.onAnswer(qq, right, ua, i); } catch (e) {}
           done++;
           if (done >= g.qs.length) nextBtn();      // 本组答完 → 出现「下一组」
         },

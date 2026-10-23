@@ -303,7 +303,7 @@
     const raw = (location.hash.replace("#/", "") || "countdown");
     try { if (window.Pager) window.Pager.exitSub(); } catch (e) {}
     // 离开全屏刷题（路由切换 / 侧栏跳转）：清掉全屏标记，恢复侧栏与顶栏
-    try { if (raw.split("/")[0] !== "drills") document.body.classList.remove("kg-dq-full"); } catch (e) {}
+    try { if (raw.split("/")[0] !== "drills") { document.body.classList.remove("kg-dq-full"); document.body.classList.remove("kg-sq-wide"); } } catch (e) {}
     // 二级及以上子页面：方格入口跳转进来的「内容区全屏页」（子页在模块渲染后注册）
     if (raw.indexOf("/") > 0 && window.Pager && window.Pager.has(raw)) {
       try { if (window.Pager.render(raw)) { lastKey = raw; return; } } catch (e) { console.error(e); }
@@ -1204,6 +1204,7 @@
         e.preventDefault(); e.stopPropagation();
         window.__kgBackAt = Date.now();   // 防返回后幽灵点击又进答题（mod-drills startQuiz 有 900ms 守卫）
         document.body.classList.remove("kg-dq-full");
+        document.body.classList.remove("kg-sq-wide");
         const body = document.getElementById("pageBody");
         try {
           if (String(location.hash || "") !== "#/drills") { location.hash = "#/drills"; }

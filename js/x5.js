@@ -157,7 +157,7 @@
        直接赋相同 hash 不触发 hashchange（老 bug）——hash 相同就原地重渲染刷题中心。
        全屏类先退全屏；异常时退回 hash 赋值兜底。 */
     function goDrills() {
-      try { document.body.classList.remove("kg-dq-full"); } catch (e) {}
+      try { document.body.classList.remove("kg-dq-full"); document.body.classList.remove("kg-sq-wide"); } catch (e) {}
       try {
         window.__kgBackAt = Date.now();
         if (String(location.hash || "") !== "#/drills") { location.hash = "#/drills"; return; }
@@ -202,12 +202,20 @@
   }
 
   /* ---------- 注入刷题中心树 ---------- */
+  /* ★v20261024j 给 x5000 树每个节点补稳定 id（x5.zl.0.1…）：原数据节点没有 id，
+     刷题中心的「刷题进度/继续刷」按 node.id 存取 —— 没有 id 全部挤进 undefined 一条记录。 */
+  function tagIds(node, prefix) {
+    if (!node) return;
+    if (!node.id) node.id = prefix;
+    (node.children || []).forEach((c, i) => tagIds(c, prefix + "." + i));
+  }
   function drillsSubjects() {
     const out = [];
     const X = getX();
     [["zl", "行测5000题·资料分析"], ["sl", "行测5000题·数量关系"]].forEach(([k, name]) => {
       const b = X[k];
       if (!b || !b.tree) return;
+      tagIds(b.tree, "x5." + k);
       out.push({ id: "x5." + k, name: name, children: b.tree.children || [] });
     });
     return out;

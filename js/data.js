@@ -138,6 +138,7 @@
     hotspotsEdits: {}, // 时事热点用户修改：{ [hotspotId]: { title, body, summary } }
     theme: { name: "wuxia", mode: "auto", customBg: "", customColor: "", emojis: {}, accent: "", iosGlass: false, glassLevel: 50, customBlur: 50 }, // 主题：name/mode/customBg/customColor/accent/emojis；iosGlass=iOS透明键；glassLevel=0透明~100色调（Liquid Glass，同时控制反光感）；customBlur=自定义背景模糊%
     examMode: "shengkao", // 考试模式："shengkao"省考（默认）/ "guokao"国考；决定各模块限时刷题配速（见 js/exam-mode.js）
+    drillProgress: {}, // ★v20261024j 刷题续刷进度：{ 目录id: {ids:[题指纹], at:刷到下标, answers:[每题作答], ts} }，随云端同步（跨设备「继续刷」）
     examQuiz: null // 最近一次限时刷题：{subject, subjectShort, count, mins, mode, at}（结束时弹窗用）
   };
 
@@ -775,6 +776,8 @@
          通用 fill 兜底会无脑递归创建对象键，把云端未清洗明细补回来 → 先摘掉再 fill。 */
       const bFill = Object.assign({}, b);
       delete bFill.qTotal; delete bFill.qDaily;
+      /* ★v20261024j 刷题续刷进度显式合并（下面按 ts 取新），不走通用 fill 兜底 */
+      delete bFill.drillProgress;
       const S = (x) => (x == null ? "" : String(x));
 
       // 已学习历史 { key: { 'YYYY-MM-DD': [id...] } } → 按天取并集
@@ -1088,6 +1091,15 @@
           const A = out.drillStat[k], B = b.drillStat[k] || {};
           out.drillStat[k] = !A ? { done: B.done || 0, right: B.right || 0 }
             : { done: Math.max(A.done || 0, B.done || 0), right: Math.max(A.right || 0, B.right || 0) };
+        }
+      }
+      // ★v20261024j 刷题续刷进度：按目录取 ts 较新的一份（另一台设备刷到哪，这边拉下来就能「继续刷」）
+      const dprIn = b.drillProgress || {};
+      if (Object.keys(dprIn).length) {
+        out.drillProgress = out.drillProgress || {};
+        for (const k in dprIn) {
+          const A = out.drillProgress[k], B = dprIn[k];
+          if (!A || (((B && B.ts) || 0) > ((A && A.ts) || 0))) out.drillProgress[k] = B;
         }
       }
       // 时事热点用户修改：缺的补、有的取更完整的一份
