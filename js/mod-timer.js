@@ -52,6 +52,8 @@
 
       function render() {
         if (iv) { clearInterval(iv); iv = null; }
+        /* ★v20261024g 渲染前自检：非今天的旧计时（暂停节/残留）直接清掉，绝不显示 */
+        try { DB._purgeStaleTimer && DB._purgeStaleTimer(); } catch (e) {}
         const s = DB.timerState();
         const plan = DB.getPlan(date);
         const running = s.running;
@@ -206,7 +208,10 @@
             const it = plan.items.find(x => x.id === planId);
             if (it && task && it.text !== task) it.text = task;
           }
-          DB.timerStart(task || (planId ? "" : "专注学习"), planId, targetMs, subject);
+          /* ★v20261023d 只有「继续同一节」（任务名未改、时长未改）才继承暂停进度；
+             改了任务名/时长 = 全新一节，旧 accumulated 不准残留（用户死令）。 */
+          const resume = !running && !!s.task && (!task || task === s.task) && targetMs === (s.targetMs || 0);
+          DB.timerStart(task || (planId ? "" : "专注学习"), planId, targetMs, subject, resume);
           render();
           window.__updateTopTimer && window.__updateTopTimer();
         };

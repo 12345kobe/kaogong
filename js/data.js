@@ -712,8 +712,11 @@
         if (!st || this.fmtDate(new Date(st)) !== this.today()) { this.timerReset(); return true; }
         return false;
       }
-      /* ★v20261024f 暂停中未结算 = 「最新一次且未完成」→ 按死令原样保留（含剩余时间：
-         上次停剩 4:58，重开就是 4:58，跨天也保留）；结算走 timerStop 全清 → 显示 0:00。 */
+      /* ★v20261024g 用户死令（覆盖 24f 语义）：暂停中未结算的计时**只保留今天的**；
+         昨天及更早的暂停节 = 「很久之前的记录」，一律整条清除，重开显示 0:00。
+         （当天暂停未结算的才保留剩余时间：上次停剩 4:58，重开就是 4:58。） */
+      const lastPause = tt.lastTs || tt.startTs || 0;
+      if (!lastPause || this.fmtDate(new Date(lastPause)) !== this.today()) { this.timerReset(); return true; }
       return false;
     },
     getTodaySubjectMinutes(subject) {
@@ -1173,7 +1176,11 @@
         this.checkCloud();      // 云端有变 → 拉取合并
       };
       this._autoTimer = setInterval(tick, ms);
-      const onWake = () => { if (document.visibilityState === "visible") { this.syncIfDirty(); this.checkCloud(); } };
+      const onWake = () => { if (document.visibilityState === "visible") {
+        /* ★v20261024g 唤醒/联网时也跑一次陈旧计时清理（防后台恢复后旧暂停节仍在） */
+        try { if (this._purgeStaleTimer()) { try { window.UI && UI.refresh && UI.refresh(); } catch (e) {} } } catch (e) {}
+        this.syncIfDirty(); this.checkCloud();
+      } };
       document.addEventListener("visibilitychange", onWake);
       window.addEventListener("focus", onWake);
       window.addEventListener("online", onWake);
