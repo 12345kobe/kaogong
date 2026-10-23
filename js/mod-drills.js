@@ -487,6 +487,13 @@
     if (String(location.hash || "").replace("#/", "") === "drills") { try { ctx.render(); } catch (e) { location.reload(); } }
     else { try { location.hash = "#/drills"; } catch (e) {} }
   }
+  /* ★v20261023 返回主屏幕（科举/五大模块首页 #/countdown），不再回刷题中心子页；
+     刷题页只保留 Quiz/SplitQuiz 自带的唯一返回键，避免「返回刷题中心×2」叠两行。 */
+  function backToHome() {
+    exitFull();
+    window.__kgBackAt = Date.now();
+    try { location.hash = "#/countdown"; } catch (e) {}
+  }
 
   /* 材料组收集：资料分析/数量关系等「一篇材料配 5 题」的节点整组取出，不切断材料 */
   function collectGroups(node) {
@@ -525,10 +532,8 @@
     const wrap = UI.el(`<div class="quiz-host"></div>`);
     body.appendChild(wrap);
     const back = UI.el(`<div class="dq-topbar">
-      <button class="btn xs ghost" id="dbBack">‹ 返回刷题中心</button>
       <span class="muted small">「${esc(node.name)}」随机 ${list.length} 题${startAt ? " · 从第 " + (startAt + 1) + " 题继续" : ""}</span></div>`);
     body.insertBefore(back, wrap);
-    back.querySelector("#dbBack").onclick = () => backToDrills(ctx);
     enterFull();
     /* 答题进度：每答一题把「下一题下标+已答答案」写回，未交卷退出也能原样续答 */
     let answered = 0;
@@ -551,7 +556,7 @@
       }
       window.SplitQuiz.startGroups(wrap, sel, "刷题中心", {
         returnLabel: "‹ 返回刷题中心",
-        returnAction: () => backToDrills(ctx),
+        returnAction: () => backToHome(),
         onAnswer: (qq, right) => { try { recordAnswer(qq.__leaf, right); } catch (e) {} },
         onDone: () => { try { DB.save(); checkLevelPopup(); renderBrand(); } catch (e) {} }
       });
@@ -561,7 +566,7 @@
 
       window.Quiz.start(wrap, list, "刷题中心", {
       returnLabel: "‹ 返回刷题中心",
-      returnAction: () => backToDrills(ctx),
+      returnAction: () => backToHome(),
       onAgain: () => startQuiz(node, ctx),
       resume: savedResume,
       onAnswer: (qq, right, ua) => {

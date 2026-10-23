@@ -424,7 +424,7 @@
       ctx.save();
       ctx.translate(450, 0); ctx.scale(1 + br * 0.006, 1 + br * 0.004); ctx.translate(-450, 0);
       /* 颈 */
-      ell(ctx, 450, 532, 24, (female ? 31 : 27) * (1 - sk.sleep * 0.45));
+      ell(ctx, 450, 540, 24, (female ? 38 : 41) * (1 - sk.sleep * 0.45));
       ctx.fillStyle = lg(ctx, 450, 508, 450, 560, [[0, P.skinS], [1, P.skinM]]);
       ctx.fill();
       ctx.fillStyle = "rgba(190,130,100,.22)";   // 颌下影
@@ -435,10 +435,10 @@
       ctx.beginPath(); ctx.moveTo(480, 566); ctx.quadraticCurveTo(464, 578, 452, 572); ctx.stroke();
 
       if (female) {
-        /* 上襦（月白，收腰） */
+        /* 上襦（月白，收腰）★v20261023 圆润肩：颈根下凹 + 肩峰外凸，去掉平板直线 */
         smooth(ctx, [
-          [314, 598 + rise], [306, 700], [358, 800], [378, 838],
-          [522, 838], [542, 800], [594, 700], [586, 598 + rise]
+          [410, 576 + rise], [350, 590 + rise], [312, 648], [300, 730], [336, 808], [362, 838],
+          [522, 838], [548, 808], [584, 730], [572, 648], [550, 590 + rise], [490, 576 + rise]
         ], true);
         ctx.fillStyle = lg(ctx, 450, 590, 450, 850, [
           [0, P.clothL], [.5, P.clothM], [1, P.clothS]]);
@@ -512,10 +512,10 @@
         /* 披帛（白纱，绕臂垂落） */
         drawVeil(ctx, sk);
       } else {
-        /* 男：深青交领长衫 */
+        /* 男：深青交领长衫 ★v20261023 圆润肩：颈根下凹 + 肩峰外凸 */
         smooth(ctx, [
-          [336, 596 + rise], [326, 720], [358, 860], [372, 900],
-          [528, 900], [542, 860], [574, 720], [564, 596 + rise]
+          [404, 580 + rise], [346, 596 + rise], [322, 656], [318, 740], [354, 868], [372, 900],
+          [528, 900], [546, 868], [582, 740], [578, 656], [554, 596 + rise], [496, 580 + rise]
         ], true);
         ctx.fillStyle = lg(ctx, 450, 590, 450, 920, [
           [0, P.robeL], [.5, P.robe], [1, P.robeD]]);
@@ -808,6 +808,21 @@
     function drawHairFront(ctx, sk, female) {
       const t = sk.t;
       ctx.save();
+      /* ★v20261023 额前刘海（覆盖额头至眉上，绝不秃——参考图①） */
+      smooth(ctx, [
+        [380, 314], [376, 346], [388, 366], [412, 374], [436, 372],
+        [450, 376], [464, 372], [488, 374], [512, 366], [524, 346], [520, 314]
+      ], true);
+      ctx.fillStyle = lg(ctx, 450, 306, 450, 380, [[0, P.hairL], [.5, P.hairM], [1, P.hairD]]);
+      ctx.fill();
+      ctx.save(); ctx.clip();
+      for (let i = 0; i < 9; i++) {            // 刘海发丝纹理（竖向 + 弧度）
+        const px = 392 + i * 14;
+        smooth(ctx, [[px, 316], [px + 2, 350], [px - 2, 374]]);
+        ctx.strokeStyle = i % 2 ? "rgba(255,230,195,.10)" : "rgba(0,0,0,.22)";
+        ctx.lineWidth = 3; ctx.stroke();
+      }
+      ctx.restore();
       /* 中分发缝 + 两侧垂发片（★贴脸侧下垂，露出完整眉眼——参考图①） */
       /* 左垂发片 */
       smooth(ctx, [
@@ -958,6 +973,21 @@
     function drawHairFrontM(ctx, sk) {
       const t = sk.t;
       ctx.save();
+      /* ★v20261023 额前刘海（覆盖秃顶前额至眉上） */
+      smooth(ctx, [
+        [390, 310], [386, 344], [398, 364], [424, 370], [450, 366],
+        [476, 370], [502, 364], [514, 344], [510, 310]
+      ], true);
+      ctx.fillStyle = lg(ctx, 450, 302, 450, 372, [[0, P.hairL], [.5, P.hairM], [1, P.hairD]]);
+      ctx.fill();
+      ctx.save(); ctx.clip();
+      for (let i = 0; i < 8; i++) {
+        const px = 402 + i * 13;
+        smooth(ctx, [[px, 312], [px + 2, 346], [px - 1, 368]]);
+        ctx.strokeStyle = i % 2 ? "rgba(255,230,195,.10)" : "rgba(0,0,0,.22)";
+        ctx.lineWidth = 3; ctx.stroke();
+      }
+      ctx.restore();
       smooth(ctx, [
         [452, 312], [414, 320], [396, 352], [394, 396],
         [404, 428], [428, 420], [420, 384], [436, 344], [450, 326]
