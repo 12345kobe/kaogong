@@ -291,14 +291,20 @@
       if (bar) {
         let from = LEVELS[idx].p * 100, to = idx < LEVELS.length - 1 ? LEVELS[idx + 1].p * 100 : 100;
         const w2 = Math.max(0, Math.min(100, (done / total * 100 - from) / Math.max(1e-6, to - from) * 100));
-        bar.style.width = (idx === LEVELS.length - 1 ? 100 : w2) + "%";
+        bar.style.width = (idx === LEVELS.length - 1 ? 100 : Math.round(w2 * 10) / 10) + "%";   // 保留 1 位小数，避免 style 长串
       }
       const sub = document.getElementById("kingkeSub");
       if (sub) {
-        if (idx === LEVELS.length - 1) sub.textContent = `状元及第 · 累计刷题 ${done}`;
+        /* ★v20261024 用户要求：进度条下面直接显示「累计多少题 / 占总题库百分之几 / 今天做了多少题」，
+           云端数据合并下来立刻看得到（配合 mergeStates 补 qTotal 合并）。 */
+        let todayDone = 0;
+        try { todayDone = (window.DB && DB.dayAccuracy && DB.dayAccuracy().total.done) || 0; } catch (e) {}
+        const pct = total > 0 ? Math.round(done / total * 1000) / 10 : 0;
+        const base = `累计 ${done} 题 · ${pct}%` + (todayDone > 0 ? ` · 今日 +${todayDone}` : "");
+        if (idx === LEVELS.length - 1) sub.textContent = `状元及第 · ${base}`;
         else {
           const need = Math.max(0, Math.ceil(total * LEVELS[idx + 1].p - done));
-          sub.textContent = `距「${LEVELS[idx + 1].name}」还差 ${need} 题`;
+          sub.textContent = `${base} · 距「${LEVELS[idx + 1].name}」还差 ${need} 题`;
         }
       }
     } catch (e) {}

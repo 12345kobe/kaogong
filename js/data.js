@@ -124,7 +124,7 @@
     reviews: { verbal: {} }, // { word: {box, next} }
     lastResetDay: null,
     dailyPlan: {}, // 每日计划：{ 'YYYY-MM-DD': { items: [{id,module,type,text,done,createdAt,accuracy,minutes}], note:"" } }
-    taskTimer: { task: "", startTs: 0, accumulated: 0, running: false, planId: null, targetMs: 0, laps: [], subject: "" }, // 上岸计时器（跨界面持续）；targetMs>0 为倒计时专注；laps 为分段记录；subject 为所选学科（用于按学科记时长/正确率）
+    taskTimer: { task: "", startTs: 0, accumulated: 0, running: false, planId: null, targetMs: 0, laps: [], subject: "", lastTs: 0 }, // 上岸计时器（跨界面持续）；targetMs>0 为倒计时专注；laps 为分段记录；subject 为所选学科（用于按学科记时长/正确率）；lastTs=最后活动时间（跨天陈旧计时清理用）
     customQuestions: {}, // PDF 导入的自定义题库：{ 学科短名: [ {id,q,options,a,e,date,source} ] }
     pdfBooks: [], // 自定义刷题册：[{id, subject, name, named, date, createdAt, sections:[...]}]
     pdfBookPractice: [], // 刷题记录：[{id, date, time, bookId, bookName, section, subject, total, correct, pct, totalSec, items:[...]}]
@@ -227,6 +227,11 @@
       if (migrated) this.save(true);
 
       this.dailyResetIfNeeded();
+
+      // ★v20261023d 计时器防残留：跨天的旧计时（昨天及更早）整条清除，只留今天最新一节
+      if (this._purgeStaleTimer()) {
+        setTimeout(() => { try { window.UI && window.UI.toast("已清除跨天的旧计时数据 ✓"); } catch (e) {} }, 1500);
+      }
 
       // 自检：清理「暂停刷题期间被重复创建」的空白重复计划项（历史遗留）
       const dups = this.dedupPlanItems();
@@ -381,6 +386,7 @@
             this.state = state;
             this._dedupFavoritesLocal();
             this.dailyResetIfNeeded();
+            this._purgeStaleTimer();   // IDB 真值里若带着跨天旧计时，同样清除
             try { window.UI && window.UI.refresh && window.UI.refresh(); } catch (e) {}
             try { window.dispatchEvent(new Event("kg-state-restored")); } catch (e) {}
           }
@@ -589,15 +595,20 @@
 
     /* ===== 上岸计时器 ===== */
     timerState() { return state.taskTimer; },
-    timerStart(task, planId, targetMs, subject) {
+    timerStart(task, planId, targetMs, subject, resume) {
       const tt = state.taskTimer;
       tt.task = task || tt.task || "专注学习";
       tt.planId = (planId === undefined ? tt.planId : planId) || null;
       tt.targetMs = targetMs || 0;
       tt.subject = (subject != null && subject !== "") ? this.subjectShort(subject) : (tt.subject || "");
       tt.laps = []; // 重新开始，清空分段
-      if (tt.running) return tt;
+      if (tt.running) { tt.lastTs = Date.now(); return tt; }
+      /* ★v20261023d 用户死令：只保留最新一次计时，旧数据不准残留。
+         resume=true 才是「继续」暂停中的同一节；否则一律按全新一节，accumulated 必须清零
+         （旧代码不清 → 新计时继承很久以前的 accumulated，一进来就是老数据）。 */
+      if (!resume) tt.accumulated = 0;
       tt.startTs = Date.now();
+      tt.lastTs = tt.startTs;
       tt.running = true;
       this.save();
       return tt;
@@ -624,6 +635,7 @@
       if (tt.running) {
         tt.accumulated += Date.now() - tt.startTs;
         tt.running = false;
+        tt.lastTs = Date.now();
         this.save();
       }
       return tt;
@@ -639,7 +651,7 @@
         tt.laps.push(total - used);
       }
       const sec = Math.floor(tt.accumulated / 1000);
-      tt.accumulated = 0; tt.startTs = 0; tt.task = ""; tt.planId = null; tt.targetMs = 0; tt.laps = [];
+      tt.accumulated = 0; tt.startTs = 0; tt.task = ""; tt.planId = null; tt.targetMs = 0; tt.laps = []; tt.lastTs = 0;
       this.save();
       return sec;
     },
@@ -675,8 +687,26 @@
     },
     timerReset() {
       const tt = state.taskTimer;
-      tt.accumulated = 0; tt.startTs = 0; tt.running = false; tt.task = ""; tt.planId = null; tt.laps = [];
+      tt.accumulated = 0; tt.startTs = 0; tt.running = false; tt.task = ""; tt.planId = null; tt.laps = []; tt.lastTs = 0;
       this.save();
+    },
+    /* ★v20261023d 陈旧计时清理（用户死令：只保留最新一次；没计时完的才准留下；其他一律不准留）：
+       进入 App / 云端合并后调用。非今天活动的计时（昨天及更早的暂停节、跨夜还在跑的节）
+       整条清除 —— 这就是「每次进来都是很久以前的计时数据」的病根。 */
+    _purgeStaleTimer() {
+      const tt = state.taskTimer;
+      if (!tt) return false;
+      const hasData = tt.running || tt.accumulated > 0 || tt.task || tt.startTs > 0 || (tt.laps && tt.laps.length);
+      if (!hasData) return false;
+      // 运行中看开始时间；暂停/停止态看最后活动时间
+      const last = tt.running ? (tt.startTs || 0) : (tt.lastTs || tt.startTs || 0);
+      if (!last) {                                   // 无时间戳的老数据 → 直接清
+        this.timerReset(); return true;
+      }
+      if (this.fmtDate(new Date(last)) !== this.today()) {
+        this.timerReset(); return true;
+      }
+      return false;
     },
     getTodaySubjectMinutes(subject) {
       const t = this.today();
@@ -730,6 +760,10 @@
       if (!a) return JSON.parse(JSON.stringify(b || {}));
       if (!b) return a;
       const out = JSON.parse(JSON.stringify(a));
+      /* ★v20261024b qTotal/qDaily 的合并权收归上方显式块（取大/防污染/弃未来日期）。
+         通用 fill 兜底会无脑递归创建对象键，把云端未清洗明细补回来 → 先摘掉再 fill。 */
+      const bFill = Object.assign({}, b);
+      delete bFill.qTotal; delete bFill.qDaily;
       const S = (x) => (x == null ? "" : String(x));
 
       // 已学习历史 { key: { 'YYYY-MM-DD': [id...] } } → 按天取并集
@@ -769,6 +803,38 @@
         out.accuracyCumulative[s].correct = Math.max(out.accuracyCumulative[s].correct || 0, bCorrect);
         out.accuracyCumulative[s].total = Math.max(out.accuracyCumulative[s].total || 0, bTotal);
       }
+
+      /* ★v20261024 累计刷题数 qTotal / 每日刷题数 qDaily：科举等级/进度条的唯一权威计数。
+         原先 mergeStates 漏了这两个字段 → 云端 800 题的记录永远拉不到本机（等级卡在秀才），
+         本机被清时还会把云端覆盖成 0。规则同 accuracyCumulative：取大、不累加、防污染值。 */
+      const bQT = Number(b.qTotal);
+      if (isFinite(bQT) && bQT > 0 && bQT <= this.ABSURD_COUNT) {
+        out.qTotal = Math.max(Number(out.qTotal) || 0, bQT);
+      }
+      const qd = b.qDaily || {};
+      out.qDaily = out.qDaily || {};
+      for (const d in qd) {
+        if (d > this.today()) continue;               // 未来日期（设备时钟漂移）直接丢弃
+        out.qDaily[d] = out.qDaily[d] || {};
+        for (const s in (qd[d] || {})) {
+          const cur = out.qDaily[d][s] || { done: 0, right: 0 };
+          const inc = qd[d][s] || { done: 0, right: 0 };
+          if ((inc.done || 0) > this.ABSURD_COUNT) continue;   // 污染值，跳过
+          out.qDaily[d][s] = {
+            done: Math.max(cur.done || 0, inc.done || 0),
+            right: Math.max(cur.right || 0, inc.right || 0)
+          };
+        }
+      }
+      /* 合并后兜底校准：qTotal 丢失（0/非数）但每日明细还在 → 用明细补回来 */
+      try {
+        const qt = Number(out.qTotal);
+        if (!isFinite(qt) || qt <= 0) {
+          let sum = 0;
+          for (const d in out.qDaily) for (const s in (out.qDaily[d] || {})) sum += (out.qDaily[d][s] || {}).done || 0;
+          if (sum > 0) out.qTotal = sum;
+        }
+      } catch (e) {}
 
       // 错词 / 错题本：按 id 去重追加
       // ★v20261016a 根治收藏爆炸：支持自定义 key 提取（收藏条目只有 qid 没有 id）；
@@ -1059,7 +1125,7 @@
           else if (cur[k] == null || cur[k] === "" || (Array.isArray(cur[k]) && !cur[k].length)) cur[k] = inc[k];
         }
       }
-      fill(out, b);
+      fill(out, bFill);
       return out;
     },
 
@@ -1229,12 +1295,15 @@
         state = this.mergeStates(state, data, { cloudNewer });
         this.state = state;
         this.dedupPlanItems();   // 云端合并后同样清理重复计划项（另一台设备的病根同步过来也会被清掉）
+        this._purgeStaleTimer(); // 云端若带回跨天的旧计时，同样按「只留今天最新一节」清除
         if (cloudNewer) {
           const n = this._applyVault(data.vault);       // 还原 AI 密钥 / 服务商 / 字体 / 偏好等本机配置
           try { localStorage.setItem(this._cloudSeenKey(), String(cloudAt || Date.now())); } catch (e) {}
           if (n) this._vaultApplied = n;
         }
         this._localSave();
+        // ★v20261024 云端累计题量合并下来后，科举等级/进度条立即跟着走（登录即进对应级别）
+        try { if (window.KGKingke && KGKingke.renderBrand) KGKingke.renderBrand(); } catch (e) {}
         const afterSig = this._sig();
         const changed = beforeSig !== afterSig;
         this._pushedSig = afterSig;
@@ -1260,7 +1329,8 @@
       const pairs = [
         [cnt((cloud.checkin || {}).dates), cnt((local.checkin || {}).dates)],
         [cnt(cloud.accuracy), cnt(local.accuracy)],
-        [cnt(cloud.mutiHistory), cnt(local.mutiHistory)]
+        [cnt(cloud.mutiHistory), cnt(local.mutiHistory)],
+        [Number(cloud.qTotal) || 0, Number(local.qTotal) || 0]   // ★v20261024 云端累计题量被清空的设备覆盖前先拦住
       ];
       return pairs.some(([c, l]) => c >= 5 && l < Math.min(3, c * 0.4));
     },
@@ -1335,6 +1405,17 @@
     }
   };
   DB._token = localStorage.getItem(LS_TOKEN) || null;
+
+  /* ★v20261024 保命持久化：答题写入有 400ms 防抖，用户「答完立刻刷掉 APP」时
+     最新 qTotal 还没落盘 → 重启后等级/进度条回退。pagehide（iOS 杀 APP 必触发）
+     + visibilitychange 隐藏时同步补写一份（localStorage 同步写，页面销毁前必然完成）。 */
+  (function hookFlushSave() {
+    const flush = () => { try { DB.persistNow && DB.persistNow(); } catch (e) {} };
+    try {
+      window.addEventListener("pagehide", flush);
+      document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flush(); });
+    } catch (e) {}
+  })();
   DB._cloudReady = false;
   DB._syncing = false;
   DB._syncPending = false;
