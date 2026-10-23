@@ -484,7 +484,15 @@
        延迟到来一次「幽灵点击」，正好落在新列表某一行上 → 又被当成进入答题。
        记返回时间戳，startQuiz 在 900ms 内的进入请求直接忽略。 */
     window.__kgBackAt = Date.now();
-    if (String(location.hash || "").replace("#/", "") === "drills") { try { ctx.render(); } catch (e) { location.reload(); } }
+    if (String(location.hash || "").replace("#/", "") === "drills") {
+      /* ★v20261023d 关键修复：路由在 render 前会先 body.innerHTML=""（app.js:329），
+         这里直接调 render 跳过了清空 → 列表被"追加"到答题页下方，全屏模式下答题页仍铺满、
+         列表被挤到视口外看不见=「退不出」。返回前必须先清掉答题界面。 */
+      try {
+        if (ctx && ctx.body) ctx.body.innerHTML = "";
+        ctx.render();
+      } catch (e) { location.reload(); }
+    }
     else { try { location.hash = "#/drills"; } catch (e) {} }
   }
   /* ★v20261023 返回主屏幕（科举/五大模块首页 #/countdown），不再回刷题中心子页；
