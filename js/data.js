@@ -622,7 +622,14 @@
       tt.planId = (planId === undefined ? tt.planId : planId) || null;
       tt.targetMs = targetMs || 0;
       tt.subject = (subject != null && subject !== "") ? this.subjectShort(subject) : (tt.subject || "");
-      tt.laps = []; // 重新开始，清空分段
+      /* ★v20261026b 用户死令：不管有没有按暂停，分段记录必须一直保留。
+         旧版这里无条件 tt.laps = [] —— 点「继续」（resume=true）时被一刀切清光，
+         用户记了好几段的分段瞬间归零。现在只在「确确实实从 0 开全新一节」时才清：
+         即计时器里既没在跑、也没累计时长、也没开始时间戳（本来就是空的，清不清都一样）。
+         其余情况（继续暂停中的同一节 / 计时器里已有数据被重复 start）一律保留分段。 */
+      const _hadData = !!tt.running || (tt.accumulated || 0) > 0 || (tt.startTs || 0) > 0;
+      if (!resume && !_hadData) tt.laps = [];
+      tt.laps = tt.laps || [];
       if (tt.running) { tt.lastTs = Date.now(); return tt; }
       /* ★v20261023d 用户死令：只保留最新一次计时，旧数据不准残留。
          resume=true 才是「继续」暂停中的同一节；否则一律按全新一节，accumulated 必须清零

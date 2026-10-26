@@ -25,6 +25,10 @@
     ended: false,       // 已结束、填写记录中
     finalElapsedMs: 0,  // 结束时刻的实际总时长（含超时段）
     finalLaps: [],
+    /* ★v20261026b 分段镜像（用户死令：不管有没有按暂停，分段记录都要一直留着）。
+       任何一处把 tt.laps 清掉（旧版 timerStart 无条件清、意外重渲染重启计时…）时，
+       用它把分段恢复回去，保证用户记下的段一条都不丢。 */
+    lapSnapshot: [],
     planId: null,
     task: "",
     subject: "",
@@ -99,13 +103,14 @@
           DB.state.shuatiSession = {
             key: SS.key, started: SS.started, ended: SS.ended,
             finalElapsedMs: SS.finalElapsedMs, finalLaps: SS.finalLaps,
-            planId: SS.planId, task: SS.task, subject: SS.subject, lastCount: SS.lastCount
+            planId: SS.planId, task: SS.task, subject: SS.subject, lastCount: SS.lastCount,
+            lapSnapshot: SS.lapSnapshot          // ★v20261026b 分段镜像持久化：刷新/重载也能恢复
           };
           DB.save();
         } catch (e) {}
       }
       function _clearSS() {
-        try { SS.started = false; SS.ended = false; SS.finalElapsedMs = 0; SS.finalLaps = []; DB.state.shuatiSession = null; DB.save(); } catch (e) {}
+        try { SS.started = false; SS.ended = false; SS.finalElapsedMs = 0; SS.finalLaps = []; SS.lapSnapshot = []; DB.state.shuatiSession = null; DB.save(); } catch (e) {}
       }
 
       /* 会话轴：同一会话跨 render() 复用 SS；新会话（签名变化 / 上一轮已结算干净）才重置。
@@ -124,13 +129,14 @@
         SS.ended = !!persisted.ended;
         SS.finalElapsedMs = persisted.finalElapsedMs || 0;
         SS.finalLaps = persisted.finalLaps || [];
+        SS.lapSnapshot = persisted.lapSnapshot || [];
         SS.planId = persisted.planId || null;
         SS.task = persisted.task || "";
         SS.subject = persisted.subject || "";
         SS.lastCount = persisted.lastCount || 0;
       } else if (SS.key !== sig) {
         SS.key = sig; SS.started = false; SS.ended = false;
-        SS.finalElapsedMs = 0; SS.finalLaps = [];
+        SS.finalElapsedMs = 0; SS.finalLaps = []; SS.lapSnapshot = [];
         SS.planId = pending ? pending.planId : null;
         SS.task = pending ? pending.text : (mode === "plain" ? (DB.timerState().task || "刷题") : "");
         SS.subject = "";
@@ -138,7 +144,7 @@
       }
       // 上一轮已经彻底结算干净（已结束且计时器已清空）→ 允许同签名重新开始新的一轮
       if (SS.ended && !DB.timerState().running && DB.timerElapsedMs() === 0) {
-        SS.started = false; SS.ended = false; SS.finalElapsedMs = 0; SS.finalLaps = [];
+        SS.started = false; SS.ended = false; SS.finalElapsedMs = 0; SS.finalLaps = []; SS.lapSnapshot = [];
         SS.planId = pending ? pending.planId : null;
         SS.task = pending ? pending.text : (mode === "plain" ? (DB.timerState().task || "刷题") : "");
         SS.subject = "";
@@ -255,6 +261,14 @@
         const elapsed = DB.timerElapsedMs();
         const overtime = isCD && elapsed >= s.targetMs;
         const bigMs = overtime ? (elapsed - s.targetMs) : (isCD ? Math.max(0, DB.timerRemainingMs()) : elapsed);
+        /* ★v20261026b 分段镜像：DB 有分段就更新快照；DB 被清但快照还在、且本会话还没结算
+           → 说明是被某个未知路径误清，立刻恢复回去（用户记的分段一条都不能丢）。 */
+        if ((s.laps || []).length) {
+          SS.lapSnapshot = (s.laps || []).slice();
+        } else if (SS.lapSnapshot.length && !SS.ended && SS.started) {
+          s.laps = SS.lapSnapshot.slice();
+          try { DB.save(); } catch (e) {}
+        }
         const laps = s.laps || [];
         const wnOn = window.WhiteNoise && window.WhiteNoise.isOn();
 
@@ -430,7 +444,8 @@
         body.querySelector("#lapBtn").onclick = () => { DB.timerLap(); render(); window.__updateTopTimer && window.__updateTopTimer(); };
         body.querySelector("#exitBtn").onclick = () => exitFull();
         const resetBtn = body.querySelector("#resetBtn");
-        if (resetBtn) resetBtn.onclick = () => { DB.timerReset(); SS.started = false; if (DB.state) DB.state.shuatiSession = null; render(); window.__updateTopTimer && window.__updateTopTimer(); };
+        // 清空：整条重置，分段镜像一并作废（用户主动「清空」= 全清）
+        if (resetBtn) resetBtn.onclick = () => { DB.timerReset(); SS.started = false; SS.lapSnapshot = []; if (DB.state) DB.state.shuatiSession = null; render(); window.__updateTopTimer && window.__updateTopTimer(); };
       }
 
       function openRelate() {
@@ -491,6 +506,7 @@
            之后 timerSettle 就找不到计划项 → 每日计划永远打不上勾（用户反馈的病根）。 */
         SS.planId = planId || DB.timerState().planId;
         DB.timerStop(); // 冻结计时（flush 末段 + 清 laps），不再自动累计
+        SS.lapSnapshot = [];   // ★已结算：镜像作废，别让下一节继承上一节的分段
         window.__updateTopTimer && window.__updateTopTimer();
         SS.ended = true; _persistSS();
         render(); // 切到记录表单
