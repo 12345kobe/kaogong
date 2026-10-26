@@ -468,17 +468,35 @@
       return short || "";
     },
 
+    /* ★v20261026a 用户死命令：时政模块的数据计入政治理论（「两边都算」）。
+       时政题本质就是政治理论范畴 → 在时政自身统计之外，同步往「政治理论」再记一份，
+       口径一致（累计正确率 / 当天各模块题数 / 掌握度 / 科举进度全跟着走）。
+       注意：全局 qTotal 只按实际题数加一次，不重复累加（否则总数 ≠ 各科之和，等级虚涨）。 */
+    CURRENT_SUBJECTS: ["时政", "时政演练", "每日时政", "时政热点", "每周时政"],
+    _mirrorSubject(s) {
+      const arr = (this.CURRENT_SUBJECTS || []);
+      for (let i = 0; i < arr.length; i++) if (String(s || "").indexOf(arr[i]) >= 0) return "政治";
+      return "";
+    },
+
     /* 集中写入某学科累计正确率 + 正确率趋势（刷题模式 / 手动录入答题 共用，保证一一对应） */
     recordAccuracy(subject, correct, total) {
       subject = this.subjectShort(subject);
       correct = Math.max(0, +correct || 0);
       total = Math.max(0, +total || 0);
       const ac = state.accuracyCumulative = state.accuracyCumulative || {};
-      ac[subject] = ac[subject] || { correct: 0, total: 0 };
-      ac[subject].correct += correct;
-      ac[subject].total += total;
+      /* 时政 → 政治理论：两边都算（分科统计双记，全局 qTotal 只记一次） */
+      const mirror = this._mirrorSubject(subject);
+      const targets = mirror ? [subject, mirror] : [subject];
+      targets.forEach(sub => {
+        ac[sub] = ac[sub] || { correct: 0, total: 0 };
+        ac[sub].correct += correct;
+        ac[sub].total += total;
+      });
       state.accuracy = state.accuracy || [];
-      state.accuracy.push({ date: this.today(), subject: subject, pct: total ? Math.round(correct / total * 100) : 0 });
+      targets.forEach(sub => {
+        state.accuracy.push({ date: this.today(), subject: sub, pct: total ? Math.round(correct / total * 100) : 0 });
+      });
       if (state.accuracy.length > 500) state.accuracy = state.accuracy.slice(-500);
       /* ★v20261021 当天各模块正确率 + 累计刷题数：集中在本入口维护，
          保证「刷题模式手动记录」与「App 内答题」两条路径口径完全一致。 */
@@ -486,9 +504,11 @@
         const d = this.today();
         state.qDaily = state.qDaily || {};
         const day = state.qDaily[d] = state.qDaily[d] || {};
-        const rec = day[subject] = day[subject] || { done: 0, right: 0 };
-        rec.done += total;
-        rec.right += correct;
+        (mirror ? [subject, mirror] : [subject]).forEach(sub => {
+          const rec = day[sub] = day[sub] || { done: 0, right: 0 };
+          rec.done += total;
+          rec.right += correct;
+        });
         if (state.qDaily && Object.keys(state.qDaily).length > 120) {
           const ks = Object.keys(state.qDaily).sort();
           ks.slice(0, ks.length - 120).forEach(k => { delete state.qDaily[k]; });

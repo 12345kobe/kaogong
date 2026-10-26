@@ -1079,7 +1079,14 @@ body.glass .today-acc-big{border:1px solid var(--line)}
 .quiz-submit .btn{ padding:8px 16px }
 .qz-flash{ animation:qzflash 1.8s ease }
 @keyframes qzflash{ 0%,100%{ box-shadow:none } 25%,60%{ box-shadow:0 0 0 3px rgba(255,92,240,.6) } }
-.qz-ask{ margin-top:10px }
+.qz-ask{ margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; align-items:center }
+.qz-ask .btn{ margin:0 }
+.qz-ask .jyfs-ai{ color:#7c4dff; border-color:rgba(124,77,255,.45) }
+.qz-ask .jyfs-ai:active{ opacity:.65 }
+/* 举一反三 · 当前页弹窗 */
+.jyfs-inline-mask .jyfs-inline{ padding:0 }
+.jyfs-inline-head button{ flex:none }
+.jyfs-inline-body .quiz-q{ margin-bottom:10px }
 body.light:not(.glass) .qm-chip{ background:#fff }
 body.light:not(.glass) .quiz-submit{ background:#fff }
 

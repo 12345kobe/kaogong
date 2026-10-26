@@ -62,14 +62,19 @@
       /* ★v20261010c 答案被"重置"的根因修复：以前 Quiz.active 从未被赋值，
          导致 data.js _afterApply 判定「不在答题」→ 每次云端同步都整页重渲染 →
          答题卡被重建，上一题答过的痕迹全没了（用户反馈「得疯狂点」）。 */
-      Quiz.active = true;
+      /* ★v20261026a nested：弹窗里再开一组练习（如答题页「举一反三」）时置 true。
+         外层答题仍在进行 → 不能动 Quiz.active / 全局计时器 / 会话笔迹，
+         否则外层答题卡会被云端同步重渲染冲掉、笔迹被摘掉、计时器被停。 */
+      const nested = !!opts.nested;
+      if (!nested) Quiz.active = true;
       try { container.classList.add("quiz-live"); } catch (e) {}
       const noStats = !!opts.noStats;
       const noRecordWrong = !!opts.noRecordWrong; // 错题本「重做本题」用：避免重复写入错题本
       // 进入答题时隐藏所有悬浮标注按钮，避免与「交卷」按钮在左下角重叠；
       // 答题容器被销毁（关闭弹窗/离开页面）或交卷后自动恢复，否则悬浮手写按钮会永久消失
       try {
-        const fabs = Array.prototype.slice.call(document.querySelectorAll(".kg-anno-fab"));
+        // ★v20261026a nested：外层已隐藏过悬浮按钮，不能重复登记（否则弹窗一关就把它们放出来）
+        const fabs = nested ? [] : Array.prototype.slice.call(document.querySelectorAll(".kg-anno-fab"));
         fabs.forEach(f => { f.style.display = "none"; });
         Quiz._restoreFabs = () => {
           fabs.forEach(f => { if (f.isConnected) f.style.display = ""; });
@@ -85,11 +90,31 @@
       } catch (e) {}
       // 模式：优先 opts.mode，否则全局设置，默认 practice（练题）
       const mode = opts.mode || (DB.state.settings && DB.state.settings.quizMode) || "practice";
-      if (Quiz._handler) { try { document.removeEventListener("keydown", Quiz._handler); } catch (e) {} Quiz._handler = null; }
-      if (Quiz._timer) { try { clearInterval(Quiz._timer); } catch (e) {} Quiz._timer = null; }
+      /* ★v20261026a nested：把外层答题的键盘处理器 / 计时器「摘下来存好」，
+         弹窗里的练习结束后（交卷或直接关闭）再还回去——否则外层答题的 A/B/C/D 快捷键与计时条会失效。 */
+      let savedHandler = null, savedTimer = null;
+      if (Quiz._handler) {
+        try { document.removeEventListener("keydown", Quiz._handler); } catch (e) {}
+        savedHandler = Quiz._handler; Quiz._handler = null;
+      }
+      if (Quiz._timer) {
+        if (!nested) { try { clearInterval(Quiz._timer); } catch (e) {} }
+        savedTimer = Quiz._timer; Quiz._timer = null;
+      }
+      Quiz._nestedRestore = nested ? () => {
+        try {
+          if (savedTimer && !Quiz._timer) Quiz._timer = savedTimer;
+          if (savedHandler && Quiz._handler !== savedHandler) {
+            if (Quiz._handler) { try { document.removeEventListener("keydown", Quiz._handler); } catch (e) {} }
+            Quiz._handler = savedHandler;
+            try { document.addEventListener("keydown", savedHandler); } catch (e) {}
+          }
+        } catch (e) {}
+      } : null;
       Quiz._answered = 0;
       // 进入新一组训练：清空上一组会话级手写笔迹（不落盘，避免跨模块残留）
-      try { UI.Handwriting.clearSession(true); } catch (e) {}
+      // ★v20261026a nested（弹窗内练习）不清：否则外层题面刚写的笔迹会被一起摘掉
+      if (!nested) { try { UI.Handwriting.clearSession(true); } catch (e) {} }
 
       // ===== 模式选择条：练题 / 背题（默认练题） =====
       const modeBar = UI.el(`<div class="quiz-modebar">
@@ -314,10 +339,34 @@
         exp.innerHTML = html;
         if (!right) {
           if (!o.silent && !noRecordWrong) recordWrong(qq.subject || subject, qq, ua);
-          const askWrap = UI.el(`<div class="qz-ask"><button class="btn ghost sm ask-ai">🤖 没看懂？询问 AI</button></div>`);
-          exp.appendChild(askWrap);
-          askWrap.querySelector(".ask-ai").onclick = () => askAI(qq, ua, qi);
         }
+        /* ★v20261026a AI 按钮常驻：只要答案已揭示（答对/答错都一样）就能问 AI；
+           并新增「举一反三」——点一下直接在本页弹窗出 3 道同类题当场刷，
+           不用先点 AI 咨询再绕一圈。 */
+        const askWrap = UI.el(`<div class="qz-ask">
+          <button class="btn ghost sm ask-ai">🤖 ${right ? "想深挖？询问 AI" : "没看懂？询问 AI"}</button>
+          <button class="btn ghost sm jyfs-ai">💡 举一反三 · 出 3 题</button>
+        </div>`);
+        exp.appendChild(askWrap);
+        askWrap.querySelector(".ask-ai").onclick = () => askAI(qq, ua, qi);
+        askWrap.querySelector(".jyfs-ai").onclick = (ev) => {
+          const btn = ev.currentTarget;
+          const old = btn.textContent;
+          btn.disabled = true; btn.textContent = "⏳ 出题中…";
+          const ansLetter = (qq.a == null ? "" : (typeof qq.a === "string" ? qq.a.toUpperCase() : A(qq.a)));
+          const ctx = {
+            subject: qq.subject || subject,
+            q: { q: qq.q || "", options: (qq.options || []).slice(), a: ansLetter, e: qq.e || "", img: qq.img || null }
+          };
+          const done = () => { try { btn.disabled = false; btn.textContent = old; } catch (e) {} };
+          try {
+            if (!window.KGAI || !window.KGAI.jyfsInline) throw new Error("AI 模块未就绪");
+            window.KGAI.jyfsInline(ctx, 3).then(done, (err) => {
+              done();
+              try { UI.toast("出题失败：" + ((err && err.message) || err)); } catch (e) {}
+            });
+          } catch (err) { done(); try { UI.toast("出题失败：" + ((err && err.message) || err)); } catch (e) {} }
+        };
         if (opts.onAnswer) opts.onAnswer(qq, right, ua);   // v20261019a：多传 ua，供调用方持久化「上次答到哪/答案」
         /* ★全部题目都已揭示 → 自动结算（v20261010a）：多选逐题「✓ 确认本题」后不必再找「交卷」，
            刷题记录（每日计划自动创建并打勾）也不会因为忘了交卷而丢失 */
@@ -554,16 +603,20 @@
       function finish() {
         if (quizFinished) return;   // ★幂等保护：自动结算 + 交卷/maybeFinish 可能并发触发
         quizFinished = true;
-        Quiz.active = false;        // ★v20261010c 交卷后解除「答题中」，允许整页重渲染
+        /* ★v20261026a nested（弹窗内练习）结束时：外层答题还在，不能解除 Quiz.active，
+           否则 data.js _afterApply 会判定「不在答题」→ 云端同步时整页重渲染 → 外层答案全丢。 */
+        if (!nested) Quiz.active = false;        // ★v20261010c 交卷后解除「答题中」，允许整页重渲染
         try { container.classList.remove("quiz-live"); } catch (e) {}
         if (liveTimer) clearInterval(liveTimer);
         if (Quiz._timer) { try { clearInterval(Quiz._timer); } catch (e) {} Quiz._timer = null; }
         if (Quiz._handler) { try { document.removeEventListener("keydown", Quiz._handler); } catch (e) {} Quiz._handler = null; }
+        // ★v20261026a nested：把外层答题的计时器 / 键盘处理器还回去
+        try { if (nested && Quiz._nestedRestore) { Quiz._nestedRestore(); Quiz._nestedRestore = null; } } catch (e) {}
         // 交卷：恢复此前隐藏的悬浮手写按钮
         try { if (Quiz._restoreFabs) Quiz._restoreFabs(); } catch (e) {}
         // 训练结束：丢弃本次会话的题面手写笔迹，并摘掉题面上残留的笔迹覆盖层
         // （笔迹只留在写它的那一题里，退出训练不落到笔记、也不粘到别的卡片上）
-        try { UI.Handwriting.clearSession(true); } catch (e) {}
+        if (!nested) { try { UI.Handwriting.clearSession(true); } catch (e) {} }
         const correct = results.filter(r => r && r.right).length;
         const totalSec = Math.floor((Date.now() - quizStart) / 1000);
         const pct = questions.length ? Math.round(correct / questions.length * 100) : 0;

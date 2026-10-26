@@ -108,8 +108,14 @@
         try { SS.started = false; SS.ended = false; SS.finalElapsedMs = 0; SS.finalLaps = []; DB.state.shuatiSession = null; DB.save(); } catch (e) {}
       }
 
-      /* 会话轴：同一会话跨 render() 复用 SS；新会话（签名变化 / 上一轮已结算干净）才重置 */
-      const sig = _sig(launch, pending);
+      /* 会话轴：同一会话跨 render() 复用 SS；新会话（签名变化 / 上一轮已结算干净）才重置。
+         ★v20261026a 巨大 bug 修复：旧签名把一次性的 __pendingFocus 也算进去
+         （_sig(launch, pending)）。点「暂停」→ render() 第二次执行时 pending 已被
+         window.__pendingFocus = null 消费掉 → 签名从 "…|planId" 变成 "…|" →
+         判定为新会话 → SS.started 被重置为 false → autoStart 再次 startLaunched()
+         → 又放一遍 3→2→1→GO，且 timerStart 不带 resume → accumulated 清零 = 从头计时。
+         签名只认 launch（持久化、跨 render 稳定）；pending 只用于首次进入补 planId。 */
+      const sig = _sig(launch, null);
       const persisted = (DB.state && DB.state.shuatiSession) || null;
       if (persisted && persisted.key === sig) {
         // 同一会话（含重载）：原样恢复，保证不重放倒计时、不丢 planId
@@ -232,7 +238,15 @@
         // 自动开始（限时 / 复盘 / 综合）：只启动一次（以 started 为准）。
         // 之前用 !running 判断 —— 暂停后 running=false 会再次触发 startLaunched()，
         // 造成：① 重复创建计划项（多出空白任务）② 计时被重启、超时基准被重置、暂停失效
-        if (autoStart && !SS.started && !SS.ended) startLaunched();
+        /* ★v20261026a 第二重保险：本轮计时器里已经有数据（正在跑 / 暂停中 / 已累计）却还没
+           标记 started —— 一律只补标记，绝不重启。否则任何一次意外重置 SS 都会导致
+           「按暂停后再继续，倒计时从 55:00 从头开始」。 */
+        if (autoStart && !SS.started && !SS.ended) {
+          const _tt = DB.timerState() || {};
+          if (_tt.running || (_tt.accumulated || 0) > 0 || (_tt.startTs || 0) > 0) {
+            SS.started = true; _persistSS();
+          } else startLaunched();
+        }
 
         const s = DB.timerState();
         const running = s.running;
@@ -410,7 +424,7 @@
         body.querySelector("#endBtn").onclick = () => doEnd();
         body.querySelector("#pauseBtn").onclick = () => {
           if (DB.timerState().running) DB.timerPause();
-          else DB.timerStart(DB.timerState().task || task, DB.timerState().planId, DB.timerState().targetMs, DB.timerState().subject);
+          else DB.timerStart(DB.timerState().task || task, DB.timerState().planId, DB.timerState().targetMs, DB.timerState().subject, true);   // resume=true：继续暂停中的同一节
           render(); window.__updateTopTimer && window.__updateTopTimer();
         };
         body.querySelector("#lapBtn").onclick = () => { DB.timerLap(); render(); window.__updateTopTimer && window.__updateTopTimer(); };

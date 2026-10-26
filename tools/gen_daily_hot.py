@@ -24,6 +24,42 @@ import ssl
 import sys
 import time
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
+
+# ★v20261026a 提速（用户死命令：ai 时政约 30 秒出完）：
+#   旧版 17 次 AI 调用全串行（要点1+金句1+言语5+单选7+多选3，每次约 2-4s）→ 常跑 60-100s。
+#   改为同批任务并发：要点/金句并行、言语 5 题并行、时政 10 题并行（并发度 6，避免 429）。
+MAX_WORKERS = int(os.environ.get("KG_MAX_WORKERS") or 6)
+
+
+def run_parallel(fns, workers=None):
+    """并发执行一组出题函数，返回与入参同序的结果列表（单任务时直接跑，省掉线程池开销）。"""
+    fns = list(fns or [])
+    if not fns:
+        return []
+    if len(fns) == 1:
+        try:
+            return [fns[0]()]
+        except Exception as e:
+            print("任务异常：%s" % e, file=sys.stderr)
+            return [None]
+    out = [None] * len(fns)
+
+    def runner(i):
+        try:
+            out[i] = fns[i]()
+        except Exception as e:
+            out[i] = None
+            print("并行任务 %d 异常：%s" % (i, e), file=sys.stderr)
+
+    try:
+        with ThreadPoolExecutor(max_workers=min(workers or MAX_WORKERS, len(fns))) as ex:
+            list(ex.map(runner, range(len(fns))))
+    except Exception as e:
+        print("并发执行失败，回退串行：%s" % e, file=sys.stderr)
+        for i in range(len(fns)):
+            runner(i)
+    return out
 
 DATE = (os.environ.get("FORCE_DATE") or "").strip()
 if not DATE:
@@ -142,7 +178,9 @@ SPEC_TMPL = """你是公务员考试时政命题专家。下面是 {date} 的真
 ⑧【言语·阿里木江补全技法（20261012b 新增）】除搭配/解释/关联/程度/感情色彩外，还须用：ⅰ时态小词——「了/过」=完成、「着/正在」=进行、「将要/趋势」=将来，空前后的时态小词决定填词；ⅱ同构选项排除——出现 3:1 或 2:2 结构要警惕，避免只看一面下结论。设空 N=1/2/3，空数必须与每选项词数相等。"""
 
 
-def call_ai(prompt):
+def call_ai(prompt, max_tok=None):
+    """★v20261026a 提速：max_tok 可按任务收紧（逐题出题只需 2048，
+       原来一律 8192 会让服务端按大上限分配，拖慢整轮）。"""
     key = os.environ.get("AI_API_KEY", "").strip()
     if not key:
         raise SystemExit("缺少 AI_API_KEY（请在仓库 Settings → Secrets and variables → Actions 里配置）")
@@ -155,7 +193,9 @@ def call_ai(prompt):
     # ★2026-10-15：glm-4.7-flash 长期 429 过载（code 1305「访问量过大」）。即便仓库 Secrets
     #   里 AI_MODEL 误配成它，也强制改回稳定的免费 glm-4-flash（同一把 key 直接可用），避免
     #   每晚 20:00 自动化在过载模型上白耗 ~80s 重试甚至失败。其它自定义模型保持不变。
-    if model == "glm-4.7-flash":
+    # ★v20261017a：KG_ALLOW_47=1 时允许用 glm-4.7-flash（弱模型质量门禁大量废题时的逃生门，
+    #   实测 key 可用即优先 4.7——时政半月刊这类长 prompt 出题 4-flash 产出全被门禁剔除）
+    if model == "glm-4.7-flash" and os.environ.get("KG_ALLOW_47") != "1":
         model = "glm-4-flash"
     models = [model]
     if model != "glm-4-flash":
@@ -163,7 +203,7 @@ def call_ai(prompt):
     base_body = {
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.3,          # ★降低随机性：减少跑偏与格式崩坏
-        "max_tokens": 8192,          # ★防截断：整包 15 题一次输出极易被截断（2026-10-07 两次失败即此因）
+        "max_tokens": int(max_tok or 8192),   # ★防截断：整包 15 题一次输出极易被截断（2026-10-07 两次失败即此因）
     }
     # ★强制 JSON 输出（json_object 模式）：中端模型最容易在格式上翻车，能大幅提高合规率
     #   部分端点不支持该参数 → 先带参数试，报错自动降级为普通请求
@@ -404,7 +444,7 @@ def main():
             if t > 0:
                 p += "\n【上一次输出不是合法 JSON 或数量不足，请重新完整输出，不要截断、不要 markdown 围栏。】"
             try:
-                obj = parse_json(call_ai(p))
+                obj = parse_json(call_ai(p, max_tok=(6000 if field == "news" else 3000)))
                 v = (obj or {}).get(field)
                 if v:
                     return v
@@ -412,11 +452,13 @@ def main():
                 print("%s 第 %d 次生成失败：%s" % (field, t + 1, e), file=sys.stderr)
             except Exception as e:
                 print("%s 第 %d 次异常：%s" % (field, t + 1, e), file=sys.stderr)
-            time.sleep(5)
+            time.sleep(2)
         return None
 
-    news = gen_segment("news", 9)
-    essay = gen_segment("essay", 1)
+    # ★v20261026a 提速：要点段与金句段并发（互不依赖）
+    _seg = run_parallel([lambda: gen_segment("news", 9), lambda: gen_segment("essay", 1)], workers=2)
+    news, essay = (_seg + [None, None])[:2]
+
     def pick_item(obj):
         """兼容模型把单题包成 {q:...} / {"verbal":[{...}]} / [{...}] 等多种写法"""
         if isinstance(obj, list) and obj:
@@ -455,7 +497,8 @@ def main():
             if t > 0:
                 p += "\n【上一次输出不是合法 JSON，请重新输出，务必完整、不要截断。】"
             try:
-                it = pick_item(parse_json(call_ai(p)))
+                # ★v20261026a 提速：单题只需 2048 token，收紧上限显著加快返回
+                it = pick_item(parse_json(call_ai(p, max_tok=2048)))
                 if it and it.get("options") and it.get("q"):
                     used_stems.append(re.sub(r"\s+", "", str(it.get("q") or ""))[:30])
                     return it
@@ -463,17 +506,57 @@ def main():
                 print("%s 第 %d 次失败：%s" % (kind, t + 1, e), file=sys.stderr)
             except Exception as e:
                 print("%s 第 %d 次异常：%s" % (kind, t + 1, e), file=sys.stderr)
-            time.sleep(5)
+            time.sleep(2)
         return None
 
     # ★逐题生成（一次 1 题）：言语 5 题 + 时政 7 单选 + 3 多选
     #   ★v20261016c 轮换：空型/答案字母/主题域逐题指定 → 15 题覆盖不同域、不同题型，绝不雷同
+    #   ★v20261026a 提速：三轮各自内部并发（言语 5 / 单选 7 / 多选 3），总耗时从 ~60-100s 压到 ~25-35s。
+    #     并发下无法逐题注入「已出题干」，改为：①主题域/答案字母/空型预先确定性分配（保证不撞车）
+    #     ②出完后做会话内去重 ③缺额再来一轮并发补齐（最多补 2 轮）。
     used_stems = []
     verbal_notes = ["双空、正确答案建议 A", "单空、正确答案建议 B", "双空、正确答案建议 C",
                     "三空（每选项 3 个词、空数=每选项词数）、正确答案建议 D", "双空、正确答案建议 B"]
-    verbal = [x for x in (gen_one("verbal", note=verbal_notes[i]) for i in range(5)) if x]
-    singles = [x for x in (gen_one("single", note="本题主题域：【" + QUIZ_DOMAINS[i % len(QUIZ_DOMAINS)] + "】——背景新闻与考察考点都必须取自该主题域，且与本次已出题目的主题域互不相同。") for i in range(7)) if x]
-    multis = [x for x in (gen_one("multi", note="本题主题域：【" + QUIZ_DOMAINS[(i + 7) % len(QUIZ_DOMAINS)] + "】——背景新闻与考察考点都必须取自该主题域，且与本次已出题目的主题域互不相同。") for i in range(3)) if x]
+
+    def mk_verbal(i):
+        # 补齐轮次会传 100+ 的下标 → 取模回落到 5 种空型/答案字母轮换
+        return lambda: gen_one("verbal", note=verbal_notes[i % len(verbal_notes)])
+
+    def mk_single(i):
+        return lambda: gen_one("single", note="本题主题域：【" + QUIZ_DOMAINS[i % len(QUIZ_DOMAINS)] + "】——背景新闻与考察考点都必须取自该主题域，且与本次已出题目的主题域互不相同。")
+
+    def mk_multi(i):
+        return lambda: gen_one("multi", note="本题主题域：【" + QUIZ_DOMAINS[(i + 7) % len(QUIZ_DOMAINS)] + "】——背景新闻与考察考点都必须取自该主题域，且与本次已出题目的主题域互不相同。")
+
+    def stem_key(q):
+        return re.sub(r"\s+", "", str((q or {}).get("q") or ""))[:30]
+
+    def dedup_inplace(items):
+        """会话内去重：并发出题时可能撞车，先按题干开头剔重（保留先出到的）。"""
+        seen, out = set(), []
+        for q in (items or []):
+            k = stem_key(q)
+            if not k or k in seen:
+                continue
+            seen.add(k)
+            out.append(q)
+        return out
+
+    def fill(factory, want, kind, rounds=2):
+        """并发出题 + 去重 + 缺额补齐，返回至多 want 题。"""
+        got = dedup_inplace([x for x in run_parallel([factory(i) for i in range(want)]) if x])
+        r = 0
+        while len(got) < want and r < rounds:
+            need = want - len(got)
+            print("%s 并发首轮得 %d/%d，补 %d 题…" % (kind, len(got), want, need), file=sys.stderr)
+            more = [x for x in run_parallel([factory(100 + r * 10 + j) for j in range(need)]) if x]
+            got = dedup_inplace(got + more)
+            r += 1
+        return got[:want]
+
+    verbal = fill(mk_verbal, 5, "言语")
+    singles = fill(mk_single, 7, "时政单选")
+    multis = fill(mk_multi, 3, "时政多选")
 
     def is_multi(q):
         return (q.get("type") == "multi") or bool(q.get("multi"))

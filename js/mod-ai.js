@@ -312,7 +312,9 @@
     if (key) headers["Authorization"] = "Bearer " + key;
     // max_tokens 按模型/服务商上限钳制（如智谱 GLM-4V-Flash 输出上限 1024，超了会报「max_tokens参数非法」）
     const outCap = modelInfo(pid, model).maxOut || p.maxTok || 2000;
-    const payload = { model: model, messages: messages, temperature: getTemp(), max_tokens: Math.min(o.maxTok || outCap, outCap) };
+    /* ★v20261026a 提速：出题等批量场景可用 o.temp 覆写温度（越低越集中、越少废话 → 更快更稳） */
+    const _t = (o.temp != null && !isNaN(parseFloat(o.temp))) ? parseFloat(o.temp) : getTemp();
+    const payload = { model: model, messages: messages, temperature: _t, max_tokens: Math.min(o.maxTok || outCap, outCap) };
     // 流式：传了 onDelta 就走 SSE，边生成边回调（全文累积值, 本次增量）
     if (typeof o.onDelta === "function") {
       payload.stream = true;
@@ -413,6 +415,10 @@
     const batchSize = lowCap ? 4 : 5;
     const rounds = Math.max(1, Math.ceil(n / batchSize));
     const leanNote = lowCap ? "\n注意：输出务必精炼——题干、选项简明扼要，每题解析不超过50字。" : "";
+    /* ★v20261026a 提速：fast 模式（答题页「举一反三」3 题）一次性 1 批出完，
+       温度调低 + 输出上限收紧 + 解析精简，把单次往返压到 5 秒内。 */
+    const fast = !!o.fast;
+    const fastNote = fast ? "\n注意：解析要精炼到位（每题不超过80字，讲清考点与正误依据即可），不要展开长篇论述。" : "";
     // 通用出题风格 / 配图指令
     const styleInstr = `\n4) 只要求「考查的考点相同」，不要照搬原题：题干的背景材料、情境、事例、数据一律由你自行设计（可以是不同场景、不同主体、不同数据）；严禁沿用原题的背景/例子/数字，也不要写出与原题题干雷同的句子。保持题型与难度一致即可，不必复刻原题的写法或背景引入。`;
     /* 知识库统一注入（v20261008）：出题时带上内置政治理论知识点原文，
@@ -447,7 +453,7 @@
         const topic = (qCtx && qCtx.subject) ? qCtx.subject : (o.subject || (modTitle !== "综合" ? modTitle : "公务员考试相关知识点"));
         p = `你是公务员考试命题专家。根据以下内容所涉及的「${topic}」知识点，出 ${cnt} 道考查该知识点、难度相近的单项选择题。\n要求：\n1) 每题必须包含题干、4个选项、正确答案、详细解析；\n2) 紧扣该知识点，从常见考点、易错点角度命题；\n3) 只输出 JSON 数组，禁止输出 markdown 代码块标记或任何其他文字。格式：[{"q":"题干","options":["A内容","B内容","C内容","D内容"],"a":"B","e":"解析"}]，其中 "a" 是正确选项字母。\n${styleInstr}\n\n【参考内容】\n${ctx}`;
       }
-      return p + kpContext(p) + leanNote + (extra || "");
+      return p + kpContext(p, fast ? 3 : 4) + leanNote + fastNote + (extra || "");
     }
     const prog = (typeof o.onProgress === "function") ? o.onProgress : null;
     // 分批调用：低输出上限的模型靠多轮合并凑够题量
@@ -467,10 +473,11 @@
         if (hasOrigImg && !vision) prompt += "\n（注：原题含图片，但当前无可用识图模型，请仅按题干文字出题。）";
         userContent = prompt;
       }
+      const _callOpt = { maxTok: fast ? Math.max(1600, cnt * 700) : 6000, temp: fast ? 0.35 : null };
       const reply = await chat(
         [{ role: "system", content: "你是公务员考试命题专家，只输出 JSON 数组，不输出任何其他文字。" },
          { role: "user", content: userContent }],
-        vision ? { providerId: vision.pid, model: vision.model, key: vision.key, maxTok: 6000 } : { maxTok: 6000 });
+        vision ? Object.assign({ providerId: vision.pid, model: vision.model, key: vision.key }, _callOpt) : _callOpt);
       const got = parseQuestions(reply) || [];
       got.forEach(q => { if (q && q.q) all.push(q); });
       if (all.length >= n) break;
@@ -507,12 +514,92 @@
     return set;
   }
 
+  /* ===== ★v20261026a 答题页「举一反三」：不跳路由、不开 AI 咨询，
+     直接在当前页面弹窗出 N 道同类题（默认 3 题）当场刷 =====
+     ctx = { subject, q:{q, options, a, e, img} } */
+  async function jyfsInline(ctx, n, opts) {
+    opts = opts || {};
+    const UI = window.UI;
+    n = Math.max(1, Math.min(10, parseInt(n, 10) || 3));
+    if (!ctx || !ctx.q || !ctx.q.q) throw new Error("缺少原题上下文");
+    const subject = ctx.subject || "综合";
+    if ((window.KGAIQuiz && KGAIQuiz.moduleForSubject(subject)) === "essay") throw new Error("申论暂不支持出题");
+    // 顶层遮罩 + 进度提示
+    const root = document.getElementById("modalRoot") || document.body;
+    const mask = UI.el(`<div class="modal-mask jyfs-inline-mask">
+      <div class="modal jyfs-inline" style="width:min(820px,96vw);max-height:92vh;display:flex;flex-direction:column;overflow:hidden">
+        <div class="jyfs-inline-head" style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line,#e5e7eb)">
+          <b style="font-size:15px">💡 举一反三 · ${esc(subject)}</b>
+          <span class="muted small" style="margin-left:auto" id="jyfsInlineSub">AI 正在出 ${n} 道同类题…</span>
+          <button class="btn ghost sm" id="jyfsInlineClose">关闭</button>
+        </div>
+        <div class="jyfs-inline-body" style="flex:1;min-height:0;overflow:auto;padding:12px 14px">
+          <div class="empty" id="jyfsInlineBusy">⏳ AI 正在出题，请稍候…（约 3–5 秒）</div>
+        </div>
+      </div></div>`);
+    root.appendChild(mask);
+    const close = () => {
+      // ★弹窗内练习结束时把外层答题的键盘/计时状态还回去（直接关闭而非交卷时也要还）
+      try { if (window.Quiz && Quiz._nestedRestore) { Quiz._nestedRestore(); Quiz._nestedRestore = null; } } catch (e) {}
+      try { mask.remove(); } catch (e) {}
+    };
+    mask.querySelector("#jyfsInlineClose").onclick = close;
+    mask.onclick = (e) => { if (e.target === mask) close(); };
+    const bodyEl = mask.querySelector(".jyfs-inline-body");
+    const subEl = mask.querySelector("#jyfsInlineSub");
+    const _t0 = Date.now();
+    try {
+      // 出题核心依赖模块级 qCtx 判定「按原题仿题」：临时装载本题上下文，出完还原（避免串题）
+      const _oldCtx = qCtx;
+      qCtx = { subject: subject, q: Object.assign({}, ctx.q, { img: (ctx.q && ctx.q.img) || null }) };
+      let res;
+      try {
+        res = await jyfsCore({
+          n: n, fast: true, modKey: (window.KGAIQuiz && KGAIQuiz.moduleForSubject(subject)) || undefined,
+          onProgress: (t) => { try { bodyEl.querySelector("#jyfsInlineBusy").textContent = t; } catch (e) {} }
+        });
+      } finally {
+        qCtx = _oldCtx;
+      }
+      res.subject = subject;
+      const sec = ((Date.now() - _t0) / 1000).toFixed(1);
+      subEl.textContent = `${res.qs.length} 道同类题 · 用时 ${sec}s`;
+      bodyEl.innerHTML = `<div class="muted small" style="margin-bottom:8px">考点与刚才那题相同，背景由 AI 重新设计。答完可点「关闭」回到原卷，答题记录不受影响。</div><div class="jyfs-inline-host"></div>`;
+      const host = bodyEl.querySelector(".jyfs-inline-host");
+      const norm = res.qs.map(q => ({
+        q: String(q.q || ""),
+        options: (q.options || []).map(String),
+        a: String(q.a == null ? "" : q.a).trim().toUpperCase(),
+        e: String(q.e || ""),
+        type: "single"
+      })).filter(q => q.q && q.options.length >= 2);
+      if (!norm.length) throw new Error("AI 未返回可用的题目数据");
+      if (window.Quiz) {
+        /* ★v20261026a nested:true —— 这是开在外层答题之上的弹窗练习，
+           不能动 Quiz.active / 会话笔迹 / 悬浮按钮，否则外层答题状态会被连带清掉。 */
+        window.Quiz.start(host, norm, subject, {
+          nested: true, silent: false, noRecordWrong: opts.noRecordWrong === true
+        });
+      } else {
+        bodyEl.innerHTML = '<div class="empty">答题组件未就绪</div>';
+      }
+      return res;
+    } catch (e) {
+      bodyEl.innerHTML = `<div class="empty">出题失败：${UI.esc(e.message || String(e))}<br/><button class="btn sm" id="jyfsInlineRetry" style="margin-top:10px">重试</button></div>`;
+      const rb = bodyEl.querySelector("#jyfsInlineRetry");
+      if (rb) rb.onclick = () => { close(); jyfsInline(ctx, n, opts); };
+      subEl.textContent = "出题失败";
+      throw e;
+    }
+  }
+
   /* 自动生成一组新题并直接进入训练（供「下一组 / 再来一组」调用） */
   async function jyfsAuto(n, o) {
     o = o || {};
     UI.toast("⏳ AI 正在出新题，请稍候…");
     try {
-      const res = await jyfsCore(Object.assign({}, o, { n: n }));
+      // ★v20261026a 提速：≤5 题走 fast 通道（低温 + 收紧输出 + 精简解析），目标 5 秒内出完
+      const res = await jyfsCore(Object.assign({}, o, { n: n, fast: (parseInt(n, 10) || 0) <= 5 }));
       return jyfsFinish(res);
     } catch (e) {
       UI.toast("出题失败：" + e.message);
@@ -530,7 +617,7 @@
     getTemp: getTemp, setTemp: setTemp, ask: ask, askQuestion: askQuestion, askOverlay: askOverlay, test: test, chat: chat,
     setReturnHook: setReturnHook, getReturn: () => returnHash,
     setNoteTarget: setNoteTarget,
-    jyfsAuto: jyfsAuto
+    jyfsAuto: jyfsAuto, jyfsInline: jyfsInline
   };
 
   /* ===== PDF → 文本（按 Y 坐标重建行，避免整页挤成一行） ===== */
@@ -1324,7 +1411,7 @@
             try {
               // 出题核心（模块级）：分批生成 + 去重
               const res = await jyfsCore({
-                n: reqN, ctxText: ov.ctxText || "", modKey: ov.modKey !== undefined ? ov.modKey : modKey,
+                n: reqN, fast: reqN <= 5, ctxText: ov.ctxText || "", modKey: ov.modKey !== undefined ? ov.modKey : modKey,
                 onProgress: t => { busy.textContent = t; }
               });
               mask.remove();
