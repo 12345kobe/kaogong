@@ -89,7 +89,7 @@
     }
   };
 
-  /* ---- 等级卡 ---- */
+  /* ---- 等级卡（v20261027a：展示科举 7 等级图集，当前等级高亮）---- */
   function renderLevelCard(body) {
     const KK = window.KGKingke || {};
     const LEVELS = KK.LEVELS || [];
@@ -100,14 +100,39 @@
     const next = LEVELS[idx + 1];
     let pct = 100;
     if (next) pct = Math.max(0, Math.min(100, (done / total - L.p) / (next.p - L.p) * 100));
-    const row = LEVELS.map((l, i) => `<span class="imp-lv ${i === idx ? "cur" : (i < idx ? "done" : "")}">${l.name}</span>`).join("");
+    /* ★v20261027a：用 scholar_1~7.png 等级图集替换原来的纯文字行；
+       已达成等级置灰描边、当前等级高亮描金、未达成半透明，点击可放大查看。 */
+    const cards = LEVELS.map((l, i) => {
+      const cls = i === idx ? "cur" : (i < idx ? "done" : "lock");
+      const label = i === idx ? "★ " + l.name : l.name;
+      return `<div class="imp-lv-card ${cls}" data-img="${l.img}" data-name="${l.name}">
+        <div class="imp-lv-img"><img src="${l.img}" alt="${l.name}" loading="lazy" onerror="this.parentNode.innerHTML='<span class=\\'imp-lv-ph\\'>${l.name}</span>'"/></div>
+        <div class="imp-lv-name">${label}</div>
+      </div>`;
+    }).join("");
     body.querySelector("#impLevel").innerHTML = `
       <div class="spread" style="align-items:baseline">
         <div><span class="imp-lv-now">${L.name}</span><span class="muted small" style="margin-left:8px">已刷 ${done} 题 / 题库 ${total}</span></div>
         <span class="muted small">${next ? "距「" + next.name + "」还差 " + Math.max(0, Math.ceil(total * next.p - done)) + " 题" : "状元及第 🎉"}</span>
       </div>
       <div class="progress-bar" style="margin:10px 0 12px"><i style="width:${pct}%"></i></div>
-      <div class="imp-lvs">${row}</div>`;
+      <div class="imp-lvs-grid">${cards}</div>
+      <div class="muted small" style="margin-top:8px;text-align:center">轻点任意等级图可放大查看 · 当前等级已描金高亮</div>`;
+    // 点击放大查看单张等级图
+    body.querySelectorAll("#impLevel .imp-lv-card").forEach(c => {
+      c.onclick = () => {
+        const src = c.dataset.img, name = c.dataset.name || "等级";
+        const mask = document.createElement("div");
+        mask.className = "imp-mask";
+        mask.innerHTML = `<div class="imp-modal small imp-lv-zoom">
+          <h3 style="margin-bottom:10px">${name}</h3>
+          <img src="${src}" alt="${name}" style="max-width:100%;max-height:60vh;border-radius:12px" onerror="this.style.display='none'"/>
+          <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn ghost" id="lvzClose">关闭</button></div>
+        </div>`;
+        document.body.appendChild(mask);
+        mask.onclick = (e2) => { if (e2.target === mask || e2.target.id === "lvzClose") mask.remove(); };
+      };
+    });
   }
 
   /* ---- 编辑资料 ---- */

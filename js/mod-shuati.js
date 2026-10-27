@@ -142,13 +142,18 @@
         SS.subject = "";
         SS.lastCount = 0;
       }
-      // 上一轮已经彻底结算干净（已结束且计时器已清空）→ 允许同签名重新开始新的一轮
-      if (SS.ended && !DB.timerState().running && DB.timerElapsedMs() === 0) {
+      // ★v20261027a 修复「复盘/结束卡死」：旧逻辑用「计时器已清空」判定「上轮已结算」，
+      //   但 doEnd() 调 timerStop() 会立即把累计清零，导致刚点「结束计时」就被误判成
+      //   「已结算干净」→ SS.ended 被重置 → 自动开始又触发 startLaunched() 重启计时，
+      //   保存表单永远出不来、已结束的时长也被丢掉（用户反馈的「强制继续计时无法退出/
+      //   无法计入总时长」）。现在改为：只有当持久化的 shuatiSession 已被 _clearSS 真正清空
+      //   （即用户已保存/跳过、确实结算后）时，才允许同签名重开新一轮；doEnd 之后、save/skip
+      //   之前的「已结束但未结算」状态一律原样保留，确保保存表单正常出现。
+      if (!persisted && SS.key === sig) {
         SS.started = false; SS.ended = false; SS.finalElapsedMs = 0; SS.finalLaps = []; SS.lapSnapshot = [];
         SS.planId = pending ? pending.planId : null;
         SS.task = pending ? pending.text : (mode === "plain" ? (DB.timerState().task || "刷题") : "");
         SS.subject = "";
-        if (DB.state) { DB.state.shuatiSession = null; try { DB.save(); } catch (e) {} }
       }
       let planId = SS.planId;      // 本地别名（同一 render 内多处使用）
       let task = SS.task;

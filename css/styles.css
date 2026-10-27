@@ -1924,6 +1924,20 @@ body.glass.light .opt.selected{
 .imp-lv{flex:1;text-align:center;font-size:11px;padding:5px 2px;border-radius:8px;background:var(--bg2,rgba(140,100,40,.12));color:var(--muted,#8a7a5a)}
 .imp-lv.done{color:var(--accent,#a33);font-weight:600}
 .imp-lv.cur{background:var(--accent,#a33);color:#fff;font-weight:700}
+/* v20261027a 科举等级图集 */
+.imp-lvs-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:4px}
+.imp-lv-card{background:var(--bg2,rgba(140,100,40,.10));border:2px solid transparent;border-radius:10px;padding:6px 4px;text-align:center;cursor:pointer;transition:transform .15s,box-shadow .15s,border-color .15s}
+.imp-lv-card:hover{transform:translateY(-2px)}
+.imp-lv-card .imp-lv-img{width:100%;aspect-ratio:3/4;display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:7px;background:rgba(0,0,0,.04)}
+.imp-lv-card .imp-lv-img img{width:100%;height:100%;object-fit:contain}
+.imp-lv-ph{font-size:13px;font-weight:700;color:var(--muted,#8a7a5a)}
+.imp-lv-name{font-size:11px;margin-top:5px;color:var(--muted,#8a7a5a);line-height:1.2}
+.imp-lv-card.lock{opacity:.45;filter:grayscale(.6)}
+.imp-lv-card.done{border-color:rgba(140,100,40,.35)}
+.imp-lv-card.cur{border-color:var(--accent,#a33);box-shadow:0 0 0 2px rgba(170,51,51,.25),0 4px 16px rgba(170,51,51,.25);background:rgba(170,51,51,.10)}
+.imp-lv-card.cur .imp-lv-name{color:var(--accent,#a33);font-weight:700}
+.imp-lv-zoom{max-width:420px;text-align:center}
+@media(max-width:560px){.imp-lv-name{font-size:10px}.imp-lvs-grid{gap:4px}}
 .imp-mask{position:fixed;inset:0;background:rgba(10,8,4,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px}
 .imp-modal{background:var(--panel,#fff8ec);border-radius:16px;padding:20px;width:100%;max-width:380px;box-shadow:0 12px 40px rgba(0,0,0,.35)}
 .imp-modal h3{margin:0 0 12px;font-size:16px}

@@ -1065,12 +1065,15 @@
     const UI = window.UI;
     const bar = UI.el(`<div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap;align-items:center">
       <button class="btn sm primary" id="hotRefresh">🔄 刷新今日时政</button>
+      <button class="btn sm ghost" id="hotSpecGen">📅 指定日期生成</button>
       <button class="btn sm ghost" id="dhMultiBtn">☑ 多选</button>
       <span class="muted small" id="hotRefreshTip">任意时间点「刷新」都会现场生成今天的内容；每晚 20:00 自动版覆盖白天版，历史日期不动</span>
     </div>`);
     setTimeout(() => {
       const b = bar.querySelector("#hotRefresh");
       if (b) b.onclick = () => refreshToday(host, bar, { manual: true });
+      const sg = bar.querySelector("#hotSpecGen");
+      if (sg) sg.onclick = () => openSpecGenModal(host);
     }, 0);
     return bar;
   }
@@ -1820,6 +1823,169 @@
       quiz: quiz
     };
   }
+  /* ===== 指定日期 / 范围生成（v20261027a）=====
+     复用 genTodayByAI(date) 对任意日期出题；单日=生成一条进该日，
+     范围=区间内每天各生成一条分别进对应日期。结果写 DB.state.dailyHot[date]
+     （本机 + 本账号云端，manualAt 锁死，不影响「今日」与自动 20:00 版）。 */
+  async function genForDate(date, opts) {
+    opts = opts || {};
+    const manual = opts.manual !== false;
+    const DB = window.DB;
+    try {
+      const r = await fetch("assets/data/daily_hot.js?t=" + Date.now(), { cache: "no-store" });
+      const txt = r.ok ? await r.text() : "";
+      const a = txt.indexOf("{"), b = txt.lastIndexOf("}");
+      if (a >= 0 && b > a) window.KG_DAILY_HOT = JSON.parse(txt.slice(a, b + 1));
+    } catch (e) {}
+    try { if (DB.pull) await DB.pull(); } catch (e) {}
+    DB.state.dailyHot = DB.state.dailyHot || {};
+    if (window.KG_DAILY_HOT) mergeDailyHot(DB.state.dailyHot, window.KG_DAILY_HOT);
+    const day = await genTodayByAI(date);
+    if (manual) { day.manualAt = Date.now(); delete day.generatedAt; }
+    else { day.generatedAt = Date.now(); delete day.manualAt; }
+    DB.state.dailyHot[date] = day;
+    DB.save();
+    try {
+      if (DB.isLoggedIn && DB.isLoggedIn() && DB.push) await DB.push();
+    } catch (e) { console.warn("[时政] 指定日期推送失败（本机已存）", e); }
+    return day;
+  }
+
+  function ymdLocal(d) {
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  function dateRangeList(start, end) {
+    let s = new Date(start + "T00:00:00");
+    let e = new Date(end + "T00:00:00");
+    if (isNaN(s) || isNaN(e)) return [];
+    if (s > e) { const t = s; s = e; e = t; }
+    const last = new Date(e.getFullYear(), e.getMonth(), e.getDate());
+    let cur = new Date(s.getFullYear(), s.getMonth(), s.getDate());
+    const out = [];
+    let guard = 0;
+    while (cur <= last && guard < 400) {
+      out.push(ymdLocal(cur));
+      cur.setDate(cur.getDate() + 1);
+      guard++;
+    }
+    return out;
+  }
+
+  function openSpecGenModal(host) {
+    const DB = window.DB, UI = window.UI;
+    const old = document.getElementById("specGenMask");
+    if (old) old.remove();
+    const mask = document.createElement("div");
+    mask.id = "specGenMask"; mask.className = "imp-mask";
+    mask.innerHTML = `
+      <div class="imp-modal" style="max-width:470px">
+        <h3 style="margin-bottom:6px">📅 指定日期生成时政</h3>
+        <div class="muted small" style="margin-bottom:12px">可为任意历史 / 未来日期生成一整套时政（言语 5 题 + 时政 10 题）。生成结果进入<b>该日期</b>，不影响「今日」与已生成日期。</div>
+        <div class="row" style="gap:8px;margin-bottom:12px">
+          <button class="btn sm primary" id="sgSingle" data-mode="single">📌 单日</button>
+          <button class="btn sm ghost" id="sgRange" data-mode="range">📆 范围（每天各一条）</button>
+        </div>
+        <div id="sgSingleWrap">
+          <label class="muted small">选择日期</label>
+          <input type="date" id="sgDate" class="kg-input" style="width:100%;margin-top:4px;padding:8px;border-radius:8px;border:1px solid var(--line,#ddd);background:var(--bg,#fff);color:var(--fg,#222)"/>
+        </div>
+        <div id="sgRangeWrap" hidden>
+          <label class="muted small">开始日期</label>
+          <input type="date" id="sgStart" class="kg-input" style="width:100%;margin-top:4px;margin-bottom:8px;padding:8px;border-radius:8px;border:1px solid var(--line,#ddd);background:var(--bg,#fff);color:var(--fg,#222)"/>
+          <label class="muted small">结束日期</label>
+          <input type="date" id="sgEnd" class="kg-input" style="width:100%;margin-top:4px;padding:8px;border-radius:8px;border:1px solid var(--line,#ddd);background:var(--bg,#fff);color:var(--fg,#222)"/>
+          <div class="muted small" id="sgRangeInfo" style="margin-top:6px"></div>
+        </div>
+        <div class="row" style="justify-content:space-between;margin-top:14px;align-items:center">
+          <button class="btn sm ghost" id="sgHelp">📖 出题规范</button>
+          <div>
+            <button class="btn sm ghost" id="sgCancel">取消</button>
+            <button class="btn sm primary" id="sgGo">✅ 开始生成</button>
+          </div>
+        </div>
+        <div id="sgHelpBox" class="muted small" hidden style="margin-top:10px;padding:10px;background:var(--bg2,rgba(0,0,0,.04));border-radius:8px;line-height:1.7"></div>
+      </div>`;
+    document.body.appendChild(mask);
+    const $ = (id) => mask.querySelector("#" + id);
+    const today = DB ? DB.today() : ymdLocal(new Date());
+    $("sgDate").value = today;
+    $("sgStart").value = today;
+    $("sgEnd").value = today;
+
+    function setMode(m) {
+      $("sgSingle").className = "btn sm " + (m === "single" ? "primary" : "ghost");
+      $("sgRange").className = "btn sm " + (m === "range" ? "primary" : "ghost");
+      $("sgSingleWrap").hidden = m !== "single";
+      $("sgRangeWrap").hidden = m !== "range";
+      updateRangeInfo();
+    }
+    function updateRangeInfo() {
+      const s = $("sgStart").value, e = $("sgEnd").value;
+      if (s && e) {
+        const list = dateRangeList(s, e);
+        if (!list.length) { $("sgRangeInfo").textContent = "⚠️ 日期无效或开始晚于结束"; return; }
+        $("sgRangeInfo").textContent = "将生成 " + list.length + " 天（" + list[0] + " ~ " + list[list.length - 1] + "），每天各一条。预计耗时 " + Math.max(1, Math.round(list.length * 2)) + "~" + Math.round(list.length * 4) + " 分钟。";
+      }
+    }
+    $("sgSingle").onclick = () => setMode("single");
+    $("sgRange").onclick = () => setMode("range");
+    $("sgStart").onchange = updateRangeInfo;
+    $("sgEnd").onchange = updateRangeInfo;
+    mask.onclick = (e2) => { if (e2.target === mask) mask.remove(); };
+    $("sgCancel").onclick = () => mask.remove();
+    $("sgHelp").onclick = () => {
+      const box = $("sgHelpBox");
+      box.hidden = !box.hidden;
+      if (!box.hidden) box.innerHTML = `<b>时政出题规范（本工作台红线）</b><br>
+        ① 只收录中国时政（政策/会议/科技/民生/经济/重大工程）；纯国际新闻不收录、不入题。<br>
+        ② 时政只作<b>背景引入</b>，设问与正确项全部取自内置政治理论知识点。<br>
+        ③ 题量：言语理解 5 题（逻辑填空·语境优先）+ 时政 10 题（7 单选 + 3 多选）。<br>
+        ④ 多选 A/B/C/D 必须是 4 句<b>独立知识表述</b>，严禁「A.选ABC」这类字母组合选项。<br>
+        ⑤ <b>禁考新闻数字细节</b>：整题考「多少亿/如何操作」= 废题，数字只可背景带过。<br>
+        ⑥ 错项只做同义替换，不得消极唱衰、不得「以上都对/都不对」。<br>
+        ⑦ 答案绝对一致：a 索引 = 解析【答案】X = 末句「选X」。<br>
+        ⑧ 跨天防重复：每题开头与近 7 天已出题不得雷同。`;
+    };
+    $("sgGo").onclick = async () => {
+      const mode = $("sgSingle").className.indexOf("primary") >= 0 ? "single" : "range";
+      let list;
+      if (mode === "single") {
+        const d = $("sgDate").value;
+        if (!d) { UI && UI.toast("请选择日期"); return; }
+        list = [d];
+      } else {
+        const s = $("sgStart").value, e = $("sgEnd").value;
+        list = dateRangeList(s, e);
+        if (!list.length) { UI && UI.toast("日期范围无效"); return; }
+        if (list.length > 31) { UI && UI.toast("范围过大（≤31天），请缩小"); return; }
+      }
+      const exist = list.filter(d => DB.state.dailyHot && DB.state.dailyHot[d]);
+      if (exist.length && !window.confirm("有 " + exist.length + " 天已有内容，确定覆盖重新生成？\n（" + exist.slice(0, 3).join("、") + (exist.length > 3 ? "…" : "") + "）")) return;
+      mask.remove();
+      if (hotBusy) { UI && UI.toast("时政正在生成中，请稍候"); return; }
+      hotBusy = true;
+      try {
+        for (let i = 0; i < list.length; i++) {
+          const d = list[i];
+          if (window.KGProgress) KGProgress.show("生成 " + d + "（" + (i + 1) + "/" + list.length + "）…", Math.round((i / list.length) * 100));
+          try {
+            await genForDate(d, { manual: true });
+          } catch (err) {
+            console.warn("[时政] " + d + " 生成失败", err);
+            UI && UI.toast(d + " 生成失败：" + ((err && err.message) || err));
+          }
+          if (host) try { renderDailyHot(host); } catch (e) {}
+        }
+        if (window.KGProgress) KGProgress.hide();
+        UI && UI.toast("已生成 " + list.length + " 天时政 ✓");
+        if (host) try { renderDailyHot(host); } catch (e) {}
+      } finally {
+        hotBusy = false;
+      }
+    };
+    setMode("single");
+  }
+
   /* ===== 刷新今日时政（v20261006k）=====
      任意时间点击都触发运转：同步静态源/云端后，用 AI 现场生成「今天」。
      - 生成版带 manualAt（用户手动版），只写入本机 + 本账号云端（userdata），不影响全局静态通道。
