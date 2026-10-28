@@ -1342,19 +1342,63 @@
       }
       throw lastErr || new Error("blob 拉取失败");
     },
+    /* ★v20261028f 多通道大文件拉取：大陆网络下 api.github.com 的 6MB+ blob 极易中断
+       （2026-10-28/29 深夜实锤：云端恢复数据完好、手机却反复拉不到）。
+       依次尝试 blobs API → raw.githubusercontent → jsDelivr 主/备镜像（均按 commit sha 固定，
+       immutable 无缓存坑），任一通道拿到完整合法 JSON 即成功。 */
+    async _fetchText(url) {
+      const ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+      const timer = ctrl ? setTimeout(() => { try { ctrl.abort(); } catch (e) {} }, 90000) : null;
+      try {
+        const res = await fetch(url, { cache: "no-store", signal: ctrl ? ctrl.signal : undefined });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return await res.text();
+      } finally { if (timer) clearTimeout(timer); }
+    },
+    async _pullRawMulti(blobSha) {
+      const path = this._userPath();
+      // ① blobs API（带重试）：返回 base64，先解码
+      try { return this._b64dec(await this._ghBlobRaw(blobSha, 2)); } catch (e) {}
+      // ② 拿最新 commit sha（小请求，成功率高）→ raw/jsDelivr 按 sha 固定取
+      let commitSha = "";
+      try {
+        const cs = await this._gh(`/repos/${GH.owner}/${GH.repo}/commits?sha=${GH.dataBranch}&path=${path}&per_page=1`);
+        commitSha = (cs && cs[0] && cs[0].sha) || "";
+      } catch (e) {}
+      const chans = [];
+      if (commitSha) {
+        chans.push(`https://raw.githubusercontent.com/${GH.owner}/${GH.repo}/${commitSha}/${path}`);
+        chans.push(`https://cdn.jsdelivr.net/gh/${GH.owner}/${GH.repo}@${commitSha}/${path}`);
+        chans.push(`https://fastly.jsdelivr.net/gh/${GH.owner}/${GH.repo}@${commitSha}/${path}`);
+      }
+      // 分支引用兜底（CDN 可能有几分钟缓存，但「只增不减」合并不怕旧数据）
+      chans.push(`https://raw.githubusercontent.com/${GH.owner}/${GH.repo}/${GH.dataBranch}/${path}`);
+      chans.push(`https://cdn.jsdelivr.net/gh/${GH.owner}/${GH.repo}@${GH.dataBranch}/${path}`);
+      let lastErr = null;
+      for (const u of chans) {
+        try {
+          const txt = await this._fetchText(u);
+          const d = JSON.parse(txt);                       // 完整性校验：截断/半截直接换下一通道
+          if (!d || typeof d !== "object") throw new Error("内容异常");
+          try { console.warn("[多通道拉取] 成功通道:", u.split("/")[2]); } catch (e) {}
+          return txt;
+        } catch (e) { lastErr = e; }
+      }
+      throw (lastErr || new Error("所有拉取通道均失败"));
+    },
     async pull() {
       if (!this.isLoggedIn()) return { skip: true, msg: "未登录" };
       this._pulling = true;
       try {
         const r = await this._gh(`/repos/${GH.owner}/${GH.repo}/contents/${this._userPath()}?ref=${GH.dataBranch}`);
-        // ★v20261010b 大文件（>1MB）Contents API 不返回 content —— 必须回退 git blobs 按 sha 取，
+        // ★v20261010b 大文件（>1MB）Contents API 不返回 content —— 必须回退取整包内容，
         //   否则 pull 永远失败：云端数据（含每日时政、其他设备的记录）再也同步不到本机。
-        let rawPull = (r && r.content) || "";
-        if (!rawPull && r && r.sha) {
-          rawPull = await this._ghBlobRaw(r.sha, 3);   // ★v20261028e 带重试
+        let dataText = (r && r.content) ? this._b64dec(r.content) : "";
+        if (!dataText && r && r.sha) {
+          dataText = await this._pullRawMulti(r.sha);      // ★v20261028f 多通道
         }
-        if (!rawPull) throw new Error("云端内容为空");
-        const data = mergeDefault(JSON.parse(this._b64dec(rawPull)), DEFAULT_STATE);
+        if (!dataText) throw new Error("云端内容为空");
+        const data = mergeDefault(JSON.parse(dataText), DEFAULT_STATE);
         // 与本机「累积合并」：本机尚未上传的历史不会被云端覆盖
         const beforeSig = this._sig();
         // 判定云端是否比「本机上次见到的版本」更新 —— 是则设置类数据以云端为准（换设备后一模一样）

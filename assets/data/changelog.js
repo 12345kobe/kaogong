@@ -3,6 +3,15 @@
 window.CHANGELOG = {
   logs: [
     {
+      version: "20261028f",
+      date: "2026-10-29",
+      title: "拉取多通道化：GitHub 直连失败也能救回数据",
+      items: [
+        { mod: "countdown", text: "**云端恢复版确认安全**：复查发现 10-18~10-27 全部记录仍在云端（未被再次覆盖），手机端只是拉取通道太脆弱——大陆网络下 api.github.com 的 6MB+ 大文件反复中断" },
+        { mod: "countdown", text: "**拉取多通道化（v20261028f）**：pull 不再只赌 GitHub API 一条路——blobs API 失败后自动切 raw.githubusercontent 直链 → jsDelivr 主镜像 → fastly 备用镜像（均按 commit sha 固定、immutable 无缓存坑，任一通道拿到完整合法 JSON 即成功），大陆可达性大幅提升" }
+      ]
+    },
+    {
       version: "20261028e",
       date: "2026-10-28",
       title: "数据丢失事故恢复 + 同步双重防覆盖保险",
