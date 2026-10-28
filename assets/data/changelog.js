@@ -3,6 +3,17 @@
 window.CHANGELOG = {
   logs: [
     {
+      version: "20261028e",
+      date: "2026-10-28",
+      title: "数据丢失事故恢复 + 同步双重防覆盖保险",
+      items: [
+        { mod: "countdown", text: "**数据恢复（已完成）**：10-18~10-27 的打卡日历/每日计划、qTotal=426、drillStat、错题本回缩条目（时政+12、言语理解+7）、currentAffairs 等，已从 10-27 凌晨云端版本合并恢复并推上云端；每日时政 29 天本就完好未受损。App 下次成功拉取即自动救回全部记录" },
+        { mod: "countdown", text: "**事故根因**：今天 GitHub 连接剧烈抖动（6.3MB 云端数据反复拉取中断），App 拉取失败 → 本地状态回退；更严重的是 push 前的「防骤减保险」需要先拉云端比对，**网络失败时被静默跳过** → 回缩版被直接 PUT 覆盖云端。且保险只盯 checkin.dates/accuracy/mutiHistory/qTotal，没盯 calendar/dailyPlan 这两个盲区" },
+        { mod: "countdown", text: "**修复①拉取带重试**：pull 的 blobs 大文件拉取新增重试 3 次（退避 1.2s/2.4s/3.6s），大幅提高 4MB+ JSON 在弱网下的一次成功率" },
+        { mod: "countdown", text: "**修复②双重防覆盖闸**：push 新增两道保险——(a) 离线闸：本地关键记录规模比「上次成功上传」骤减 → 拒绝上传并先拉云端恢复；(b) 在线闸：云端校验内容拉不到（网络抖动）→ 拒绝盲推（原逻辑静默放行正是本次事故元凶）；(c) 防骤减比对补上 calendar/dailyPlan 两个盲区指标" }
+      ]
+    },
+    {
       version: "20261028d",
       date: "2026-10-28",
       title: "举一反三科目锁死：时政言语题不再出成政治理论",

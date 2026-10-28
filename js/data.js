@@ -1325,6 +1325,23 @@
       for (const k in cqo) cq += (cqo[k] || []).length;
       return { customQuestions: cq, pdfBooks: (s.pdfBooks || []).length, pdfBookPractice: (s.pdfBookPractice || []).length };
     },
+    /* ★v20261028e blobs 大文件拉取带重试：今天实锤 6.3MB blob 在网络抖动下
+       IncompleteRead/超时频发，一次失败整个 pull 就报「拉取失败」→ 云端记录永远拉不回来。
+       重试 3 次（退避 1.2s/2.4s/3.6s），大幅提高大 JSON 拉取成功率。 */
+    async _ghBlobRaw(sha, tries) {
+      const n = Math.max(1, tries || 3);
+      let lastErr = null;
+      for (let i = 0; i < n; i++) {
+        try {
+          const b = await this._gh(`/repos/${GH.owner}/${GH.repo}/git/blobs/${sha}`);
+          const c = (b && b.content) || "";
+          if (c) return c;
+          lastErr = new Error("blob 内容为空");
+        } catch (e) { lastErr = e; }
+        if (i < n - 1) { try { await new Promise(res => setTimeout(res, 1200 * (i + 1))); } catch (_) {} }
+      }
+      throw lastErr || new Error("blob 拉取失败");
+    },
     async pull() {
       if (!this.isLoggedIn()) return { skip: true, msg: "未登录" };
       this._pulling = true;
@@ -1334,8 +1351,7 @@
         //   否则 pull 永远失败：云端数据（含每日时政、其他设备的记录）再也同步不到本机。
         let rawPull = (r && r.content) || "";
         if (!rawPull && r && r.sha) {
-          const blob = await this._gh(`/repos/${GH.owner}/${GH.repo}/git/blobs/${r.sha}`);
-          rawPull = (blob && blob.content) || "";
+          rawPull = await this._ghBlobRaw(r.sha, 3);   // ★v20261028e 带重试
         }
         if (!rawPull) throw new Error("云端内容为空");
         const data = mergeDefault(JSON.parse(this._b64dec(rawPull)), DEFAULT_STATE);
@@ -1384,15 +1400,45 @@
         [cnt((cloud.checkin || {}).dates), cnt((local.checkin || {}).dates)],
         [cnt(cloud.accuracy), cnt(local.accuracy)],
         [cnt(cloud.mutiHistory), cnt(local.mutiHistory)],
-        [Number(cloud.qTotal) || 0, Number(local.qTotal) || 0]   // ★v20261024 云端累计题量被清空的设备覆盖前先拦住
+        [Number(cloud.qTotal) || 0, Number(local.qTotal) || 0],   // ★v20261024 云端累计题量被清空的设备覆盖前先拦住
+        [cnt(cloud.calendar), cnt(local.calendar)],               // ★v20261028e 打卡日历盲区（10-28 实锤：9 天打卡被回缩版覆盖）
+        [cnt(cloud.dailyPlan), cnt(local.dailyPlan)]              // ★v20261028e 每日计划盲区（同上，9 天计划被覆盖）
       ];
+      return pairs.some(([c, l]) => c >= 5 && l < Math.min(3, c * 0.4));
+    },
+    /* ★v20261028e 本地规模骤减保险（不依赖网络）：记录上次成功上传时的关键记录规模，
+       push 时若本地比它骤减（设备存储被清/状态回退），拒绝上传——宁可暂不同步，
+       也绝不用残缺状态覆盖云端（10-28 实锤事故：9 天打卡/计划被回缩版覆盖云端）。 */
+    _pushScaleKey() { return "kg_lastPushScale_v1"; },
+    _stateScale() {
+      const cnt = (x) => (Array.isArray(x) ? x.length : (x && typeof x === "object") ? Object.keys(x).length : 0);
+      return {
+        cal: cnt(state && state.calendar), dp: cnt(state && state.dailyPlan),
+        qt: Number(state && state.qTotal) || 0, acc: cnt(state && state.accuracy),
+        ts: Date.now()
+      };
+    },
+    _scaleShrunk(a, b) {
+      if (!a) return false;
+      const pairs = [[a.cal, b.cal], [a.dp, b.dp], [a.acc, b.acc], [a.qt, b.qt]];
       return pairs.some(([c, l]) => c >= 5 && l < Math.min(3, c * 0.4));
     },
     async push() {
       if (!this.isLoggedIn()) return;
       this._localSave();                       // 上传前先落盘：确保 meta.updatedAt 与 vault 都是最新的
+      /* ★v20261028e 第一道闸（离线版防覆盖）：本地比上次成功上传时骤减 → 先拒绝上传 */
+      let lastScale = null;
+      try { lastScale = JSON.parse(localStorage.getItem(this._pushScaleKey()) || "null"); } catch (e) {}
+      const curScale = this._stateScale();
+      if (lastScale && lastScale.ts && Date.now() - lastScale.ts < 30 * 24 * 3600 * 1000 && this._scaleShrunk(lastScale, curScale)) {
+        console.warn("[同步保险] 本地比上次上传规模骤减，拒绝上传；先尝试拉云端恢复");
+        try { window.UI && window.UI.toast("🛡️ 检测到本机记录异常减少，已暂停上传（保护云端记录）"); } catch (e) {}
+        try { await this.pull(); } catch (e) {}
+        return;
+      }
       const path = this._userPath();
       let sha = null;
+      let _cloudUnreachable = false;
       try {
         const r = await this._gh(`/repos/${GH.owner}/${GH.repo}/contents/${path}?ref=${GH.dataBranch}`);
         sha = r && r.sha;
@@ -1401,8 +1447,7 @@
           this._shrunkCheckAt = Date.now();
           let rawC = (r && r.content) || "";
           if (!rawC) {
-            const b = await this._gh(`/repos/${GH.owner}/${GH.repo}/git/blobs/${sha}`);
-            rawC = (b && b.content) || "";
+            try { rawC = await this._ghBlobRaw(sha, 2); } catch (e2) { rawC = ""; }   // ★v20261028e blobs 拉取带重试
           }
           if (rawC) {
             const cloudState = JSON.parse(this._b64dec(rawC));
@@ -1413,15 +1458,27 @@
               this._localSave();
               try { window.UI && window.UI.toast("🛡️ 检测到本地记录异常减少，已自动从云端恢复"); } catch (e) {}
             }
+          } else {
+            /* ★v20261028e 第二道闸：云端校验内容拉不到（网络抖动）→ 绝不允许盲推。
+               10-28 实锤：这里原来静默放行，回缩版直接 PUT 覆盖云端导致记录丢失。 */
+            _cloudUnreachable = true;
+            this._shrunkCheckAt = 0;   // 下次 push 重新完整校验
           }
         }
       } catch (e) {}
+      if (_cloudUnreachable) {
+        console.warn("[同步保险] 云端校验内容拉取失败，拒绝盲推（防止覆盖云端记录）");
+        try { window.UI && window.UI.toast("⚠️ 云端校验不可达，本次已暂停上传（防止覆盖记录）"); } catch (e) {}
+        return;
+      }
       const content = this._b64enc(JSON.stringify(state));
       try {
         await this._gh(`/repos/${GH.owner}/${GH.repo}/contents/${path}`, {
           method: "PUT",
           body: JSON.stringify({ message: "sync " + this.today(), content, branch: GH.dataBranch, sha: sha || undefined })
         });
+        /* ★v20261028e 上传成功 → 记录本次规模，供下次离线防覆盖比对 */
+        try { localStorage.setItem(this._pushScaleKey(), JSON.stringify(this._stateScale())); } catch (e) {}
       } catch (e) {
         const msg = (e && e.message) || "";
         if (/Branch .* not found/i.test(msg) || /Not Found/i.test(msg)) {
@@ -1435,6 +1492,7 @@
             method: "PUT",
             body: JSON.stringify({ message: "sync " + this.today(), content, branch: GH.dataBranch, sha: sha || undefined })
           });
+          try { localStorage.setItem(this._pushScaleKey(), JSON.stringify(this._stateScale())); } catch (e2) {}
         } else throw e;
       }
     },
