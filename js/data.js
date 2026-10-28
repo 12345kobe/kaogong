@@ -1265,11 +1265,18 @@
     async checkCloud(force) {
       if (!this.isLoggedIn() || !this._cloudReady || this._pulling || this._syncing) return;
       const rev = await this._cloudRev();
-      if (!rev) return;
+      if (!rev) {
+        /* ★v20261028f 门卫失联（api.github.com 抖动）绝不能卡死拉取链路：
+           之前 rev 拿不到就直接 return，手机上 API 一抖 → 轮询再勤也永远不拉取。
+           现改为：距上次成功拉取超过 60 秒（或 force）就强制 pull 一次，多通道会自动换路。 */
+        const last = this._lastPullOkAt || 0;
+        if (force || Date.now() - last > 60000) { try { await this.pull(); } catch (e) {} }
+        return;
+      }
       const same = rev === this._lastCloudSha;
       this._lastCloudSha = rev;
       if (same && !force) return;      // 云端没变，不打扰
-      try { await this.pull(); } catch (e) {}
+      try { await this.pull(); this._lastPullOkAt = Date.now(); } catch (e) {}
     },
     _afterApply() {
       // 云端数据落到本机后：刷新顶栏 + 主题立即生效 + 重画当前页（答题/手写进行中不打断）
@@ -1425,6 +1432,7 @@
         // 合并结果回传云端，保证两端一致
         if (changed) { try { await this.push(); } catch (e) { console.warn("回传云端失败", e); } }
         if (changed || this._vaultApplied) { this._vaultApplied = 0; this._afterApply(); try { window.UI && window.UI.toast("☁️ 已同步云端最新数据"); } catch (e) {} }
+        this._lastPullOkAt = Date.now();   // ★v20261028f 成功拉取时间戳（门卫失联时的强制拉取节流用）
         return { changed };
       } catch (e) {
         if (e.notFound) return { skip: true, notFound: true, msg: "云端暂无数据" };
