@@ -492,8 +492,15 @@
     return !!(s && Array.isArray(s.ids) && s.ids.length && s.at > 0 && s.at < s.ids.length);
   }
 
-  /* 全屏刷题（v20261018c 用户要求）：进入答题隐藏侧栏/顶栏铺满屏，点返回即退出并回到刷题中心 */
-  function enterFull() { document.body.classList.add("kg-dq-full"); window.scrollTo(0, 0); }
+  /* ★v20261028 全屏刷题：进入答题隐藏侧栏/顶栏铺满屏。
+     滚动容器是 #content（kg-dq-full 下 fixed+overflow-y:auto），window.scrollTo 对它没有效果，
+     必须用 #content.scrollTop=0 —— 否则残留上一个题集的滚动位置（用户实锤：普通进入总从第三、四题开始）。
+     统一用 scrollTopReset 同时归零 window 与 #content。 */
+  function scrollTopReset() {
+    try { window.scrollTo(0, 0); } catch (e) {}
+    try { const c = document.getElementById("content"); if (c) c.scrollTop = 0; } catch (e) {}
+  }
+  function enterFull() { document.body.classList.add("kg-dq-full"); scrollTopReset(); }
   /* ★v20261024j 同时摘掉「分栏铺满」标记（kg-sq-wide），恢复列表页 820px 居中排版 */
   function exitFull() { document.body.classList.remove("kg-dq-full"); document.body.classList.remove("kg-sq-wide"); }
   /* ★返回刷题中心：路由本来就是 #/drills（答题是原地重画 body），
@@ -619,7 +626,7 @@
         },
         onDone: () => { try { DB.save(); checkLevelPopup(); renderBrand(); } catch (e) {} }
       });
-      window.scrollTo(0, 0);
+      scrollTopReset();
       return;
     }
 
