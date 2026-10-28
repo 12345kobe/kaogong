@@ -20,10 +20,25 @@
   function cleanName(n) { return String(n || "").replace(/\s+/g, " ").replace(/\.pdf$/i, "").trim(); }
 
   /* ================= 题目归一化 ================= */
+  /* ★v20261028c 由题集叶子 id 前缀推断真实科目：刷题库的题原不带 subject，
+     会导致「举一反三」把科目误当成「刷题中心」→ AI 跑偏出成政治理论题。
+     按前缀还原科目名（pdf「我的题册」等无法从前缀定的返回空，保持原行为）。 */
+  function subjectOfLeaf(id) {
+    const s = String(id || "");
+    if (s.indexOf("verbal") === 0) return "言语理解";
+    if (s.indexOf("jud") === 0) return "判断推理";
+    if (s.indexOf("quantity") === 0 || s.indexOf("qtyx") === 0) return "数量关系";
+    if (s.indexOf("data") === 0) return "资料分析";
+    if (s.indexOf("common") === 0) return "常识判断";
+    if (s.indexOf("muti") === 0) return "政治理论";
+    return "";
+  }
   function normQs(raw, leafId) {
+    const subj = subjectOfLeaf(leafId);
     return (raw || []).filter(q => q && q.q && Array.isArray(q.options) && q.options.length >= 2).map(q => ({
       q: q.q, options: q.options.map(stripPrefix), a: q.a, e: q.e || "", img: q.img || "",
-      multi: q.multi || (typeof q.a === "string" && q.a.length > 1 ? q.a : ""), __leaf: leafId
+      multi: q.multi || (typeof q.a === "string" && q.a.length > 1 ? q.a : ""), __leaf: leafId,
+      subject: subj || (q.subject || "")
     }));
   }
   function firstArr(o) { return Array.isArray(o) ? o : ((o && (o.items || o.questions || o.qs)) || []); }

@@ -453,11 +453,16 @@
         const topic = (qCtx && qCtx.subject) ? qCtx.subject : (o.subject || (modTitle !== "综合" ? modTitle : "公务员考试相关知识点"));
         p = `你是公务员考试命题专家。根据以下内容所涉及的「${topic}」知识点，出 ${cnt} 道考查该知识点、难度相近的单项选择题。\n要求：\n1) 每题必须包含题干、4个选项、正确答案、详细解析；\n2) 紧扣该知识点，从常见考点、易错点角度命题；\n3) 只输出 JSON 数组，禁止输出 markdown 代码块标记或任何其他文字。格式：[{"q":"题干","options":["A内容","B内容","C内容","D内容"],"a":"B","e":"解析"}]，其中 "a" 是正确选项字母。\n${styleInstr}\n\n【参考内容】\n${ctx}`;
       }
-      return p + kpContext(p, fast ? 3 : 4) + leanNote + fastNote + (extra || "");
+      /* ★v20261028c 知识库（政治理论要点）仅对「政治理论」科目注入：
+         之前对所有科目无条件注入，导致言语/判断等非政治题被政治要点带偏、出成政治理论题。 */
+      const _isPol = !!(window.KGAIQuiz && KGAIQuiz.moduleForSubject((qCtx && qCtx.subject) || "") === "politics");
+      const _kp = _isPol ? kpContext(p, fast ? 3 : 4) : "";
+      return p + _kp + leanNote + fastNote + (extra || "");
     }
     const prog = (typeof o.onProgress === "function") ? o.onProgress : null;
     // 分批调用：低输出上限的模型靠多轮合并凑够题量
     const all = [];
+    let lastErr = null;
     for (let r = 0; r < rounds; r++) {
       const cnt = Math.min(batchSize, n - all.length);
       if (cnt <= 0) break;
@@ -473,12 +478,25 @@
         if (hasOrigImg && !vision) prompt += "\n（注：原题含图片，但当前无可用识图模型，请仅按题干文字出题。）";
         userContent = prompt;
       }
-      const _callOpt = { maxTok: fast ? Math.max(1600, cnt * 700) : 6000, temp: fast ? 0.35 : null };
-      const reply = await chat(
-        [{ role: "system", content: "你是公务员考试命题专家，只输出 JSON 数组，不输出任何其他文字。" },
-         { role: "user", content: userContent }],
-        vision ? Object.assign({ providerId: vision.pid, model: vision.model, key: vision.key }, _callOpt) : _callOpt);
-      const got = parseQuestions(reply) || [];
+      const _callOpt = { maxTok: fast ? Math.max(2000, cnt * 800) : 6000, temp: fast ? 0.35 : null };
+      /* ★v20261028c 健壮性：单批出题偶发失败（JSON 截断/解析空/瞬时抖动）之前会直接抛「出题失败」。
+         这里对每批再做最多 3 次重试（解析失败或返回空都重调），把偶发失败压到极低；
+         chat 内部对 429/5xx 已有 3+2 轮重试，叠加后几乎不再出现失败。 */
+      let got = [];
+      lastErr = null;
+      for (let attempt = 0; attempt < 3 && got.length === 0; attempt++) {
+        try {
+          const reply = await chat(
+            [{ role: "system", content: "你是公务员考试命题专家，只输出 JSON 数组，不输出任何其他文字。" },
+             { role: "user", content: userContent }],
+            vision ? Object.assign({ providerId: vision.pid, model: vision.model, key: vision.key }, _callOpt) : _callOpt);
+          const parsed = parseQuestions(reply) || [];
+          got = parsed.filter(q => q && q.q);
+        } catch (e) { lastErr = e; if (attempt < 2) { try { await new Promise(res => setTimeout(res, 900 * (attempt + 1))); } catch (_) {} } }
+      }
+      if (!got.length) {
+        throw new Error((lastErr && lastErr.message) ? (String(lastErr.message) + "（出题解析失败，请重试）") : "AI 未返回可用的题目数据，请重试");
+      }
       got.forEach(q => { if (q && q.q) all.push(q); });
       if (all.length >= n) break;
     }
