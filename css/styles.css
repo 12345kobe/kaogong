@@ -1918,6 +1918,12 @@ body.glass.light .opt.selected{
 .imp-hint{position:absolute;bottom:8px;left:0;right:0;text-align:center;color:rgba(255,240,210,.75);font-size:11px;pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,.6)}
 .imp-gender{position:absolute;bottom:10px;right:10px;background:rgba(20,16,10,.62);color:#ffedd0;border-radius:10px;padding:5px 10px;font-size:12px;display:flex;align-items:center;gap:6px}
 .imp-gender select{background:#3a2f1e;color:#ffedd0;border:1px solid rgba(255,220,160,.4);border-radius:8px;padding:3px 6px;font-size:12px}
+/* ★v20261027b：书房 2D 立绘场景移除，舞台展示当前科举等级大图 */
+.imp-stage-wrap{background:linear-gradient(180deg,#faf5e8,#f2e9d4)}
+.imp-stage-scholar{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:14px 12px 12px;min-height:340px}
+.imp-scholar-big{width:min(78%,300px);max-height:420px;object-fit:contain;border-radius:14px;filter:drop-shadow(0 8px 18px rgba(90,60,20,.22));transition:transform .3s ease;cursor:zoom-in;touch-action:manipulation}
+.imp-scholar-big.zoom{transform:scale(1.18);cursor:zoom-out}
+.imp-scholar-tag{margin-top:10px;background:rgba(160,120,50,.14);border:1px solid rgba(160,120,50,.35);color:#6b4a18;border-radius:999px;padding:5px 16px;font-size:14px;font-weight:700;font-family:'Kaiti SC','STKaiti','KaiTi',serif;letter-spacing:2px}
 .imp-level{margin-top:12px}
 .imp-lv-now{font-size:22px;font-weight:800;color:var(--accent,#a33)}
 .imp-lvs{display:flex;gap:4px;flex-wrap:wrap}
