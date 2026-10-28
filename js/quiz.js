@@ -587,7 +587,17 @@
         updateSubmitHint();
         if (firstUn >= 0) {
           const c = container.querySelector('.quiz-q[data-qi="' + firstUn + '"]');
-          if (c) setTimeout(() => { try { c.scrollIntoView({ behavior: "auto", block: "start" }); } catch (e) {} }, 60);
+          if (c) {
+            /* ★v20261028b 修复「进入题集总从第二题开始」：scrollIntoView(block:start) 会把第一道未答题
+               顶到滚动容器最顶端，但全屏刷题的 .dq-topbar 是 position:sticky;top:0 常驻顶栏，
+               会盖住第 1 题 → 用户看到的第 1 个完整题变成「第 2 题」。
+               这里把顶栏真实高度作为该卡片的 scroll-margin-top 注入，scrollIntoView 会停在顶栏下方，
+               普通进入（firstUn=0）时 scroll-margin 只会把目标顶到 0 之上→被钳到 0，第 1 题完整露出。 */
+            const tb = document.querySelector(".dq-topbar");
+            const gap = (tb ? tb.getBoundingClientRect().height : 0) + 8;
+            try { c.style.scrollMarginTop = gap + "px"; } catch (e) {}
+            setTimeout(() => { try { c.scrollIntoView({ behavior: "auto", block: "start" }); } catch (e) {} }, 60);
+          }
         }
       }
 

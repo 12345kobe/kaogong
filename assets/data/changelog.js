@@ -3,6 +3,14 @@
 window.CHANGELOG = {
   logs: [
     {
+      version: "20261028b",
+      date: "2026-10-28",
+      title: "刷题起点再修复：第 1 题不再被常驻顶栏盖住",
+      items: [
+        { mod: "drills", text: "**修复「点题集还是从第二题开始」**：上一版归零滚动位置后，断点续答的 scrollIntoView 把第 1 题顶到滚动容器最顶端，被全屏刷题常驻的 .dq-topbar（sticky;top:0）盖住 → 看到的第 1 个完整题变成第 2 题。现把顶栏真实高度注入目标题卡的 scroll-margin-top，scrollIntoView 自动停在顶栏下方；普通进入（第 1 题）被钳到顶部、完整露出；「继续刷 ›」也精确停在顶栏下第一道未答题" }
+      ]
+    },
+    {
       version: "20261028a",
       date: "2026-10-28",
       title: "时政真实实证 + 刷题起点归零修复",
