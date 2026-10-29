@@ -1223,11 +1223,20 @@
     // 启动页：至少展示 2s，期间并行完成云端拉取与设置恢复（boot 前半段已恢复本地设置）。
     // 云端最慢 6s 也放行（未拉完的部分由 startAutoSync 后台续跑，不阻塞进入）。
     const splash = document.getElementById("kgSplash");
-    const pullP = DB.isLoggedIn()
-      ? DB.pull().then(() => { DB._cloudReady = true; }).catch(() => { DB._cloudReady = true; })
+    const splashVer = document.getElementById("kgSplashVer");
+    const needCloud = DB.isLoggedIn();
+    /* ★v20261029b 本机被清空（清后台/更新重启/换设备）后首次打开，4.7MB 云端数据多通道拉取
+       常需十几秒；原来 6s 就放行渲染 → 用户看到的是空日历，以为「数据又没了」。
+       现在：启动页明确显示「正在从云端恢复」，且给足 20 秒（拉取完成即刻放行，不必等满）。 */
+    if (needCloud && splashVer) { try { splashVer.textContent = "☁️ 正在从云端恢复你的学习记录…"; } catch (e) {} }
+    const pullP = needCloud
+      ? DB.pull().then(() => {
+          DB._cloudReady = true;
+          try { if (splashVer && splashVer.parentNode) splashVer.textContent = "✓ 云端记录已就位"; } catch (e) {}
+        }).catch(() => { DB._cloudReady = true; })
       : Promise.resolve().then(() => { DB._cloudReady = true; });
     const minWait = new Promise(r => setTimeout(r, 2000));
-    const capWait = new Promise(r => setTimeout(r, 6000));
+    const capWait = new Promise(r => setTimeout(r, needCloud ? 20000 : 6000));
     Promise.all([Promise.race([pullP, capWait]), minWait]).then(() => {
       if (DB.isLoggedIn()) DB.startAutoSync();
       renderRoute(); refreshTop();

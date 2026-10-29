@@ -1466,6 +1466,8 @@
       if (!this.isLoggedIn()) return { skip: true, msg: "未登录" };
       this._pulling = true;
       try {
+        const beforeCal = Object.keys((state && state.calendar) || {}).length;
+        const beforeQt = Number((state && state.qTotal) || 0);
         const r = await this._gh(`/repos/${GH.owner}/${GH.repo}/contents/${this._userPath()}?ref=${GH.dataBranch}`);
         // ★v20261010b 大文件（>1MB）Contents API 不返回 content —— 必须回退取整包内容，
         //   否则 pull 永远失败：云端数据（含每日时政、其他设备的记录）再也同步不到本机。
@@ -1496,13 +1498,26 @@
         try { if (window.KGKingke && KGKingke.renderBrand) KGKingke.renderBrand(); } catch (e) {}
         const afterSig = this._sig();
         const changed = beforeSig !== afterSig;
+        const afterCal = Object.keys((state && state.calendar) || {}).length;
+        const afterQt = Number((state && state.qTotal) || 0);
+        const restoredDays = afterCal - beforeCal;
+        const restoredQt = afterQt - beforeQt;
         this._pushedSig = afterSig;
         this._dirty = false;
         // 合并结果回传云端，保证两端一致
         if (changed) { try { await this.push(); } catch (e) { console.warn("回传云端失败", e); } }
-        if (changed || this._vaultApplied) { this._vaultApplied = 0; this._afterApply(); try { window.UI && window.UI.toast("☁️ 已同步云端最新数据"); } catch (e) {} }
+        if (changed || this._vaultApplied) {
+          this._vaultApplied = 0; this._afterApply();
+          try {
+            // ★v20261029b 明确告知救回多少：用户最怕「看着像丢了」
+            const msg = (restoredDays > 0 || restoredQt > 0)
+              ? ("🛡️ 已从云端恢复：打卡 +" + restoredDays + " 天" + (restoredQt > 0 ? ("、累计题量 +" + restoredQt) : ""))
+              : "☁️ 已同步云端最新数据";
+            window.UI && window.UI.toast(msg);
+          } catch (e) {}
+        }
         this._lastPullOkAt = Date.now();   // ★v20261028f 成功拉取时间戳（门卫失联时的强制拉取节流用）
-        return { changed };
+        return { changed, restoredDays, restoredQt };
       } catch (e) {
         if (e.notFound) return { skip: true, notFound: true, msg: "云端暂无数据" };
         console.warn("云端拉取失败", e);
