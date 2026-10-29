@@ -69,6 +69,43 @@
     }));
   }
 
+  /* ★v20261029h 登录凭据三重持久化（localStorage + cookie + IndexedDB）
+     事故实锤：token 只存 localStorage，iOS 清后台 / 存储压力下连它一起清掉 →
+     isLoggedIn() 变 false → pull/push 全部哑火 → 云端 57 天打卡、521 累计题量、
+     39 天时政一条都拉不回来，用户看到的就是「数据全没了」。
+     cookie 是同步可读的（模块加载时就能立刻回灌，不耽误启动拉取）；
+     IndexedDB 抗清理能力最强，作最后兜底。 */
+  const CK_TOKEN = "kg_sync_token_ck", CK_USER = "kg_sync_user_ck";
+  function ckSet(k, v) {
+    try { document.cookie = k + "=" + encodeURIComponent(v || "") + "; path=/; max-age=31536000; samesite=lax"; } catch (e) {}
+  }
+  function ckGet(k) {
+    try {
+      const m = document.cookie.match(new RegExp("(?:^|; )" + k + "=([^;]*)"));
+      return m ? decodeURIComponent(m[1]) : "";
+    } catch (e) { return ""; }
+  }
+  function idbPutCreds(t, u) {
+    return idbOpen().then(db => new Promise((resolve, reject) => {
+      try {
+        const tx = db.transaction(IDB_STORE, "readwrite");
+        tx.objectStore(IDB_STORE).put({ t: t || "", u: u || "" }, "creds_v1");
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => reject(tx.error || new Error("idb-put-creds-err"));
+      } catch (e) { reject(e); }
+    }));
+  }
+  function idbGetCreds() {
+    return idbOpen().then(db => new Promise((resolve, reject) => {
+      try {
+        const tx = db.transaction(IDB_STORE, "readonly");
+        const rq = tx.objectStore(IDB_STORE).get("creds_v1");
+        rq.onsuccess = () => resolve(rq.result || null);
+        rq.onerror = () => reject(rq.error || new Error("idb-get-creds-err"));
+      } catch (e) { reject(e); }
+    }));
+  }
+
   const DEFAULT_STATE = {
     meta: { version: 1, createdAt: null, updatedAt: 0, deviceId: "" },
     vault: {},   // ★ 同步保险箱：本机 localStorage 里所有 kg_* 配置（AI 密钥/服务商/字体/偏好…）镜像，随云端同步，换设备自动还原
@@ -1297,6 +1334,35 @@
         .catch(() => {})
         .then(() => { this._pulling = false; });
     },
+    /* ★v20261029h 凭据三重写：localStorage（主）+ cookie（同步可读，启动秒回灌）+ IndexedDB（抗清理兜底） */
+    _persistCreds(t, u) {
+      try { localStorage.setItem(LS_TOKEN, t || ""); localStorage.setItem(LS_USER, u || ""); } catch (e) {}
+      try { ckSet(CK_TOKEN, t || ""); ckSet(CK_USER, u || ""); } catch (e) {}
+      try { idbPutCreds(t, u).catch(() => {}); } catch (e) {}
+    },
+    /* 启动时把被清掉的登录态找回来（cookie 同步优先，IndexedDB 异步补位） */
+    _restoreCreds() {
+      let t = "", u = "";
+      try { t = localStorage.getItem(LS_TOKEN) || ""; u = localStorage.getItem(LS_USER) || ""; } catch (e) {}
+      if (!t) { t = ckGet(CK_TOKEN); u = ckGet(CK_USER); }                     // 同步：cookie 立刻救场
+      if (t) {
+        try { localStorage.setItem(LS_TOKEN, t); localStorage.setItem(LS_USER, u || ""); } catch (e) {}
+        DB._token = t;
+        this._persistCreds(t, u);                                              // 顺手补写回两个备源
+        return true;
+      }
+      try {                                                                    // 异步：IndexedDB 最后兜底
+        idbGetCreds().then(c => {
+          if (!c || !c.t) return;
+          try { localStorage.setItem(LS_TOKEN, c.t); localStorage.setItem(LS_USER, c.u || ""); } catch (e) {}
+          DB._token = c.t;
+          this._persistCreds(c.t, c.u);
+          try { window.UI && window.UI.toast && window.UI.toast("🔑 已自动恢复登录，正在同步云端…"); } catch (e) {}
+          setTimeout(() => { try { this.checkCloud(true); } catch (e) {} }, 900);
+        }).catch(() => {});
+      } catch (e) {}
+      return false;
+    },
     async login(username, token) {
       const u = (username || "").trim(), t = (token || "").trim();
       if (!u || !t) throw new Error("请填写用户名和令牌");
@@ -1304,8 +1370,7 @@
       const safe = u.replace(/[^A-Za-z0-9_一-龥\-]/g, "_").slice(0, 40);
       const localSnapshot = JSON.parse(JSON.stringify(state));                 // 登录前先备份本机数据
       const localHasData = this._hasMeaningfulData(localSnapshot);
-      localStorage.setItem(LS_TOKEN, t);
-      localStorage.setItem(LS_USER, safe);
+      this._persistCreds(t, safe);
       DB._token = t;
       let cloudEmpty = false, pullRes = null;
       try { pullRes = await this.pull(); } catch (e) { cloudEmpty = !!(e && e.notFound); }
@@ -1322,7 +1387,11 @@
       return { username: safe };
     },
     logout() {
-      localStorage.removeItem(LS_TOKEN); localStorage.removeItem(LS_USER); DB._token = null; this._cloudReady = false;
+      // ★v20261029h 三个存储源必须一起清，否则退出后凭据会从 cookie/IndexedDB「复活」
+      try { localStorage.removeItem(LS_TOKEN); localStorage.removeItem(LS_USER); } catch (e) {}
+      try { ckSet(CK_TOKEN, ""); ckSet(CK_USER, ""); } catch (e) {}
+      try { idbPutCreds("", "").catch(() => {}); } catch (e) {}
+      DB._token = null; this._cloudReady = false;
     },
     // 统计自建数据条数（用于计算跨设备增量导入了多少）
     _countCustom(s) {
@@ -1569,6 +1638,9 @@
     }
   };
   DB._token = localStorage.getItem(LS_TOKEN) || null;
+  /* ★v20261029h 模块加载即回灌登录态：必须在 app.js 判断 isLoggedIn() 之前跑完，
+     否则 iOS 清掉 localStorage 后启动时被当成「未登录」，直接跳过云端拉取。 */
+  try { DB._restoreCreds(); } catch (e) {}
 
   /* ★v20261024 保命持久化：答题写入有 400ms 防抖，用户「答完立刻刷掉 APP」时
      最新 qTotal 还没落盘 → 重启后等级/进度条回退。pagehide（iOS 杀 APP 必触发）
