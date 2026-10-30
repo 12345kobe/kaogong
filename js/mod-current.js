@@ -432,8 +432,9 @@
       h += `<h3>一、时政汇总</h3>`;
       let area = "";
       d.news.forEach(n => {
+        if (!n || (!n.title && !n.body)) return;
         if (n.area && n.area !== area) { area = n.area; h += `<h4>${esc(area)}</h4>`; }
-        h += `<p><b>${starHtml(n.star)}${esc(n.title)}</b><br/>${esc(n.body)}</p>`;
+        h += `<p><b>${starHtml(n.star)}${esc(n.title || "")}</b><br/>${esc(n.body || "")}</p>`;
       });
     }
     // 二、申论时评 + 金句
@@ -450,7 +451,12 @@
     // 三、词语释义
     if ((d.words || []).length) {
       h += `<h3>三、时政专属词语释义</h3><ol>`;
-      d.words.forEach(w => { h += `<li><b>${esc(w.word)}</b>（${esc(w.type)}）：${esc(w.def)}</li>`; });
+      // ★兼容：个别日期的 words 是纯字符串数组（旧版产出）→ 兜底成对象，避免显示 undefined
+      d.words.forEach(w => {
+        const ww = (typeof w === "string") ? { word: w, type: "", def: "" } : (w || {});
+        if (!ww.word) return;
+        h += `<li><b>${esc(ww.word)}</b>${ww.type ? `（${esc(ww.type)}）` : ""}${ww.def ? "：" + esc(ww.def) : ""}</li>`;
+      });
       h += `</ol>`;
     }
     // 四、言语真题 + 时政单选
