@@ -262,6 +262,53 @@
           migrated = true;
         }
       } catch (e) {}
+      /* ★2026-10-30 一次性自愈：限时刷题（quiz 模式）在 doSave 里被记了两遍
+         （else 分支一次 + 紧随其后的 if(mode==="quiz") 一次），用户实锤截图：
+         计划详情写「刷题 15 道 · 对 10 道」，学习统计卡却显示「今日答题数 30」。
+         代码已修（每种模式只记一次）；这里把已经被记脏的当天数字按 2 倍关系折半还原。
+         ★安全门槛：只有当「当天各模块题量之和」恰好等于「当天计划里刷题任务题量之和」的 2 倍
+         （且答对数同样是 2 倍）才动手，且只跑一次，绝不会误伤正常数据。 */
+      try {
+        if (!state.__fixDupQuiz_v1) {
+          state.__fixDupQuiz_v1 = true;
+          const DUP_DATES = ["2026-10-30"];
+          DUP_DATES.forEach(d => {
+            const day = (state.qDaily || {})[d];
+            if (!day) return;
+            let dsum = 0, rsum = 0;
+            Object.keys(day).forEach(k => { dsum += (day[k] || {}).done || 0; rsum += (day[k] || {}).right || 0; });
+            if (!dsum) return;
+            let pc = 0, pr = 0;
+            (((state.dailyPlan || {})[d] || {}).items || []).forEach(it => {
+              if (it && it.count != null) { pc += +it.count || 0; pr += +it.correct || 0; }
+            });
+            if (pc > 0 && dsum === pc * 2 && rsum === pr * 2) {
+              const ac = state.accuracyCumulative = state.accuracyCumulative || {};
+              Object.keys(day).forEach(k => {
+                const rec = day[k] || {};
+                const cutD = Math.round((rec.done || 0) / 2), cutR = Math.round((rec.right || 0) / 2);
+                const dDone = (rec.done || 0) - cutD, dRight = (rec.right || 0) - cutR;
+                rec.done = cutD; rec.right = cutR;
+                if (ac[k]) { ac[k].total = Math.max(0, (ac[k].total || 0) - dDone); ac[k].correct = Math.max(0, (ac[k].correct || 0) - dRight); }
+                state.qTotal = Math.max(0, (+state.qTotal || 0) - dDone);
+              });
+              migrated = true;
+            }
+            /* 同一处的第二个脏数据：专注了 15 分 03 秒，但「今日学习」只记到 1 分钟
+               （doEnd 先 timerStop 冻结，timerSettle 再取秒数拿到 0 被兜成 1）。
+               学习时长不可能小于当天计划里已记录的专注总时长 → 直接补齐。 */
+            try {
+              let pm = 0;
+              (((state.dailyPlan || {})[d] || {}).items || []).forEach(it => { pm += +((it && it.minutes) || 0); });
+              if (pm > 0) {
+                state.timer = state.timer || {};
+                state.timer.sessions = state.timer.sessions || {};
+                if ((+state.timer.sessions[d] || 0) < pm) { state.timer.sessions[d] = pm; migrated = true; }
+              }
+            } catch (e2) {}
+          });
+        }
+      } catch (e) {}
       if (migrated) this.save(true);
 
       this.dailyResetIfNeeded();
@@ -730,14 +777,20 @@
        上岸计时器与刷题模式共用，避免重复逻辑。有选学科时按学科记专注时长（供学习统计/学习计划）。
        creditActual：为真时（刷题模式超时——计划时限段 + 延迟段），按实际用时计专注分钟，
        而不是按 targetMs 计；这样「规定时间内没结束、往后延」的两段时间会相加计入总时长。 */
-    timerSettle(label, creditActual) {
+    timerSettle(label, creditActual, minsOverride) {
       label = label || "计时器";
       const tt = state.taskTimer;
       const planId = tt.planId, targetMs = tt.targetMs, subject = tt.subject;
       const sec = this.timerStop();
-      const mins = (creditActual && targetMs && targetMs > 0)
-        ? Math.max(1, Math.round(sec / 60))
-        : (targetMs && targetMs > 0 ? Math.max(1, Math.round(targetMs / 60000)) : Math.max(1, Math.round(sec / 60)));
+      /* ★2026-10-30 修：调用方若已提前 timerStop() 冻结过计时（刷题模式 doEnd 就是这么做的），
+         这里再 timerStop() 拿到的 sec 会是 0 → mins 被 Math.max(1,0) 兜成 1 分钟
+         （用户实锤截图：专注了 15 分 3 秒，「今日学习」却只有 1 分钟）。
+         允许调用方把已经量到的实际分钟传进来，以实际用时为准。 */
+      const mins = (typeof minsOverride === "number" && minsOverride > 0)
+        ? Math.max(1, Math.round(minsOverride))
+        : ((creditActual && targetMs && targetMs > 0)
+          ? Math.max(1, Math.round(sec / 60))
+          : (targetMs && targetMs > 0 ? Math.max(1, Math.round(targetMs / 60000)) : Math.max(1, Math.round(sec / 60))));
       const mod = (subject && subject !== "") ? subject : label;
       this.addTimerMinutes(mod, mins);
       if (subject && subject !== "" && window.KG_SUBJECTS && window.KG_SUBJECTS.indexOf(this.fullSubject(subject)) >= 0) {

@@ -521,7 +521,11 @@
         /* ★计划打勾兜底：timerSettle 内部会调 timerStop()，而 timerStop 把 planId 清成 null，
            导致它再也命中不到计划项 → 每日计划不会自动划掉。这里用 doEnd 时留存下来的 id 显式补刀。 */
         const pid = SS.planId || planId;
-        const r = DB.timerSettle("刷题模式", creditActual);
+        /* ★2026-10-30 修：doEnd() 已经 timerStop() 冻结过，timerSettle 再取秒数只会拿到 0
+           → 必须把实际用时（mins，或 SS.finalElapsedMs 换算）传进去，否则「今日学习」记成 1 分钟。 */
+        const actualMins = (SS.finalElapsedMs && SS.finalElapsedMs > 0)
+          ? Math.round(SS.finalElapsedMs / 60000) : mins;
+        const r = DB.timerSettle("刷题模式", creditActual, actualMins);
         try {
           const id = pid || (r && r.planId);
           if (id) {
@@ -596,9 +600,13 @@
           }
         } else if (mode === "review") {
           if (window.KGExam && KGExam.logReview) KGExam.logReview(subject, mins);
-        } else {
+        } else if (mode !== "quiz") {
           /* ★v20261021 普通刷题（plain，手动从计时器进入）以前完全没有记账，
-             导致这类刷题的正确率永远看不到。现在与 quiz 统一统计到所选学科。 */
+             导致这类刷题的正确率永远看不到。现在与 quiz 统一统计到所选学科。
+             ★2026-10-30 修：原来这里写成 else，而限时刷题 mode==="quiz" 也落进这个分支，
+             紧接着下面又有一个 if (mode === "quiz") 再记一次 → 15 道被记成 30 道
+             （用户实锤截图：计划里「刷题 15 道」，统计卡却显示「今日答题数 30」）。
+             把这个分支排除 quiz，保证每种模式只记一次。 */
           const cnt = parseInt(body.querySelector("#qCount").value, 10) || 0;
           const cor = parseInt(body.querySelector("#qCorrect").value, 10);
           if (cnt > 0) {
