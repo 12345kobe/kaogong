@@ -128,7 +128,47 @@
               <button class="btn primary" id="comboStart">▶ 开始综合刷题倒计时</button>
             </div>
           </div>`;
-          return examCard + comboCard;
+          /* ===== ★v20261031b 申论板块：按模式给题型与建议用时，填总分值/得分算正确率+书写时间 ===== */
+          const slBlocks = EM.shenlunBlocks();
+          const slToday = (function () {
+            const t = DB.today();
+            return (DB.state.shenlun || []).filter(x => x.date === t);
+          })();
+          const slDayText = (name) => {
+            const rec = slToday.filter(x => x.block === name);
+            if (!rec.length) return '<span class="muted small">今日未录</span>';
+            const sc = rec.reduce((a, b) => a + (b.score || 0), 0);
+            const ts = rec.reduce((a, b) => a + (b.totalScore || 0), 0);
+            const mn = rec.reduce((a, b) => a + (b.mins || 0), 0);
+            const pct = ts ? Math.round(sc / ts * 100) : 0;
+            return `<span class="muted small" style="color:#ffd166">今日 ${sc}/${ts} · ${pct}% · 用时 ${mn} 分</span>`;
+          };
+          const slLast = DB.state.shenlunLast || null;
+          const slPrefillMin = (slLast && slLast.block === slBlocks[0].n) ? slLast.mins : "";
+          const shenlunCard = `<div class="card" style="margin-top:8px;border-left:5px solid #ffd166">
+            <div class="spread" style="align-items:center;gap:10px">
+              <h3 style="margin:0">📝 申论板块（${esc(modeLabel)}）</h3>
+              <span class="muted small">合计 ${slBlocks.reduce((a, b) => a + b.min, 0)} 分钟</span>
+            </div>
+            <div class="muted small" style="margin-top:6px">按题型限时书写（${esc(slBlocks.map(b => b.n + " " + b.min + "分").join(" · "))}）；写完填「总分值 / 得分」，自动算正确率与书写时间，并计入学习统计与打卡日历。</div>
+            <div id="slList" style="margin-top:10px">
+              ${slBlocks.map(b => `<div class="sl-item" style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+                <b style="min-width:70px">${esc(b.n)}</b>
+                <span class="muted small" style="color:var(--cyan);font-weight:700">${b.min} 分钟</span>
+                <button class="btn sm primary sl-start" data-name="${esc(b.n)}" data-min="${b.min}">▶ 开始（${b.min}分）</button>
+                <span class="sl-day" data-name="${esc(b.n)}">${slDayText(b.n)}</span>
+              </div>`).join("")}
+            </div>
+            <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap;align-items:center">
+              <select id="slBlock" class="full" style="max-width:130px">${slBlocks.map(b => `<option value="${esc(b.n)}">${esc(b.n)}</option>`).join("")}</select>
+              <input id="slTotal" type="number" min="0" step="0.5" placeholder="总分值" style="max-width:96px"/>
+              <input id="slScore" type="number" min="0" step="0.5" placeholder="得分" style="max-width:96px"/>
+              <input id="slMin" type="number" min="0" placeholder="书写时间(分)" style="max-width:130px" value="${slPrefillMin}"/>
+              <button class="btn primary" id="slSave">💾 保存得分</button>
+            </div>
+            <div class="muted small" id="slPreview" style="margin-top:8px;font-weight:700;color:var(--cyan)">填入总分值与得分后显示正确率 / 书写时间</div>
+          </div>`;
+          return examCard + comboCard + shenlunCard;
         })();
 
         body.innerHTML = `<div class="card">
@@ -305,6 +345,69 @@
           location.hash = "#/shuati";
         };
 
+        /* ===== ★v20261031b 申论板块：按题型限时开始 + 保存「总分值/得分」算正确率与书写时间 ===== */
+        function startShenlun(name, mins) {
+          let subject = "申论";
+          try { subject = DB.subjectShort ? (DB.subjectShort("申论") || "申论") : "申论"; } catch (e) {}
+          const task = name + "（限时 " + mins + " 分钟）";
+          let planId = null;
+          try {
+            const it = DB.addPlanItem(date, { module: subject, type: "focus", text: task, minutes: mins });
+            planId = it && it.id;
+          } catch (e) {}
+          DB.timerStart(task, planId, Math.round(mins * 60000), subject);
+          const tt = DB.timerState(); tt.shenlun = name;
+          try { DB.save(); } catch (e) {}
+          UI.toast("▶ " + task + " 已开始计时");
+          render(); window.__updateTopTimer && window.__updateTopTimer();
+        }
+        body.querySelectorAll(".sl-start").forEach(btn => {
+          btn.onclick = () => startShenlun(btn.dataset.name || "", parseInt(btn.dataset.min, 10) || 30);
+        });
+        const slPreview = body.querySelector("#slPreview");
+        const slTotal = body.querySelector("#slTotal");
+        const slScore = body.querySelector("#slScore");
+        const slMin = body.querySelector("#slMin");
+        function updSlPreview() {
+          if (!slPreview || !slTotal || !slScore) return;
+          const ts = parseFloat(slTotal.value);
+          const sc = parseFloat(slScore.value);
+          const mn = parseFloat(slMin && slMin.value);
+          if (isNaN(ts) || ts <= 0) { slPreview.style.color = "var(--cyan)"; slPreview.textContent = "填入总分值与得分后显示正确率 / 书写时间"; return; }
+          if (isNaN(sc) || sc < 0) { slPreview.style.color = "var(--cyan)"; slPreview.textContent = "总分值 " + ts + " 分 —— 填入得分后算正确率"; return; }
+          if (sc > ts) { slPreview.style.color = "#ff6b81"; slPreview.textContent = "⚠ 得分不能大于总分值"; return; }
+          slPreview.style.color = "var(--cyan)";
+          slPreview.textContent = "得分 " + sc + " / " + ts + " 分 · 正确率 " + Math.round(sc / ts * 100) + "%"
+            + (!isNaN(mn) && mn > 0 ? " · 书写时间 " + mn + " 分钟" : "");
+        }
+        [slTotal, slScore, slMin].forEach(el => { if (el) { el.oninput = updSlPreview; el.onchange = updSlPreview; } });
+        updSlPreview();
+        const slSave = body.querySelector("#slSave");
+        if (slSave) slSave.onclick = () => {
+          const blockEl = body.querySelector("#slBlock");
+          const block = blockEl ? blockEl.value : "";
+          const ts = parseFloat(slTotal && slTotal.value);
+          const sc = parseFloat(slScore && slScore.value);
+          const mn = parseFloat(slMin && slMin.value);
+          if (!block) { UI.toast("请选择申论题型"); return; }
+          if (isNaN(ts) || ts <= 0) { UI.toast("请填写总分值"); return; }
+          if (isNaN(sc) || sc < 0) { UI.toast("请填写得分"); return; }
+          if (sc > ts) { UI.toast("得分不能大于总分值"); return; }
+          const r = DB.recordShenlun(block, ts, sc, isNaN(mn) ? 0 : mn);
+          if (!r) { UI.toast("得分不能大于总分值"); return; }
+          /* 同步写入今日计划项，便于打卡日历显示本题型的得分与书写时间 */
+          try {
+            const plan = DB.getPlan(date);
+            const cand = (plan.items || []).filter(x => (x.text || "").indexOf(block) >= 0);
+            const pi = cand[cand.length - 1];
+            if (pi) { pi.score = sc; pi.scoreFull = ts; if (!isNaN(mn) && mn > 0) pi.writeMin = mn; }
+          } catch (e) {}
+          DB.save(true);
+          UI.toast("已记录：" + block + " " + sc + "/" + ts + " 分 · 正确率 " + r.pct + "%"
+            + (!isNaN(mn) && mn > 0 ? " · 书写 " + mn + " 分" : "") + "，已计入学习统计");
+          render();
+        };
+
         function doStop() {
           if (iv) { clearInterval(iv); iv = null; }
           // 在停止前快照分段（timerSettle 内部会清空 laps）；保留给 toast 显示
@@ -315,6 +418,11 @@
           const wasShuati = !!tt0.shuati;
           // 刷题模式（含超时延迟段）按实际用时计；其余按原逻辑（倒计时计计划时限）
           const r = DB.timerSettle("计时器", wasShuati);
+          /* ★v20261031b 申论计时结束：留存本题型的实际书写时间，供申论得分表单预填 */
+          const wasShenlun = tt0.shenlun || "";
+          if (wasShenlun) {
+            try { DB.state.shenlunLast = { block: wasShenlun, mins: r.mins || 0 }; DB.save(); } catch (e) {}
+          }
           if (wasReview && window.KGExam && KGExam.logReview) {
             KGExam.logReview(revSubj, r.mins);
             try { DB.timerState().review = false; DB.save(); } catch (e) {}

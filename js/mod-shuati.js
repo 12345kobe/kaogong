@@ -388,11 +388,13 @@
               <span class="muted small" style="color:#cdd6f0">建议 ${c.mins} 分</span>
               <label class="muted small" style="color:#cdd6f0">刷<input id="cCount${i}" type="number" min="0" class="shuati-input" style="width:64px;display:inline-block;margin:0 4px" value="${c.count || 0}"/>道</label>
               <label class="muted small" style="color:#cdd6f0">对<input id="cCorrect${i}" type="number" min="0" class="shuati-input" style="width:64px;display:inline-block;margin:0 4px" placeholder="0"/>道</label>
+              <span class="muted small combo-sc" data-i="${i}" style="color:#ffd166;font-weight:700"></span>
             </div>`).join("");
           return `${endBigTime()}
             <div class="shuati-form">
-              <div class="muted small" style="margin-bottom:8px;color:#cdd6f0">题数已按计划预填（可自行改成实际刷的题数），各模块正确率将分别记入对应学科的学习统计。</div>
+              <div class="muted small" style="margin-bottom:8px;color:#cdd6f0">题数已按计划预填（可自行改成实际刷的题数），各模块正确率将分别记入对应学科的学习统计，并按${UI.esc((window.KGExam && KGExam.label()) || "")}分值表折算本次分值。</div>
               ${rows}
+              <div id="comboScoreTotal" class="muted small" style="margin-top:8px;font-weight:700;color:#ffd166"></div>
             </div>
             <div class="shuati-btns">
               <button class="btn big primary" id="saveBtn">💾 保存记录</button>
@@ -401,13 +403,33 @@
         }
         /* prefill 优先级：本次进入配置带的题数 > 上次记录的题数 > 空（★不再每次强制手填） */
         const defCount = (mode === "quiz" && quizCount) ? quizCount : (SS.lastCount || "");
+        /* ★v20261031b 本次赋分 + 判断推理逐题型统计（严格按官方分值表） */
+        const EM = window.KGExam;
+        const modScore = _scoreModule();
+        const canScore = !!(EM && EM.scoreCfg && EM.scoreCfg(modScore));
+        const sts = canScore ? EM.subTypes(modScore) : [];
+        const subRows = sts.length ? `<div style="margin-top:12px;text-align:left">
+          <div class="muted small" style="color:#ffd166;font-weight:700;margin-bottom:6px">🔍 ${UI.esc(modScore)} · 逐题型统计（按各题型分值精确赋分）</div>
+          ${sts.map((st, i) => `<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+            <b style="min-width:76px;text-align:left;color:#cdd6f0">${UI.esc(st.n)}</b>
+            <span class="muted small" style="color:#cdd6f0">${st.q}题 · ${st.perQ}分/题</span>
+            <label class="muted small" style="color:#cdd6f0">刷<input id="sCount${i}" type="number" min="0" class="shuati-input" style="width:60px;display:inline-block;margin:0 4px" placeholder="0"/>道</label>
+            <label class="muted small" style="color:#cdd6f0">对<input id="sCorrect${i}" type="number" min="0" class="shuati-input" style="width:60px;display:inline-block;margin:0 4px" placeholder="0"/>道</label>
+          </div>`).join("")}
+        </div>` : "";
+        const scoreHint = canScore
+          ? `<div class="muted small" style="margin-top:6px;color:#ffd166">按${UI.esc(EM.label())}分值表：${UI.esc(modScore)}整卷 ${EM.moduleFull(modScore)} 分 · 每题约 ${EM.perQ(modScore)} 分</div>`
+          : "";
         return `${endBigTime()}
           <div class="shuati-form">
             <label class="fld" style="color:#cdd6f0;text-align:left">本次刷题数量（道）</label>
             <input id="qCount" class="shuati-input" type="number" min="0" inputmode="numeric" placeholder="例如 30" value="${defCount}"/>
             <label class="fld" style="color:#cdd6f0;margin-top:10px;text-align:left">答对数量（道）</label>
             <input id="qCorrect" class="shuati-input" type="number" min="0" inputmode="numeric" placeholder="例如 25"/>
-            <div class="muted small" style="margin-top:8px;color:#cdd6f0">正确率将自动计算，并按所选学科记入学习统计（一一对应）。</div>
+            <div id="scorePreview" class="muted small" style="margin-top:10px;font-weight:700;color:#ffd166"></div>
+            ${scoreHint}
+            ${subRows}
+            <div class="muted small" style="margin-top:8px;color:#cdd6f0">正确率与本次分值将自动计算，并按所选学科记入学习统计（一一对应）。</div>
           </div>
           <div class="shuati-btns">
             <button class="btn big primary" id="saveBtn">💾 保存记录</button>
@@ -415,10 +437,76 @@
           </div>`;
       }
 
+      /* ★v20261031b 本次刷题对应的赋分模块全称（政治理论|常识判断|言语理解|数量关系|判断推理|资料分析） */
+      function _scoreModule() {
+        const raw = (mode === "quiz" ? (quizSubject || subject) : (subject || (DB.timerState().subject || ""))) || "";
+        try { return (DB._scoreModuleName ? DB._scoreModuleName(raw) : raw) || ""; } catch (e) { return raw || ""; }
+      }
+
+      /* ★v20261031b 结束表单「本次分值/总分」实时预览（判断推理有细分题型时按题型求和） */
+      function wireScorePreview() {
+        const EM = window.KGExam;
+        if (!EM || !EM.scoreCfg) return;
+        if (mode === "combo") {
+          const upd = () => {
+            let tot = 0, totFull = 0;
+            combo.forEach((c, i) => {
+              const mod = (DB._scoreModuleName ? DB._scoreModuleName(c.subject) : c.subject) || "";
+              const cEl = body.querySelector("#cCorrect" + i);
+              const cor = cEl ? (parseInt(cEl.value, 10) || 0) : 0;
+              const el = body.querySelector(".combo-sc[data-i='" + i + "']");
+              if (mod && EM.scoreCfg(mod)) {
+                const sc = EM.scoreOf(mod, cor), full = EM.moduleFull(mod);
+                if (el) el.textContent = sc.toFixed(1) + " / " + full.toFixed(1) + " 分";
+                tot += sc; totFull += full;
+              } else if (el) { el.textContent = ""; }
+            });
+            const t = body.querySelector("#comboScoreTotal");
+            if (t) t.textContent = totFull ? ("合计 " + tot.toFixed(1) + " / " + totFull.toFixed(1) + " 分") : "";
+          };
+          const ids = [];
+          combo.forEach((_, i) => { ids.push("#cCorrect" + i); ids.push("#cCount" + i); });
+          ids.forEach(id => { const el = body.querySelector(id); if (el) { el.oninput = upd; el.onchange = upd; } });
+          upd();
+          return;
+        }
+        const prev = body.querySelector("#scorePreview");
+        if (!prev) return;
+        const modScore = _scoreModule();
+        if (!modScore || !EM.scoreCfg(modScore)) { prev.textContent = ""; return; }
+        const sts = EM.subTypes(modScore);
+        const full = EM.moduleFull(modScore);
+        const upd = () => {
+          const ce = body.querySelector("#qCorrect"), te = body.querySelector("#qCount");
+          const cor = ce ? (parseInt(ce.value, 10) || 0) : 0;
+          const tot = te ? (parseInt(te.value, 10) || 0) : 0;
+          let sc = 0, src = "";
+          if (sts.length) {
+            const subs = [];
+            sts.forEach((st, i) => {
+              const cEl = body.querySelector("#sCorrect" + i), tEl = body.querySelector("#sCount" + i);
+              const c = cEl ? (parseInt(cEl.value, 10) || 0) : 0;
+              const t = tEl ? (parseInt(tEl.value, 10) || 0) : 0;
+              if (t > 0 || c > 0) subs.push({ n: st.n, correct: c, total: t });
+            });
+            if (subs.length) { sc = EM.scoreOfSubs(modScore, subs); src = "（按题型）"; }
+            else { sc = EM.scoreOf(modScore, cor); }
+          } else { sc = EM.scoreOf(modScore, cor); }
+          const pct = tot ? Math.round(cor / tot * 100) : 0;
+          prev.textContent = "本次 " + sc.toFixed(1) + " / " + full.toFixed(1) + " 分" + src
+            + (tot ? " · 正确率 " + pct + "%（对 " + cor + "/" + tot + "）" : "");
+        };
+        const ids = ["#qCorrect", "#qCount"];
+        sts.forEach((_, i) => { ids.push("#sCorrect" + i); ids.push("#sCount" + i); });
+        ids.forEach(id => { const el = body.querySelector(id); if (el) { el.oninput = upd; el.onchange = upd; } });
+        upd();
+      }
+
       function wire() {
         if (SS.ended) {
           body.querySelector("#saveBtn").onclick = () => doSave();
           body.querySelector("#skipBtn").onclick = () => doSkip();
+          try { wireScorePreview(); } catch (e) {}   // ★v20261031b 本次分值/总分 实时预览
           return;
         }
         if (!SS.started) {
@@ -585,18 +673,29 @@
         const mins = Math.max(1, Math.round(SS.finalElapsedMs / 60000));
         finalize(mins, true); // 实际用时计（计划段+延迟段相加）
         recordOvertime();
+        let lastScoreTxt = "";   // ★v20261031b 本次赋分文案（结算 toast 显示）
         if (mode === "combo") {
+          const comboScores = [];
           combo.forEach((c, i) => {
             const cnt = parseInt(body.querySelector("#cCount" + i).value, 10) || 0;
             const cor = parseInt(body.querySelector("#cCorrect" + i).value, 10) || 0;
             DB.recordAccuracy(DB.subjectShort(c.subject), cor, cnt);
+            /* ★v20261031b 按官方分值表折算本次分值 */
+            try {
+              const EM = window.KGExam;
+              const mod = (DB._scoreModuleName ? DB._scoreModuleName(c.subject) : c.subject) || "";
+              if (EM && EM.scoreCfg && EM.scoreCfg(mod)) {
+                const r = DB.recordModuleScore(mod, cor, cnt, { mins: c.mins || 0, source: "combo" });
+                comboScores.push({ subject: c.subject, count: cnt, correct: cor, score: r.score, full: r.full });
+              } else comboScores.push({ subject: c.subject, count: cnt, correct: cor });
+            } catch (e) { comboScores.push({ subject: c.subject, count: cnt, correct: cor }); }
           });
+          const sSum = comboScores.reduce((a, b) => a + (b.score || 0), 0);
+          const fSum = comboScores.reduce((a, b) => a + (b.full || 0), 0);
+          if (fSum) lastScoreTxt = " · 赋分 " + sSum.toFixed(1) + "/" + fSum.toFixed(1);
           if (planId) {
             const it = DB.getPlan(DB.today()).items.find(x => x.id === planId);
-            if (it) {
-              it.combo = combo.map((c, i) => ({ subject: c.subject, count: parseInt(body.querySelector("#cCount" + i).value, 10) || 0, correct: parseInt(body.querySelector("#cCorrect" + i).value, 10) || 0 }));
-              DB.save();
-            }
+            if (it) { it.combo = comboScores; DB.save(); }
           }
         } else if (mode === "review") {
           if (window.KGExam && KGExam.logReview) KGExam.logReview(subject, mins);
@@ -624,12 +723,40 @@
           SS.lastCount = cnt; _persistSS();
           if (planId) { const it = DB.getPlan(DB.today()).items.find(x => x.id === planId); if (it) { it.count = cnt; it.correct = isNaN(cor) ? null : cor; DB.save(); } }
         }
+        /* ★v20261031b 本次赋分（判断推理按细分题型精确赋分）→ 计入学习统计 + 打卡日历计划项 */
+        if (mode !== "combo" && mode !== "review") {
+          try {
+            const EM = window.KGExam;
+            const mod = _scoreModule();
+            if (EM && EM.scoreCfg && EM.scoreCfg(mod)) {
+              const cntEl = body.querySelector("#qCount"), corEl = body.querySelector("#qCorrect");
+              const cntRaw = cntEl ? (cntEl.value === "" ? 0 : parseInt(cntEl.value, 10)) : 0;
+              const cnt = isNaN(cntRaw) ? 0 : cntRaw;
+              const cor = corEl ? (parseInt(corEl.value, 10) || 0) : 0;
+              const sts = EM.subTypes(mod);
+              const subs = [];
+              sts.forEach((st, i) => {
+                const cEl = body.querySelector("#sCorrect" + i), tEl = body.querySelector("#sCount" + i);
+                if (!cEl && !tEl) return;
+                const c = cEl ? (parseInt(cEl.value, 10) || 0) : 0;
+                const t = tEl ? (parseInt(tEl.value, 10) || 0) : 0;
+                if (t > 0 || c > 0) subs.push({ n: st.n, correct: c, total: t });
+              });
+              const r = DB.recordModuleScore(mod, cor, cnt, { subs: subs, mins: mins, source: mode });
+              lastScoreTxt = " · 赋分 " + r.score.toFixed(1) + "/" + r.full.toFixed(1) + " 分";
+              if (planId) {
+                const it = DB.getPlan(DB.today()).items.find(x => x.id === planId);
+                if (it) { it.score = r.score; it.scoreFull = r.full; if (subs.length) it.subs = subs; DB.save(); }
+              }
+            }
+          } catch (e) {}
+        }
         // 清理持久化的 launch（已结束）
         if (DB.state && DB.state.shuatiLaunch) { DB.state.shuatiLaunch = null; try { DB.save(); } catch (e) {} }
         _clearSS();
         const extra = (mode === "combo") ? " · 综合刷题 " + combo.length + " 模块" : (subject ? " · 学科 " + DB.fullSubject(subject) : "");
         const rec = SS.finalElapsedMs ? ` · 专注 ${fmtMsFull(SS.finalElapsedMs)}` : "";
-        UI.toast(`刷题模式结束${rec}${extra}${planId ? "，已记入今日计划 ✓" : ""}`);
+        UI.toast(`刷题模式结束${rec}${extra}${lastScoreTxt}${planId ? "，已记入今日计划 ✓" : ""}`);
         location.hash = "#/calendar";
       }
 

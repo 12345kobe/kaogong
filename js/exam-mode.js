@@ -32,6 +32,79 @@
   };
   const ORDER = ["政治理论", "常识判断", "言语理解", "数量关系", "判断推理", "资料分析"];
 
+  /* ===== ★v20261031b 行测赋分表（严格按用户提供的官方分值表录入）=====
+     广东省考：90 题 / 100 分 · 国考（地市级·行政执法）：130 题 / 100 分
+     q=参考题量  perQ=每题分值  full=该模块整卷总分值  min=参考用时(分)
+     判断推理给 subTypes（细分题型的题量与分值），用于逐题型统计赋分。
+     校验：省考 10+5+17+18+26+24=100 分 / 90 题；国考 10+7.5+24+28.5+10+20=100 分 / 130 题。 */
+  const SCORE = {
+    shengkao: {
+      label: "广东省考", full: 100, totalQ: 90, refMin: 90,
+      mods: {
+        政治理论: { q: 10, perQ: 1.0, full: 10, min: 8,
+          subTypes: [{ n: "判断题", q: 4, perQ: 0.8 }, { n: "单选题", q: 4, perQ: 1.0 }, { n: "多选题", q: 2, perQ: 1.4 }] },
+        常识判断: { q: 5, perQ: 1.0, full: 5, min: 8,
+          subTypes: [{ n: "单选题", q: 5, perQ: 1.0 }] },
+        言语理解: { q: 15, perQ: 1.133, full: 17, min: 20,
+          subTypes: [{ n: "选词填空", q: 5, perQ: 1.0 }, { n: "阅读理解", q: 10, perQ: 1.2 }] },
+        数量关系: { q: 15, perQ: 1.2, full: 18, min: 20,
+          subTypes: [{ n: "数字推理", q: 5, perQ: 1.2 }, { n: "数学运算", q: 10, perQ: 1.2 }] },
+        判断推理: { q: 25, perQ: 1.04, full: 26, min: 22,
+          subTypes: [{ n: "图形推理", q: 5, perQ: 1.2 }, { n: "逻辑判断", q: 15, perQ: 1.0 }, { n: "科学推理", q: 5, perQ: 1.0 }] },
+        资料分析: { q: 20, perQ: 1.2, full: 24, min: 20, subTypes: null }
+      }
+    },
+    guokao: {
+      label: "国考", full: 100, totalQ: 130, refMin: 130,
+      mods: {
+        政治理论: { q: 20, perQ: 0.5, full: 10, min: 10, subTypes: null },
+        常识判断: { q: 15, perQ: 0.5, full: 7.5, min: 6, subTypes: null },
+        言语理解: { q: 30, perQ: 0.8, full: 24, min: 25, subTypes: null },
+        判断推理: { q: 35, perQ: 0.814, full: 28.5, min: 34,
+          subTypes: [{ n: "图形推理", q: 10, perQ: 0.8 }, { n: "定义判断", q: 10, perQ: 0.8 }, { n: "类比推理", q: 5, perQ: 0.8 }, { n: "逻辑判断", q: 10, perQ: 0.85 }] },
+        数量关系: { q: 10, perQ: 1.0, full: 10, min: 12, subTypes: null },
+        资料分析: { q: 20, perQ: 1.0, full: 20, min: 27, subTypes: null }
+      }
+    }
+  };
+
+  /* ===== ★v20261031b 申论板块（按模式给题型与建议用时，用户填总分值/得分算正确率+书写时间）===== */
+  const SHENLUN = {
+    shengkao: [{ n: "申论一", min: 30 }, { n: "申论二", min: 30 }, { n: "大作文", min: 60 }],
+    guokao: [{ n: "申论一", min: 25 }, { n: "申论二", min: 25 }, { n: "申论三", min: 30 }, { n: "申论四", min: 30 }, { n: "大作文", min: 60 }]
+  };
+
+  /* 赋分相关只读助手 */
+  function scoreTable() { return SCORE[mode()] || SCORE.shengkao; }
+  function scoreCfg(subj) { const S = scoreTable(); return S.mods[subj] || null; }
+  function perQ(subj) { const c = scoreCfg(subj); return c ? c.perQ : 0; }
+  function moduleFull(subj) { const c = scoreCfg(subj); return c ? c.full : 0; }
+  function subTypes(subj) { const c = scoreCfg(subj); return (c && c.subTypes) || []; }
+  function hasSubTypes(subj) { return subTypes(subj).length > 0; }
+  /* 本次赋分：正确题数 × 每题分值，上限为模块整卷总分（保留 1 位小数） */
+  function scoreOf(subj, correct) {
+    const c = scoreCfg(subj); if (!c) return 0;
+    const s = (Math.max(0, correct || 0)) * c.perQ;
+    return Math.round(Math.min(s, c.full) * 10) / 10;
+  }
+  /* 细分题型赋分：逐题型「正确数 × 该题型每题分值」求和，上限模块总分 */
+  function scoreOfSubs(subj, subs) {
+    const c = scoreCfg(subj); if (!c || !subs || !subs.length) return 0;
+    let s = 0;
+    subs.forEach(it => {
+      const st = (c.subTypes || []).find(x => x.n === it.n);
+      const p = st ? st.perQ : c.perQ;
+      s += (Math.max(0, it.correct || 0)) * p;
+    });
+    return Math.round(Math.min(s, c.full) * 10) / 10;
+  }
+  /* 赋分文案：如「本次 18.0 / 26.0 分（省考判断推理）」 */
+  function scoreText(subj, correct) {
+    const c = scoreCfg(subj); if (!c) return "";
+    return "本次 " + scoreOf(subj, correct).toFixed(1) + " / " + c.full.toFixed(1) + " 分";
+  }
+  function shenlunBlocks() { return SHENLUN[mode()] || SHENLUN.shengkao; }
+
   function DB() { return window.DB; }
 
   function mode() {
@@ -271,10 +344,14 @@
   }
 
   window.KGExam = {
-    MODES: MODES, ORDER: ORDER,
+    MODES: MODES, ORDER: ORDER, SCORE: SCORE, SHENLUN: SHENLUN,
     mode: mode, setMode: setMode, toggleMode: toggleMode, label: label,
     cfg: cfg, perMin: perMin, paceText: paceText, suggestMs: suggestMs, suggestMin: suggestMin,
     subjects: subjects, fmtMin: fmtMin,
+    /* ★v20261031b 赋分 */
+    scoreTable: scoreTable, scoreCfg: scoreCfg, perQ: perQ, moduleFull: moduleFull,
+    subTypes: subTypes, hasSubTypes: hasSubTypes, scoreOf: scoreOf, scoreOfSubs: scoreOfSubs,
+    scoreText: scoreText, shenlunBlocks: shenlunBlocks,
     startQuiz: startQuiz, startReview: startReview, logReview: logReview, todayReviewMin: todayReviewMin,
     buzz: buzz, startMonitor: startMonitor, onCountdownEnd: onCountdownEnd, bigCountdown: bigCountdown
   };

@@ -131,12 +131,15 @@
               const pct2 = (it.correct != null && it.count) ? Math.round(it.correct / it.count * 100) : null;
               meta.push(`刷题 ${it.count} 道 · 对 ${it.correct != null ? it.correct : "?"} 道${pct2 != null ? "（正确率 " + pct2 + "%）" : ""}`);
             } else if (it.type === "quiz" && it.meta && it.meta.pct != null) meta.push(`正确率 ${it.meta.pct}%`);
+            // ★v20261031b 本次赋分（行测按分值表折算 / 申论按录入的总分值-得分），有无题量都显示
+            if (it.score != null && it.scoreFull) meta.push(`赋分 ${(+it.score).toFixed(1)}/${(+it.scoreFull).toFixed(1)} 分`);
             // 综合刷题：逐模块正确率
             if (Array.isArray(it.combo)) {
               it.combo.forEach(c => {
                 if (c && c.count) {
                   const p = Math.round((c.correct || 0) / c.count * 100);
-                  meta.push(`${c.subject} 对 ${c.correct != null ? c.correct : "?"}/${c.count}（${p}%）`);
+                  meta.push(`${c.subject} 对 ${c.correct != null ? c.correct : "?"}/${c.count}（${p}%）${
+                    (c.score != null && c.full) ? " · " + (+c.score).toFixed(1) + "/" + (+c.full).toFixed(1) + " 分" : ""}`);
                 }
               });
             }

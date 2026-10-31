@@ -76,6 +76,102 @@
         <div>${SUBJECTS.map(tRow).join("")}</div>
       </div>`;
 
+      // ===== ★v20261031b 近7天预估分数（按广东省考/国考分值表赋分）+ 分数波动 + 薄弱模块 =====
+      (function () {
+        const EM = window.KGExam;
+        if (!EM || !DB.recentScores) return;
+        const r7 = DB.recentScores(7);
+        const ORDER = EM.ORDER;
+        const modeLabel = EM.label();
+        const tblLabel = (EM.scoreTable() || {}).label || modeLabel;
+
+        /* 行测：近7天各模块「正确题量 ÷ 题量」= 得分率 → 预估分 = 得分率 × 该模块整卷分 */
+        const rows = [], rates = [];
+        let estTotal = 0, fullCovered = 0;
+        ORDER.forEach(m => {
+          const cfg = EM.scoreCfg(m); if (!cfg) return;
+          const recs = (r7.exam || []).filter(x => x.module === m);
+          const tot = recs.reduce((a, b) => a + (b.total || 0), 0);
+          const cor = recs.reduce((a, b) => a + (b.correct || 0), 0);
+          if (tot <= 0) { rows.push({ m: m, tot: 0, cor: 0, rate: null, est: null, full: cfg.full }); return; }
+          const rate = cor / tot, est = rate * cfg.full;
+          rows.push({ m: m, tot: tot, cor: cor, rate: rate, est: est, full: cfg.full });
+          rates.push(rate); estTotal += est; fullCovered += cfg.full;
+        });
+        const avgRate = rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : 0;
+
+        /* 申论：近7天各题型「得分 ÷ 总分值」= 得分率 → 预估分 = 得分率 × 该题型的总分值 */
+        const blocks = EM.shenlunBlocks();
+        const slRows = [];
+        let slEst = 0, slFull = 0;
+        blocks.forEach(b => {
+          const recs = (r7.shenlun || []).filter(x => x.block === b.n);
+          const ts = recs.reduce((a, x) => a + (x.totalScore || 0), 0);
+          const sc = recs.reduce((a, x) => a + (x.score || 0), 0);
+          if (!recs.length || ts <= 0) { slRows.push({ n: b.n, rate: null, est: null, full: 0 }); return; }
+          const full = ts / recs.length, rate = sc / ts, est = rate * full;
+          slRows.push({ n: b.n, rate: rate, est: est, full: full });
+          slEst += est; slFull += full;
+        });
+
+        /* 波动：与「上一个7天（第8~14天）」比，看预估行测分是升还是降（红涨绿跌） */
+        let delta = null, prevEst = 0;
+        try {
+          const r14 = DB.recentScores(14);
+          const in7 = {}; (r7.exam || []).forEach(x => { in7[x.date] = 1; });
+          const prev = (r14.exam || []).filter(x => !in7[x.date]);
+          let anyPrev = false;
+          ORDER.forEach(m => {
+            const cfg = EM.scoreCfg(m); if (!cfg) return;
+            const recs = prev.filter(x => x.module === m);
+            const tot = recs.reduce((a, b) => a + (b.total || 0), 0);
+            const cor = recs.reduce((a, b) => a + (b.correct || 0), 0);
+            if (tot > 0) { prevEst += (cor / tot) * cfg.full; anyPrev = true; }
+          });
+          if (anyPrev && fullCovered > 0) delta = estTotal - prevEst;
+        } catch (e) {}
+
+        /* 薄弱模块：近7天得分率低于「各模块平均得分率」的，标「要加强」 */
+        const weak = rows.filter(r => r.rate != null && avgRate > 0 && r.rate < avgRate)
+          .sort((a, b) => a.rate - b.rate);
+
+        const pct = v => (v == null ? "—" : Math.round(v * 100) + "%");
+        const pctCls = v => (v == null ? "" : (v >= 0.7 ? "good" : (v >= 0.5 ? "mid" : "bad")));
+        const rowHtml = r => `<div class="acc-row">
+          <div class="acc-name">${UI.esc(r.m || r.n)}</div>
+          <div class="acc-bar"><i style="width:${Math.round((r.rate || 0) * 100)}%;background:${r.rate == null ? "var(--line)" : (r.rate < avgRate && avgRate > 0 ? "#ff6b81" : "#34e7e4")}"></i></div>
+          <div class="acc-pct ${pctCls(r.rate)}">${r.m ? (r.rate == null ? "未练" : pct(r.rate)) : pct(r.rate)}</div>
+          <div class="acc-vol muted small">${r.m
+            ? (r.tot ? (r.cor + "/" + r.tot + " 题 · " + r.est.toFixed(1) + "/" + r.full.toFixed(1) + " 分") : "整卷 " + r.full.toFixed(1) + " 分")
+            : (r.est == null ? "未录" : r.est.toFixed(1) + "/" + r.full.toFixed(1) + " 分")}</div>
+        </div>`;
+
+        const deltaHtml = (delta == null) ? '<span class="muted small">（暂无上一周期数据可比）</span>'
+          : `<span style="font-weight:800;color:${delta >= 0 ? "#ff4d4f" : "#3ddc97"}">${delta >= 0 ? "▲ 升" : "▼ 降"} ${Math.abs(delta).toFixed(1)} 分</span>
+             <span class="muted small">（对比第 8~14 天的 ${prevEst.toFixed(1)} 分）</span>`;
+
+        html += `<div class="card" style="border-left:5px solid #ffd166">
+          <h3>🎯 近7天预估分数 <span class="muted small">${UI.esc(r7.from)} ~ ${UI.esc(r7.to)} · 按${UI.esc(tblLabel)}分值表赋分</span></h3>
+          <div class="row" style="gap:14px;flex-wrap:wrap;margin:10px 0 6px">
+            <div><span class="muted small">预估行测</span> <b style="font-size:26px;color:var(--cyan)">${estTotal.toFixed(1)}</b>
+              <span class="muted small">/ ${fullCovered.toFixed(1)} 分（已练模块）</span></div>
+            <div><span class="muted small">预估申论</span> <b style="font-size:26px;color:#ffd166">${slEst.toFixed(1)}</b>
+              <span class="muted small">/ ${slFull.toFixed(1)} 分（已录题型）</span></div>
+          </div>
+          <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">${deltaHtml}</div>
+          <div class="muted small" style="margin:6px 0">行测各模块（得分率 × 模块整卷分 = 预估分）：</div>
+          <div>${rows.map(rowHtml).join("")}</div>
+          <div class="muted small" style="margin:12px 0 6px">申论各题型（按你录入的总分值/得分折算）：</div>
+          <div>${slRows.map(rowHtml).join("")}</div>
+          <div class="muted small" style="margin-top:10px">平均分位线：各模块平均得分率 <b>${pct(avgRate)}</b>。${
+            weak.length
+              ? '⚠️ 需加强：<b style="color:#ff6b81">' + UI.esc(weak.map(w => w.m).join("、")) + '</b>（低于平均线，优先补）'
+              : '✅ 暂无明显短板模块（各模块均不低于平均线）'
+          }</div>
+          <div class="muted small" style="margin-top:6px">每次刷题保存 / 申论录入得分都会计入这里，用于掌握分数波动。</div>
+        </div>`;
+      })();
+
       // ===== 图表区 =====
       html += `<div class="grid g2">
         <div class="card"><h3>📈 每日学习时长（近14天）</h3><canvas id="c1" height="160"></canvas></div>

@@ -604,6 +604,85 @@
       try { if (window.KGKingke && KGKingke.renderBrand) KGKingke.renderBrand(); } catch (e) {}
     },
 
+    /* ===== ★v20261031b 行测赋分 / 申论得分 记录 =====
+       与 recordAccuracy 并列：正确率看题量，赋分看「每张卷子的分」。
+       state.examScores：行测每次刷题的赋分流水（含判断推理细分题型）
+       state.shenlun   ：申论每次书写的得分流水（总分值/得分/书写时间） */
+
+    /* 把「简称/全称」统一成赋分表用的全称（政治理论|常识判断|言语理解|数量关系|判断推理|资料分析） */
+    _scoreModuleName(m) {
+      if (!m) return "";
+      try {
+        const short = this.subjectShort(m);
+        const full = this.fullSubject ? this.fullSubject(short) : "";
+        return full || String(m);
+      } catch (e) { return String(m); }
+    },
+
+    /* 行测某模块一次刷题的赋分
+       opts: { subs:[{n,correct,total}], mins, source }
+       返回 { score, full, module } 便于调用方直接展示「本次分值/总分」 */
+    recordModuleScore(module, correct, total, opts) {
+      const EM = window.KGExam;
+      const mod = this._scoreModuleName(module);
+      const cor = Math.max(0, +correct || 0);
+      const tot = Math.max(0, +total || 0);
+      const o = opts || {};
+      let score = 0, full = 0, mode = "shengkao";
+      if (EM && EM.scoreCfg && EM.scoreCfg(mod)) {
+        mode = EM.mode();
+        full = EM.moduleFull(mod);
+        // 判断推理给了细分题型就用细分赋分（更准），否则按模块每题分值
+        score = (o.subs && o.subs.length)
+          ? EM.scoreOfSubs(mod, o.subs)
+          : EM.scoreOf(mod, cor);
+      }
+      state.examScores = state.examScores || [];
+      state.examScores.push({
+        date: this.today(), mode: mode, module: mod,
+        correct: cor, total: tot, score: score, full: full,
+        subs: (o.subs && o.subs.length) ? o.subs.slice() : null,
+        mins: Math.max(0, +o.mins || 0), source: o.source || ""
+      });
+      if (state.examScores.length > 600) state.examScores = state.examScores.slice(-600);
+      this.save();
+      try { if (window.KGKingke && KGKingke.renderBrand) KGKingke.renderBrand(); } catch (e) {}
+      return { score: score, full: full, module: mod, mode: mode };
+    },
+
+    /* 申论一次书写的得分：block 题型名、totalScore 总分值、score 得分、mins 书写时间 */
+    recordShenlun(block, totalScore, score, mins) {
+      const EM = window.KGExam;
+      const ts = Math.max(0, +totalScore || 0);
+      const sc = Math.max(0, +score || 0);
+      if (sc > ts && ts > 0) return null; // 得分不能大于总分值
+      state.shenlun = state.shenlun || [];
+      state.shenlun.push({
+        date: this.today(), mode: (EM && EM.mode()) || "shengkao",
+        block: String(block || ""), totalScore: ts, score: sc,
+        mins: Math.max(0, +mins || 0)
+      });
+      if (state.shenlun.length > 600) state.shenlun = state.shenlun.slice(-600);
+      this.save();
+      try { if (window.KGKingke && KGKingke.renderBrand) KGKingke.renderBrand(); } catch (e) {}
+      return { pct: ts ? Math.round(sc / ts * 100) : 0, score: sc, totalScore: ts };
+    },
+
+    /* 近 N 天（默认 7 天）的赋分流水：{ exam:[], shenlun:[], from } */
+    recentScores(days) {
+      const n = Math.max(1, +days || 7);
+      const today = this.today();
+      const cut = new Date(today + "T00:00:00");
+      cut.setDate(cut.getDate() - (n - 1));
+      const cutStr = cut.toISOString().slice(0, 10);
+      const inRange = d => !!d && d >= cutStr && d <= today;
+      return {
+        from: cutStr, to: today, days: n,
+        exam: (state.examScores || []).filter(x => inRange(x.date)),
+        shenlun: (state.shenlun || []).filter(x => inRange(x.date))
+      };
+    },
+
     /* 当天（或指定日期）正确率总览：{ subjects:{ 学科:{done,right,pct} }, total:{done,right,pct} } */
     dayAccuracy(date) {
       const d = date || this.today();
