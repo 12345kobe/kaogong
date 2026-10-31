@@ -169,7 +169,11 @@
     currentAffairs: [], // 时政记录：[ {id,date,title,createdAt,data:{news,essay,words,verbal,quiz}} ]
     /* 每日时政热点（每晚 8 点自动生成）：{ 'YYYY-MM-DD': {date,title,news:[{area,star,title,body}],
        essay:{topic,paras,quotes}, verbal:[言语题], quiz:[时政题]} } */
+    /* 每日时政热点：内存派生数据，永远从静态源 window.KG_DAILY_HOT 合并重建（见 mod-current.js），
+       不持久化、不上云，避免 state 被 60 天时政撑到 5MB 触发 localStorage 5MB 上限「秀才」。 */
     dailyHot: {},
+    /* 仅用户「手动生成/覆盖」的当天时政（量极小），随云端同步；自动版一律走静态源，不进用户 state。 */
+    dailyHotManual: {},
     weeklyDrills: [], // 用户自导入每周时政演练：[{id,label,name,points,questions,createdAt}]（内置周演练在 js/drills-data.js）
     profile: { avatar: "", signature: "" }, // 头像（dataURL）/ 个性签名；随 DB.state 云端同步，跨设备一致
     hotspotsEdits: {}, // 时事热点用户修改：{ [hotspotId]: { title, body, summary } }
@@ -183,6 +187,15 @@
   let saveTimer = null;
 
   function deepClone(o) { return JSON.parse(JSON.stringify(o)); }
+  /* ★v20261031c 持久化瘦身：剥离 dailyHot（静态资源 window.KG_DAILY_HOT 的运行时镜像，永不持久化），
+     避免 state 被 60 天时政撑到 5MB 触发 iOS localStorage 5MB 上限 QuotaExceeded（静默失败）→ 本机数据清零「秀才」。
+     手动生成的时政单独走 state.dailyHotManual（小字段）持久化。 */
+  function stripForPersist(s) {
+    if (!s || typeof s !== "object") return s;
+    const c = Object.assign({}, s);
+    delete c.dailyHot; delete c.dailyHotCache;
+    return c;
+  }
 
   function mergeDefault(base, def) {
     for (const k in def) {
@@ -406,10 +419,11 @@
       try { state.meta.deviceId = this.deviceId(); } catch (e) {}
       this._snapshotVault();
       let mainOk = true;
-      try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) { mainOk = false; }
+      const persist = stripForPersist(state);   // ★v20261031c 剥离 dailyHot，防止 state 被撑到 5MB 触发 localStorage 上限
+      try { localStorage.setItem(LS_KEY, JSON.stringify(persist)); } catch (e) { mainOk = false; }
       // ★v20261010b 备份键：主键写入失败（存储配额溢出）或每 20 秒一次，双写兜底
       if (!mainOk || !this._bakAt || Date.now() - this._bakAt > 20000) {
-        try { localStorage.setItem(LS_KEY_BAK, JSON.stringify(state)); this._bakAt = Date.now(); } catch (e) {}
+        try { localStorage.setItem(LS_KEY_BAK, JSON.stringify(persist)); this._bakAt = Date.now(); } catch (e) {}
       }
       // ★v20261016b IndexedDB 真值兜底：localStorage 5MB 上限会让大 state 写入静默失败 → 数据只能活内存。
       //   永远异步写一份到 IndexedDB（配额充足），即使 localStorage 失败也能持久化，重启后自动恢复。防抖 500ms 避免高频写大对象。
@@ -1743,7 +1757,7 @@
         try { window.UI && window.UI.toast("⚠️ 云端校验不可达，本次已暂停上传（防止覆盖记录）"); } catch (e) {}
         return;
       }
-      const content = this._b64enc(JSON.stringify(state));
+      const content = this._b64enc(JSON.stringify(stripForPersist(state)));   // ★v20261031c 剥离 dailyHot 再上云，云端自动瘦身
       try {
         await this._gh(`/repos/${GH.owner}/${GH.repo}/contents/${path}`, {
           method: "PUT",

@@ -716,6 +716,7 @@
       const st = DB.state;
       st.dailyHotDeleted = st.dailyHotDeleted || {};
       delete st.dailyHot[date];
+      delete (st.dailyHotManual || {})[date];   // ★v20261031c 手动版同步删除，避免重建时复活
       st.dailyHotDeleted[date] = true;
       DB.save();
       try { if (DB.isLoggedIn && DB.isLoggedIn() && DB.push) await DB.push(); } catch (e) {}
@@ -759,7 +760,16 @@
   function ensureDailyHot(cb) {
     const DB = window.DB;
     DB.state.dailyHot = DB.state.dailyHot || {};
-    if (window.KG_DAILY_HOT) { mergeDailyHot(DB.state.dailyHot, window.KG_DAILY_HOT); cb(); return; }
+    if (window.KG_DAILY_HOT) {
+      mergeDailyHot(DB.state.dailyHot, window.KG_DAILY_HOT);
+      // ★v20261031c 手动生成的时政持久化在 dailyHotManual，重建时覆盖静态源（自动版来源是静态源，不重复存）
+      const manualMap = (DB.state.dailyHotManual) || {};
+      Object.keys(manualMap).forEach(d => {
+        if (DB.state.dailyHotDeleted && DB.state.dailyHotDeleted[d]) return;
+        DB.state.dailyHot[d] = manualMap[d];
+      });
+      cb(); return;
+    }
     if (hotStaticTried) { cb(); return; }
     hotStaticTried = true;
     fetch("assets/data/daily_hot.js?t=" + Date.now(), { cache: "no-store" })
@@ -1034,7 +1044,7 @@
         if (!ok) return;
         const st = DB.state;
         st.dailyHotDeleted = st.dailyHotDeleted || {};
-        ds.forEach(x => { delete st.dailyHot[x]; st.dailyHotDeleted[x] = true; });
+        ds.forEach(x => { delete st.dailyHot[x]; delete (st.dailyHotManual || {})[x]; st.dailyHotDeleted[x] = true; });
         dhSel.clear();
         DB.save();
         try { if (DB.isLoggedIn && DB.isLoggedIn() && DB.push) await DB.push(); } catch (e) {}
@@ -1864,6 +1874,8 @@
     if (manual) { day.manualAt = Date.now(); delete day.generatedAt; }
     else { day.generatedAt = Date.now(); delete day.manualAt; }
     DB.state.dailyHot[date] = day;
+    DB.state.dailyHotManual = DB.state.dailyHotManual || {};   // ★v20261031c 手动版持久化（自动版走静态源，不重复存）
+    if (manual) DB.state.dailyHotManual[date] = day;
     DB.save();
     try {
       if (DB.isLoggedIn && DB.isLoggedIn() && DB.push) await DB.push();
@@ -2049,7 +2061,14 @@
       } catch (e) {}
       try { if (DB.pull) await DB.pull(); } catch (e) {}
       DB.state.dailyHot = DB.state.dailyHot || {};
-      if (window.KG_DAILY_HOT) mergeDailyHot(DB.state.dailyHot, window.KG_DAILY_HOT);
+      if (window.KG_DAILY_HOT) {
+        mergeDailyHot(DB.state.dailyHot, window.KG_DAILY_HOT);
+        const manualMap = (DB.state.dailyHotManual) || {};
+        Object.keys(manualMap).forEach(d => {
+          if (DB.state.dailyHotDeleted && DB.state.dailyHotDeleted[d]) return;
+          DB.state.dailyHot[d] = manualMap[d];
+        });
+      }
       if (host) renderDailyHot(host);
       prog("AI 正在生成今日时政（" + date + "）…约 1-2 分钟", 18);
       // ③ 无论几点：现场生成今天（用户手动触发即运转）；进度条常驻顶部，可离开本页
@@ -2068,6 +2087,8 @@
       if (opts.manual) { day.manualAt = Date.now(); delete day.generatedAt; }   // 手动版：云端最高优先
       else { day.generatedAt = Date.now(); delete day.manualAt; }               // 自动版：可被服务器 20:00 覆盖
       DB.state.dailyHot[date] = day;
+      DB.state.dailyHotManual = DB.state.dailyHotManual || {};   // ★v20261031c 手动版持久化
+      if (opts.manual) DB.state.dailyHotManual[date] = day;
       DB.save();
       /* ★立刻上云（用户死命令）：生成后马上推送，别等定时上传——
          否则「生成完就退出、清后台再进」时云端还没有这份，就被自动版顶掉了。 */
