@@ -672,9 +672,13 @@
     recentScores(days) {
       const n = Math.max(1, +days || 7);
       const today = this.today();
+      /* ★用本地 getFullYear/getMonth/getDate 拼字符串，绝不用 toISOString()：
+         东八区下 new Date("2026-10-31T00:00:00").toISOString() 会倒退成 2026-10-30，
+         导致「近7天」实际变成 9 天，统计口径失真。 */
       const cut = new Date(today + "T00:00:00");
       cut.setDate(cut.getDate() - (n - 1));
-      const cutStr = cut.toISOString().slice(0, 10);
+      const p2 = v => String(v).padStart(2, "0");
+      const cutStr = cut.getFullYear() + "-" + p2(cut.getMonth() + 1) + "-" + p2(cut.getDate());
       const inRange = d => !!d && d >= cutStr && d <= today;
       return {
         from: cutStr, to: today, days: n,
