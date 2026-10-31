@@ -112,12 +112,23 @@
       const recOpts = recSubs.map(s => `<option value="${UI.esc(s)}">${UI.esc(s)}</option>`).join("");
       html += `<div class="card stat-rec">
         <h3>✍️ 录入答题（按学科）</h3>
-        <div class="muted small" style="margin-bottom:10px">手动补录某学科答题：选择学科 + 填答题数/正确数，保存后<b>按该学科</b>记入累计正确率（与自动刷题一一对应，不会串到别的学科）。</div>
+        <div class="muted small" style="margin-bottom:10px">手动补录某学科答题：选择学科 + 填答题数/正确数，保存后<b>按该学科</b>记入累计正确率（与自动刷题一一对应，不会串到别的学科）。下方「⏱ 时长统计」可同时补录学习时长与答题：时长计入今日/累计学习时长，答题数计入累计/今日答题数。</div>
         <div class="row rec-row" style="gap:10px;flex-wrap:wrap;align-items:flex-end">
           <div><label class="fld" style="margin:0">学科</label><select id="recSubj" class="full">${recOpts}</select></div>
           <div><label class="fld" style="margin:0">答题数</label><input id="recTotal" type="number" min="0" inputmode="numeric" style="width:96px" placeholder="如 30"/></div>
           <div><label class="fld" style="margin:0">正确数</label><input id="recCorrect" type="number" min="0" inputmode="numeric" style="width:96px" placeholder="如 25"/></div>
           <button class="btn primary" id="recSave">💾 保存录入</button>
+          <button class="btn" id="durBtn">⏱ 时长统计</button>
+        </div>
+        <div id="durPanel" style="display:none;margin-top:12px;border-top:1px dashed var(--line);padding-top:12px">
+          <div class="muted small" style="margin-bottom:8px">手动补录学习时长与答题：时长计入「今日/累计学习时长」；填了答题数则按学科记入累计/今日正确率与答题数（正确数留空视为全对）。</div>
+          <div class="row rec-row" style="gap:10px;flex-wrap:wrap;align-items:flex-end">
+            <div><label class="fld" style="margin:0">学科</label><select id="durSubj" class="full">${recOpts}</select></div>
+            <div><label class="fld" style="margin:0">时长(分)</label><input id="durMin" type="number" min="0" inputmode="numeric" style="width:90px" placeholder="如 60"/></div>
+            <div><label class="fld" style="margin:0">答题数</label><input id="durTotal" type="number" min="0" inputmode="numeric" style="width:80px" placeholder="可留空"/></div>
+            <div><label class="fld" style="margin:0">正确数</label><input id="durCorrect" type="number" min="0" inputmode="numeric" style="width:80px" placeholder="可留空"/></div>
+            <button class="btn primary" id="durSave">💾 记录时长</button>
+          </div>
         </div>
       </div>`;
 
@@ -217,6 +228,31 @@
         DB.recordAccuracy(DB.subjectShort(subjName), isNaN(correct) ? 0 : correct, total);
         DB.save(true);
         UI.toast("已录入：" + subjName + " " + total + " 题 · 对 " + (isNaN(correct) ? "?" : correct) + " 题");
+        rerender(); refreshBrand();
+      };
+
+      // ===== ★v20261031 时长统计：手动补录学习时长（计入今日/累计时长）+ 可选答题数（计入累计/今日答题数）=====
+      const durBtn = body.querySelector("#durBtn");
+      if (durBtn) durBtn.onclick = () => {
+        const p = body.querySelector("#durPanel");
+        if (p) p.style.display = (p.style.display === "none" ? "block" : "none");
+      };
+      const durSave = body.querySelector("#durSave");
+      if (durSave) durSave.onclick = () => {
+        const subjName = body.querySelector("#durSubj").value;
+        const minutes = parseFloat(body.querySelector("#durMin").value);
+        const total = parseInt(body.querySelector("#durTotal").value, 10);
+        const correct = parseInt(body.querySelector("#durCorrect").value, 10);
+        if (isNaN(minutes) || minutes <= 0) { UI.toast("请填写有效的学习时长（分钟）"); return; }
+        if ((!isNaN(total) && total > 0) && !subjName) { UI.toast("要记入答题数请先选择学科"); return; }
+        if ((!isNaN(total) && total > 0) && !isNaN(correct) && correct > total) { UI.toast("正确数不能大于答题数"); return; }
+        DB.addTimerMinutes(subjName ? DB.subjectShort(subjName) : "", Math.round(minutes));
+        if (!isNaN(total) && total > 0) {
+          const cr = (!isNaN(correct) && correct >= 0) ? Math.min(correct, total) : total;
+          DB.recordAccuracy(DB.subjectShort(subjName), cr, total);
+        }
+        DB.save(true);
+        UI.toast("已记录时长 " + Math.round(minutes) + " 分" + ((!isNaN(total) && total > 0) ? " · " + total + " 题" : ""));
         rerender(); refreshBrand();
       };
     }

@@ -49,6 +49,8 @@
     render(body) {
       const DB = window.DB, UI = window.UI;
       const date = DB.today();
+      /* ★v20261031 用户死令：上岸计时器默认「省考模式」（exam-mode.js 已默认省考，这里再兜底确保存储值也是省考） */
+      try { if (!DB.state.examMode) { DB.state.examMode = "shengkao"; DB.save(); } } catch (e) {}
 
       function render() {
         if (iv) { clearInterval(iv); iv = null; }
@@ -74,44 +76,8 @@
           .concat(plan.items.map(it => `<option value="${it.id}" ${s.planId === it.id ? "selected" : ""}>${esc((it.text || "").slice(0, 18))}</option>`))
           .join("");
 
-        body.innerHTML = `<div class="card">
-          <h3>⏱ 上岸计时器</h3>
-          <div class="muted small">自定义任务名开始专注；默认计入「今日计划」，停止时自动记已完成 + 专注时长。计时跨界面持续，顶栏也会显示。运行中可按「⏱ 分段」记录当前节点。</div>
-          <button class="btn ghost sm" id="toShuati" style="margin-top:10px">📱 进入刷题模式（全屏 · 可自定义背景图）</button>
-        </div>
-        <div class="card" style="margin-top:8px;text-align:center">
-          <div id="tElapsed" style="font-size:48px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:1px${overtime ? ";color:#ff6b81" : ""}">${fmt(displayMs)}</div>
-          <div id="tState" class="muted small" style="margin:6px 0 12px">${running ? (overtime ? "⏰ 已延迟 · 正向计时中" : (isCountdown ? "⏳ 倒计时中…" : "⏳ 计时中…")) : (s.task ? "已暂停" : (isCountdown ? "未开始（倒计时）" : "未开始"))}${overtime ? "（已延迟 " + fmt(elapsed - s.targetMs) + "）" : ""}${s.task ? " · " + esc(s.task) : ""}</div>
-          <div class="row" style="justify-content:center;gap:10px;flex-wrap:wrap">
-            <button class="btn ${running ? 'lap-btn' : 'btn ghost'}" id="lapBtn" ${running ? '' : 'disabled'}>⏱ 分段</button>
-            ${running
-              ? `<button class="btn primary" id="pause">⏸ 暂停</button>`
-              : `<button class="btn primary" id="start">${s.task ? "▶ 继续" : "▶ 开始"}</button>`}
-            <button class="btn danger" id="stop" ${running || s.accumulated || s.task ? "" : "disabled"}>⏹ 停止并结算</button>
-            <button class="btn ghost" id="reset" ${s.accumulated || s.task || running ? "" : "disabled"}>↺ 清空</button>
-          </div>
-        </div>
-        ${laps.length ? `<div class="card" style="margin-top:8px">
-          <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
-            <div class="muted small">⏱ 分段记录（最新在最上 · <span style="color:#34e7e4">绿色</span>为最快段 · <span style="color:#ff5cf0">粉/红</span>为最新段）</div>
-            <div class="muted small">${laps.length} 段 · 合计 ${fmt(laps.reduce((a,b)=>a+b,0))}</div>
-          </div>
-          <div id="lapsList" class="lap-list">${renderLaps(laps)}</div>
-        </div>` : ''}
-        <div class="card" style="margin-top:8px">
-          <label class="fld">① 选择学科（模块）</label>
-          <select id="tSubj" class="full">${(function(){ const subs = (window.KG_SUBJECTS || ["言语理解","资料分析","数量关系","判断推理","常识判断","政治理论","申论"]); const sel = (pending && pending.subject) ? pending.subject : (s.subject || ""); return '<option value="">（不选学科）</option>' + subs.map(x => `<option value="${esc(x)}" ${sel === x ? "selected" : ""}>${esc(x)}</option>`).join(""); })()}</select>
-          <label class="fld" style="margin-top:10px">② 任务名（专注内容）</label>
-          <input id="tTask" class="full" placeholder="例如：复习类比推理 / 申论大作文" value="${esc(s.task || (pending ? pending.text : (prefill || "")))}"/>
-          <label class="row" style="margin-top:10px;cursor:pointer;gap:8px"><input type="checkbox" id="tCount" style="width:auto" ${s.planId || pending ? "checked" : "checked"}/> 计入今日计划（默认开启，可取消）</label>
-          <label class="fld" style="margin-top:10px">绑定计划项（留空则自动新建）</label>
-          <select id="tPlan" class="full">${planOpts}</select>
-          <label class="fld" style="margin-top:10px">专注时长（分钟，留空为累计计时）</label>
-          <input id="tMin" type="number" min="1" class="full" placeholder="例如 25（到点自动结算）" value="${pending ? (pending.focusMin || "") : (isCountdown ? Math.round(s.targetMs / 60000) : "")}"/>
-          <div class="muted small" style="margin-top:8px">填写时长即倒计时模式，到点自动标记计划项完成；不填则正序累计计时。</div>
-        </div>` +
-        /* ===== 考试模式（国考/省考配速）+ 综合刷题 —— v20261017a 从倒计时页移入 ===== */
-        (function () {
+        /* ===== 考试模式（国考/省考配速）+ 综合刷题 —— 提到最前（v20261031）===== */
+        const examSection = (function () {
           const EM = window.KGExam;
           if (!EM) return "";
           const subs = EM.subjects();
@@ -164,6 +130,44 @@
           </div>`;
           return examCard + comboCard;
         })();
+
+        body.innerHTML = `<div class="card">
+          <h3>⏱ 上岸计时器</h3>
+          <div class="muted small">自定义任务名开始专注；默认计入「今日计划」，停止时自动记已完成 + 专注时长。计时跨界面持续，顶栏也会显示。运行中可按「⏱ 分段」记录当前节点。</div>
+          <button class="btn ghost sm" id="toShuati" style="margin-top:10px">📱 进入刷题模式（全屏 · 可自定义背景图）</button>
+        </div>
+        ${examSection}
+        <div class="card" style="margin-top:8px;text-align:center">
+          <div id="tElapsed" style="font-size:48px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:1px${overtime ? ";color:#ff6b81" : ""}">${fmt(displayMs)}</div>
+          <div id="tState" class="muted small" style="margin:6px 0 12px">${running ? (overtime ? "⏰ 已延迟 · 正向计时中" : (isCountdown ? "⏳ 倒计时中…" : "⏳ 计时中…")) : (s.task ? "已暂停" : (isCountdown ? "未开始（倒计时）" : "未开始"))}${overtime ? "（已延迟 " + fmt(elapsed - s.targetMs) + "）" : ""}${s.task ? " · " + esc(s.task) : ""}</div>
+          <div class="row" style="justify-content:center;gap:10px;flex-wrap:wrap">
+            <button class="btn ${running ? 'lap-btn' : 'btn ghost'}" id="lapBtn" ${running ? '' : 'disabled'}>⏱ 分段</button>
+            ${running
+              ? `<button class="btn primary" id="pause">⏸ 暂停</button>`
+              : `<button class="btn primary" id="start">${s.task ? "▶ 继续" : "▶ 开始"}</button>`}
+            <button class="btn danger" id="stop" ${running || s.accumulated || s.task ? "" : "disabled"}>⏹ 停止并结算</button>
+            <button class="btn ghost" id="reset" ${s.accumulated || s.task || running ? "" : "disabled"}>↺ 清空</button>
+          </div>
+        </div>
+        ${laps.length ? `<div class="card" style="margin-top:8px">
+          <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
+            <div class="muted small">⏱ 分段记录（最新在最上 · <span style="color:#34e7e4">绿色</span>为最快段 · <span style="color:#ff5cf0">粉/红</span>为最新段）</div>
+            <div class="muted small">${laps.length} 段 · 合计 ${fmt(laps.reduce((a,b)=>a+b,0))}</div>
+          </div>
+          <div id="lapsList" class="lap-list">${renderLaps(laps)}</div>
+        </div>` : ''}
+        <div class="card" style="margin-top:8px">
+          <label class="fld">① 选择学科（模块）</label>
+          <select id="tSubj" class="full">${(function(){ const subs = (window.KG_SUBJECTS || ["言语理解","资料分析","数量关系","判断推理","常识判断","政治理论","申论"]); const sel = (pending && pending.subject) ? pending.subject : (s.subject || ""); return '<option value="">（不选学科）</option>' + subs.map(x => `<option value="${esc(x)}" ${sel === x ? "selected" : ""}>${esc(x)}</option>`).join(""); })()}</select>
+          <label class="fld" style="margin-top:10px">② 任务名（专注内容）</label>
+          <input id="tTask" class="full" placeholder="例如：复习类比推理 / 申论大作文" value="${esc(s.task || (pending ? pending.text : (prefill || "")))}"/>
+          <label class="row" style="margin-top:10px;cursor:pointer;gap:8px"><input type="checkbox" id="tCount" style="width:auto" ${s.planId || pending ? "checked" : "checked"}/> 计入今日计划（默认开启，可取消）</label>
+          <label class="fld" style="margin-top:10px">绑定计划项（留空则自动新建）</label>
+          <select id="tPlan" class="full">${planOpts}</select>
+          <label class="fld" style="margin-top:10px">专注时长（分钟，留空为累计计时）</label>
+          <input id="tMin" type="number" min="1" class="full" placeholder="例如 25（到点自动结算）" value="${pending ? (pending.focusMin || "") : (isCountdown ? Math.round(s.targetMs / 60000) : "")}"/>
+          <div class="muted small" style="margin-top:8px">填写时长即倒计时模式，到点自动标记计划项完成；不填则正序累计计时。</div>
+        </div>`;
 
         const el = body.querySelector("#tElapsed");
         if (running) {
