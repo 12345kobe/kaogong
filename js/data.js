@@ -155,6 +155,7 @@
     checkin: { lastDate: null, dates: [] },
     quotesLib: [],
     wrongbook: {}, // { subject: [ {id, q, a, ua, date, note, img} ] }
+    mockScores: [], // 套卷/模考录入：{ date, mode, full, score, right, q }
     favorites: {}, // { subject: [ {id, q, options, a, e, subject, addedAt, qid} ] }
     notes: {}, // { subject: { qid: [ {color,width,points:[{x,y}]} ] } }  手写标注笔迹
     qnotes: {}, // 题目文字笔记：{ subject: { qid: { text, updatedAt } } }；AI 解答自动追加 + 用户手填，随云端同步

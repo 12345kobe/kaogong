@@ -2,6 +2,46 @@
 (function () {
   "use strict";
   window.MODULES = window.MODULES || {};
+
+  /* ===== 套卷录入 / 录入答题 复用工具 ===== */
+  function fileToDataURL(f) {
+    return new Promise((res, rej) => {
+      try {
+        const fr = new FileReader();
+        fr.onload = () => res(String(fr.result || ""));
+        fr.onerror = () => rej(new Error("读取图片失败"));
+        fr.readAsDataURL(f);
+      } catch (e) { rej(e); }
+    });
+  }
+  function parseJSON(t) {
+    if (t == null) return null;
+    let s = String(t).trim();
+    const i = s.indexOf("{"), j = s.lastIndexOf("}");
+    if (i >= 0 && j > i) s = s.slice(i, j + 1);
+    try { return JSON.parse(s); } catch (e) { return null; }
+  }
+  function normalizeName(n) {
+    if (!n) return "";
+    const s = String(n).replace(/\s/g, "");
+    const order = (window.KGExam && window.KGExam.ORDER) || [];
+    for (const o of order) { if (s.indexOf(o.replace(/\s/g, "")) >= 0) return o; }
+    const map = [["政治", "政治理论"], ["常识", "常识判断"], ["言语", "言语理解"], ["数量", "数量关系"], ["判断", "判断推理"], ["资料", "资料分析"]];
+    for (const kv of map) { if (s.indexOf(kv[0]) >= 0) return kv[1]; }
+    return s;
+  }
+  function pushMockScore(full, score, right, q) {
+    const DB = window.DB;
+    DB.state.mockScores = DB.state.mockScores || [];
+    DB.state.mockScores.push({
+      date: DB.today(),
+      mode: (window.KGExam && window.KGExam.mode()) || "",
+      full: full, score: (score === "" || score == null ? null : +score),
+      right: right, q: q
+    });
+    if (DB.state.mockScores.length > 200) DB.state.mockScores = DB.state.mockScores.slice(-200);
+  }
+
   window.MODULES.stats = {
     title: "学习统计", icon: "stats",
     render(body) {
@@ -207,25 +247,17 @@
       const recSubs = (window.KG_SUBJECTS || ["言语理解", "资料分析", "数量关系", "判断推理", "常识判断", "政治理论", "申论"]);
       const recOpts = recSubs.map(s => `<option value="${UI.esc(s)}">${UI.esc(s)}</option>`).join("");
       html += `<div class="card stat-rec">
-        <h3>✍️ 录入答题（按学科）</h3>
-        <div class="muted small" style="margin-bottom:10px">手动补录某学科答题：选择学科 + 填答题数/正确数，保存后<b>按该学科</b>记入累计正确率（与自动刷题一一对应，不会串到别的学科）。下方「⏱ 时长统计」可同时补录学习时长与答题：时长计入今日/累计学习时长，答题数计入累计/今日答题数。</div>
+        <h3>✍️ 录入答题 / 套卷（按学科）</h3>
+        <div class="muted small" style="margin-bottom:10px">手动补录：选学科 + 填答题数/正确数/时长(分)，保存后<b>按该学科同时记入累计正确率、近7天预估分、今日/累计学习时长</b>。下方「今日录入」实时显示今天各模块记录（更早记录请到「打卡中心」查看）。套卷（粉笔模考）可点「📋 套卷录入」上传截图自动识别。</div>
         <div class="row rec-row" style="gap:10px;flex-wrap:wrap;align-items:flex-end">
           <div><label class="fld" style="margin:0">学科</label><select id="recSubj" class="full">${recOpts}</select></div>
-          <div><label class="fld" style="margin:0">答题数</label><input id="recTotal" type="number" min="0" inputmode="numeric" style="width:96px" placeholder="如 30"/></div>
-          <div><label class="fld" style="margin:0">正确数</label><input id="recCorrect" type="number" min="0" inputmode="numeric" style="width:96px" placeholder="如 25"/></div>
+          <div><label class="fld" style="margin:0">答题数</label><input id="recTotal" type="number" min="0" inputmode="numeric" style="width:88px" placeholder="如 30"/></div>
+          <div><label class="fld" style="margin:0">正确数</label><input id="recCorrect" type="number" min="0" inputmode="numeric" style="width:88px" placeholder="如 25"/></div>
+          <div><label class="fld" style="margin:0">时长(分)</label><input id="recMin" type="number" min="0" inputmode="numeric" style="width:88px" placeholder="可留空"/></div>
           <button class="btn primary" id="recSave">💾 保存录入</button>
-          <button class="btn" id="durBtn">⏱ 时长统计</button>
+          <button class="btn" id="setBtn">📋 套卷录入(粉笔模考)</button>
         </div>
-        <div id="durPanel" style="display:none;margin-top:12px;border-top:1px dashed var(--line);padding-top:12px">
-          <div class="muted small" style="margin-bottom:8px">手动补录学习时长与答题：时长计入「今日/累计学习时长」；填了答题数则按学科记入累计/今日正确率与答题数（正确数留空视为全对）。</div>
-          <div class="row rec-row" style="gap:10px;flex-wrap:wrap;align-items:flex-end">
-            <div><label class="fld" style="margin:0">学科</label><select id="durSubj" class="full">${recOpts}</select></div>
-            <div><label class="fld" style="margin:0">时长(分)</label><input id="durMin" type="number" min="0" inputmode="numeric" style="width:90px" placeholder="如 60"/></div>
-            <div><label class="fld" style="margin:0">答题数</label><input id="durTotal" type="number" min="0" inputmode="numeric" style="width:80px" placeholder="可留空"/></div>
-            <div><label class="fld" style="margin:0">正确数</label><input id="durCorrect" type="number" min="0" inputmode="numeric" style="width:80px" placeholder="可留空"/></div>
-            <button class="btn primary" id="durSave">💾 记录时长</button>
-          </div>
-        </div>
+        <div id="todayRec" style="margin-top:14px"></div>
       </div>`;
 
       body.innerHTML = html;
@@ -312,45 +344,202 @@
         body.insertAdjacentHTML("beforeend", `<div class="card muted">图表库未加载（需联网加载 Chart.js）。统计数字与明细表仍正常显示。</div>`);
       }
 
-      // ===== 录入答题（按学科）保存 =====
+      // ===== 录入答题（按学科）保存：时长直接在同一表单，一次写「累计正确率 + 预估分 + 学习时长」=====
       const recSave = body.querySelector("#recSave");
       if (recSave) recSave.onclick = () => {
         const subjName = body.querySelector("#recSubj").value;
         if (!subjName) { UI.toast("请选择学科"); return; }
         const total = parseInt(body.querySelector("#recTotal").value, 10);
         const correct = parseInt(body.querySelector("#recCorrect").value, 10);
+        const mins = parseFloat(body.querySelector("#recMin").value);
         if (isNaN(total) || total < 0) { UI.toast("请填写有效的答题数"); return; }
         if (!isNaN(correct) && correct > total) { UI.toast("正确数不能大于答题数"); return; }
-        DB.recordAccuracy(DB.subjectShort(subjName), isNaN(correct) ? 0 : correct, total);
+        const cr = isNaN(correct) ? 0 : correct;
+        const short = DB.subjectShort(subjName);
+        DB.recordAccuracy(short, cr, total);                                   // 累计正确率
+        DB.recordModuleScore(subjName, cr, total, { mins: isNaN(mins) ? 0 : Math.round(mins), source: "手动录入" }); // 近7天预估分
+        if (!isNaN(mins) && mins > 0) DB.addTimerMinutes(short, Math.round(mins)); // 今日/累计学习时长
         DB.save(true);
-        UI.toast("已录入：" + subjName + " " + total + " 题 · 对 " + (isNaN(correct) ? "?" : correct) + " 题");
+        UI.toast("已录入：" + subjName + " " + total + " 题 · 对 " + (isNaN(correct) ? "?" : correct) + " 题"
+          + ((!isNaN(mins) && mins > 0) ? (" · " + Math.round(mins) + " 分") : ""));
         rerender(); refreshBrand();
       };
 
-      // ===== ★v20261031 时长统计：手动补录学习时长（计入今日/累计时长）+ 可选答题数（计入累计/今日答题数）=====
-      const durBtn = body.querySelector("#durBtn");
-      if (durBtn) durBtn.onclick = () => {
-        const p = body.querySelector("#durPanel");
-        if (p) p.style.display = (p.style.display === "none" ? "block" : "none");
-      };
-      const durSave = body.querySelector("#durSave");
-      if (durSave) durSave.onclick = () => {
-        const subjName = body.querySelector("#durSubj").value;
-        const minutes = parseFloat(body.querySelector("#durMin").value);
-        const total = parseInt(body.querySelector("#durTotal").value, 10);
-        const correct = parseInt(body.querySelector("#durCorrect").value, 10);
-        if (isNaN(minutes) || minutes <= 0) { UI.toast("请填写有效的学习时长（分钟）"); return; }
-        if ((!isNaN(total) && total > 0) && !subjName) { UI.toast("要记入答题数请先选择学科"); return; }
-        if ((!isNaN(total) && total > 0) && !isNaN(correct) && correct > total) { UI.toast("正确数不能大于答题数"); return; }
-        DB.addTimerMinutes(subjName ? DB.subjectShort(subjName) : "", Math.round(minutes));
-        if (!isNaN(total) && total > 0) {
-          const cr = (!isNaN(correct) && correct >= 0) ? Math.min(correct, total) : total;
-          DB.recordAccuracy(DB.subjectShort(subjName), cr, total);
+      // ===== 套卷录入（粉笔模考）：上传两张截图 → 视觉模型识别 → 可改 → 导入 =====
+      const setBtn = body.querySelector("#setBtn");
+      if (setBtn) setBtn.onclick = () => openSetModal();
+
+      // ===== 今日录入（分模块，仅显示今天，保存后即时刷新）=====
+      const fillToday = () => {
+        const host = body.querySelector("#todayRec");
+        if (!host) return;
+        const dAcc = DB.dayAccuracy();
+        const subs = (dAcc && dAcc.subjects) || {};
+        const ss = (DB.state.timer.subjectSessions && DB.state.timer.subjectSessions[DB.today()]) || {};
+        const keys = new Set([
+          ...Object.keys(subs).filter(k => subs[k] && subs[k].done > 0),
+          ...Object.keys(ss).filter(k => ss[k] > 0)
+        ]);
+        if (!keys.size) {
+          host.innerHTML = `<div class="muted small" style="margin-top:8px">📌 <b>今日录入（分模块）</b>：今天还没有录入记录。保存后会显示在这里；更早的记录请到「打卡中心」查看。</div>`;
+          return;
         }
-        DB.save(true);
-        UI.toast("已记录时长 " + Math.round(minutes) + " 分" + ((!isNaN(total) && total > 0) ? " · " + total + " 题" : ""));
-        rerender(); refreshBrand();
+        const rows = [...keys].map(k => {
+          const s = subs[k] || { done: 0, right: 0 };
+          const pct = s.done ? Math.round(s.right / s.done * 100) : null;
+          const min = ss[k] || 0;
+          const full = window.KGSubjectFull ? KGSubjectFull(k) : k;
+          return `<div class="acc-row">
+            <div class="acc-name">${UI.esc(full)}</div>
+            <div class="acc-bar"><i style="width:${pct || 0}%;background:#34e7e4"></i></div>
+            <div class="acc-pct">${pct == null ? "—" : pct + "%"}</div>
+            <div class="acc-vol muted small">${s.done ? (s.right + "/" + s.done + " 题") : "0/0 题"} · ${min} 分</div>
+          </div>`;
+        }).join("");
+        host.innerHTML = `<div class="muted small" style="margin:4px 0 8px">📌 <b>今日录入（分模块，仅今天）</b>：</div>${rows}`;
       };
+      fillToday();
+
+      // ===== 套卷录入弹窗 =====
+      function openSetModal() {
+        const root = document.getElementById("modalRoot") || document.body;
+        const EM = window.KGExam;
+        const ORDER = (EM && EM.ORDER) || ["政治理论", "常识判断", "言语理解", "数量关系", "判断推理", "资料分析"];
+        const cfgQ = m => (EM && EM.scoreCfg && EM.scoreCfg(m)) ? EM.scoreCfg(m).q : 0;
+        let tableData = ORDER.map(m => ({ name: m, q: cfgQ(m), correct: "", mins: "" }));
+        const prevs = [null, null];
+
+        const mask = UI.el(`<div class="modal-mask" id="setMask">
+          <div class="modal" style="width:min(760px,96vw);max-height:92vh;overflow:auto">
+            <div class="spread" style="align-items:center;gap:10px"><h3 style="margin:0">📋 套卷录入 · 粉笔模考</h3><button class="btn ghost sm" id="setClose">✕</button></div>
+            <div class="muted small" style="margin:8px 0">上传<b>两张</b>截图：① 总分报告页（含 得分/100）；② 各模块正确率页（含每模块 共X道/答对Y/正确率/用时）。点「识别」自动提取，可改后再导入。导入后各模块按分值表计入「近7天预估分」与学习时长。</div>
+            <div class="row" style="gap:14px;flex-wrap:wrap">
+              <div style="flex:1;min-width:220px"><div class="muted small">① 总分报告截图</div><input type="file" id="setImg1" accept="image/*"/><div id="setPrev1"></div></div>
+              <div style="flex:1;min-width:220px"><div class="muted small">② 各模块截图</div><input type="file" id="setImg2" accept="image/*"/><div id="setPrev2"></div></div>
+            </div>
+            <div class="row" style="gap:10px;margin-top:12px;flex-wrap:wrap;align-items:center">
+              <button class="btn primary" id="setOcr">🔍 识别并填入</button>
+              <button class="btn" id="setFillEmpty">✍️ 手动填（清空模板）</button>
+              <button class="btn primary" id="setImport">⬇️ 导入到统计</button>
+              <span id="setMsg" class="muted small"></span>
+            </div>
+            <div style="margin-top:14px">
+              <div class="row" style="gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px">
+                <div><label class="fld" style="margin:0">满分</label><input id="setFull" type="number" value="100" style="width:80px"/></div>
+                <div><label class="fld" style="margin:0">实际得分</label><input id="setScore" type="number" style="width:90px" placeholder="如 59.9"/></div>
+              </div>
+              <div id="setTable"></div>
+            </div>
+          </div></div>`);
+        root.appendChild(mask);
+        const close = () => mask.remove();
+        mask.querySelector("#setClose").onclick = close;
+        mask.onclick = e => { if (e.target === mask) close(); };
+
+        const renderTable = () => {
+          const t = mask.querySelector("#setTable");
+          t.innerHTML = `<div class="muted small" style="margin-bottom:6px">各模块（可改）：</div>` + tableData.map((r, i) => `
+            <div class="combo-row" style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+              <b style="min-width:96px;text-align:left">${UI.esc(r.name)}</b>
+              <label class="muted small">共<input data-i="${i}" data-k="q" type="number" value="${r.q}" style="width:54px;display:inline-block;margin:0 4px"/></label>
+              <label class="muted small">对<input data-i="${i}" data-k="correct" type="number" value="${r.correct}" style="width:54px;display:inline-block;margin:0 4px"/></label>
+              <label class="muted small">用时(分)<input data-i="${i}" data-k="mins" type="number" value="${r.mins}" style="width:62px;display:inline-block;margin:0 4px"/></label>
+              <span class="muted small" data-rate="${i}" style="color:var(--cyan)"></span>
+            </div>`).join("");
+          t.querySelectorAll("input[data-i]").forEach(inp => {
+            inp.oninput = () => {
+              const i = +inp.dataset.i, k = inp.dataset.k;
+              tableData[i][k] = inp.value;
+              if (k === "correct" || k === "q") {
+                const q = +tableData[i].q || 0, c = +tableData[i].correct || 0;
+                const rt = t.querySelector('[data-rate="' + i + '"]');
+                if (rt) rt.textContent = (q > 0 && tableData[i].correct !== "") ? ("正确率 " + Math.round(c / q * 100) + "%") : "";
+              }
+            };
+          });
+          t.querySelectorAll('[data-rate]').forEach(rt => {
+            const i = +rt.dataset.rate, q = +tableData[i].q || 0, c = +tableData[i].correct || 0;
+            rt.textContent = (q > 0 && tableData[i].correct !== "") ? ("正确率 " + Math.round(c / q * 100) + "%") : "";
+          });
+        };
+        renderTable();
+
+        mask.querySelector("#setFillEmpty").onclick = () => {
+          tableData = ORDER.map(m => ({ name: m, q: cfgQ(m), correct: "", mins: "" }));
+          renderTable();
+          mask.querySelector("#setImport").disabled = false;
+          mask.querySelector("#setMsg").textContent = "已清空，可手动填写";
+        };
+
+        const bindPrev = (idx, input) => {
+          input.onchange = async () => {
+            const f = input.files && input.files[0];
+            if (!f) return;
+            try { prevs[idx] = await fileToDataURL(f); } catch (e) { UI.toast("图片读取失败"); return; }
+            const p = mask.querySelector("#setPrev" + (idx + 1));
+            if (p) p.innerHTML = `<img src="${prevs[idx]}" style="max-width:100%;max-height:160px;border-radius:8px;margin-top:6px"/>`;
+          };
+        };
+        bindPrev(0, mask.querySelector("#setImg1"));
+        bindPrev(1, mask.querySelector("#setImg2"));
+
+        mask.querySelector("#setOcr").onclick = async () => {
+          const AI = window.KGAI;
+          const msg = mask.querySelector("#setMsg");
+          if (!AI) { msg.textContent = "未找到 AI 组件"; return; }
+          if (!prevs[0] || !prevs[1]) { msg.textContent = "请先上传两张截图"; return; }
+          const pid = AI.getProvider();
+          const p = AI.providerById(pid);
+          const vm = (p && p.models || []).find(m => m.vision);
+          if (!vm) { msg.textContent = "当前 AI 服务商无识图模型，请在「设置」切换支持识图的模型（如 智谱 GLM-4V / Gemini / GPT-4.1）"; return; }
+          const btn = mask.querySelector("#setOcr");
+          btn.disabled = true; msg.textContent = "识别中…";
+          try {
+            const sys = "你是数据提取助手。用户上传两张公务员考试粉笔模考报告截图。图1是总分报告页（含得分/满分）。图2是各模块正确率页（含模块名、共X道、答对Y道、正确率、用时M分N秒）。请严格只输出JSON，不要任何解释或markdown围栏。格式：{\"total\":实际得分数字,\"full\":满分数字,\"modules\":[{\"name\":\"标准模块名\",\"q\":总题数,\"correct\":正确题数,\"mins\":用时分钟小数}]}。name必须用标准名：政治理论 / 常识判断 / 言语理解与表达 / 数量关系 / 判断推理 / 资料分析。mins=分钟+秒/60（小数）。";
+            const user = [{ type: "text", text: "请提取这两张截图的数据为JSON。" },
+              { type: "image_url", image_url: { url: prevs[0] } },
+              { type: "image_url", image_url: { url: prevs[1] } }];
+            const txt = await AI.chat([{ role: "system", content: sys }, { role: "user", content: user }], { providerId: pid, model: vm.id, temp: 0 });
+            const json = parseJSON(txt);
+            if (!json || !json.modules) { msg.textContent = "识别失败：未返回有效JSON，请手动填写或重试"; }
+            else {
+              const full = +json.full || 100;
+              const total = (json.total != null) ? +json.total : "";
+              mask.querySelector("#setFull").value = full;
+              if (total !== "") mask.querySelector("#setScore").value = total;
+              const map = {};
+              json.modules.forEach(m => { map[normalizeName(m.name)] = m; });
+              tableData = ORDER.map(m => {
+                const d = map[normalizeName(m)] || {};
+                return { name: m, q: d.q != null ? d.q : cfgQ(m), correct: d.correct != null ? d.correct : "", mins: d.mins != null ? d.mins : "" };
+              });
+              renderTable();
+              mask.querySelector("#setImport").disabled = false;
+              msg.textContent = "识别完成，请核对后导入";
+            }
+          } catch (e) { msg.textContent = "识别出错：" + (e && e.message ? e.message : e) + "（可手动填写）"; }
+          finally { btn.disabled = false; }
+        };
+
+        mask.querySelector("#setImport").onclick = () => {
+          const full = +mask.querySelector("#setFull").value || 100;
+          const score = mask.querySelector("#setScore").value;
+          let totalRight = 0, totalQ = 0;
+          tableData.forEach(r => {
+            const q = +r.q || 0, c = +r.correct || 0, min = +r.mins || 0;
+            if (q <= 0) return;
+            const cr = Math.min(c, q);
+            totalRight += cr; totalQ += q;
+            DB.recordModuleScore(r.name, cr, q, { mins: Math.round(min), source: "粉笔模考" });
+            if (min > 0) DB.addTimerMinutes(DB.subjectShort(r.name), Math.round(min));
+          });
+          pushMockScore(full, score, totalRight, totalQ);
+          DB.save(true);
+          UI.toast("已导入套卷：" + totalQ + " 题 · 对 " + totalRight + " 题" + (score !== "" ? (" · 得分 " + score + "/" + full) : ""));
+          close(); rerender(); refreshBrand();
+        };
+      }
+
     }
   };
 })();
