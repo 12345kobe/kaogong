@@ -92,31 +92,7 @@
       cards.forEach(c => html += `<div class="card stat-card"><div class="stat-num">${c.n}</div><div class="muted small">${c.l}</div></div>`);
       html += `</div>`;
 
-      // ===== ★v20261021 今日正确率（当天各模块，单独小板块） =====
-      const tRow = (k, i) => {
-        const s = dayAcc.subjects[k];
-        const pct = s && s.done ? Math.round(s.right / s.done * 100) : null;
-        const color = palette[i % palette.length];
-        const wide = Math.round((pct == null ? 0 : pct));
-        return `<div class="acc-row">
-          <div class="acc-name">${(window.KGSubjectFull ? KGSubjectFull(k) : k)}</div>
-          <div class="acc-bar"><i style="width:${wide}%;background:${color}"></i></div>
-          <div class="acc-pct">${pct == null ? "—" : pct + "%"}</div>
-          <div class="acc-vol muted small">${s ? (s.right + "/" + s.done) : "0/0"} 题</div>
-        </div>`;
-      };
-      html += `<div class="card today-acc">
-        <h3>📅 今日正确率 <span class="muted small">${UI.esc(DB.today())}</span></h3>
-        <div class="row" style="justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
-          <span class="muted small">只统计今天（含 App 内答题、刷题模式记录，多选题同样计入）。</span>
-          <span class="today-acc-big ${todayPctNum == null ? "" : (todayPctNum >= 70 ? "good" : (todayPctNum >= 50 ? "mid" : "bad"))}">
-            ${todayPctNum == null ? "今天还没有答题记录" : "今日 <b>" + dayAcc.total.right + "</b>/<b>" + dayAcc.total.done + "</b> 题 · 正确率 <b>" + todayPctNum + "%</b>"}
-          </span>
-        </div>
-        <div>${SUBJECTS.map(tRow).join("")}</div>
-      </div>`;
-
-      // ===== ★v20261031b 近7天预估分数（按广东省考/国考分值表赋分）+ 分数波动 + 薄弱模块 =====
+      // ===== ★v20261031e 预估分数（移到所有小板块第一个，按广东省考/国考分值表赋分）+ 分数波动 + 薄弱模块 =====
       (function () {
         const EM = window.KGExam;
         if (!EM || !DB.recentScores) return;
@@ -191,7 +167,7 @@
              <span class="muted small">（对比第 8~14 天的 ${prevEst.toFixed(1)} 分）</span>`;
 
         html += `<div class="card" style="border-left:5px solid #ffd166">
-          <h3>🎯 近7天预估分数 <span class="muted small">${UI.esc(r7.from)} ~ ${UI.esc(r7.to)} · 按${UI.esc(tblLabel)}分值表赋分</span></h3>
+          <h3>🎯 预估分数 <span class="muted small">（近7天 ${UI.esc(r7.from)} ~ ${UI.esc(r7.to)} · 按${UI.esc(tblLabel)}分值表赋分）</span></h3>
           <div class="row" style="gap:14px;flex-wrap:wrap;margin:10px 0 6px">
             <div><span class="muted small">预估行测</span> <b style="font-size:26px;color:var(--cyan)">${estTotal.toFixed(1)}</b>
               <span class="muted small">/ ${fullCovered.toFixed(1)} 分（已练模块）</span></div>
@@ -211,6 +187,32 @@
           <div class="muted small" style="margin-top:6px">每次刷题保存 / 申论录入得分都会计入这里，用于掌握分数波动。</div>
         </div>`;
       })();
+
+      // ===== ★v20261021 今日正确率（当天各模块，单独小板块） =====
+      const tRow = (k, i) => {
+        const s = dayAcc.subjects[k];
+        const pct = s && s.done ? Math.round(s.right / s.done * 100) : null;
+        const color = palette[i % palette.length];
+        const wide = Math.round((pct == null ? 0 : pct));
+        return `<div class="acc-row">
+          <div class="acc-name">${(window.KGSubjectFull ? KGSubjectFull(k) : k)}</div>
+          <div class="acc-bar"><i style="width:${wide}%;background:${color}"></i></div>
+          <div class="acc-pct">${pct == null ? "—" : pct + "%"}</div>
+          <div class="acc-vol muted small">${s ? (s.right + "/" + s.done) : "0/0"} 题</div>
+        </div>`;
+      };
+      html += `<div class="card today-acc">
+        <h3>📅 今日正确率 <span class="muted small">${UI.esc(DB.today())}</span></h3>
+        <div class="row" style="justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+          <span class="muted small">只统计今天（含 App 内答题、刷题模式记录，多选题同样计入）。</span>
+          <span class="today-acc-big ${todayPctNum == null ? "" : (todayPctNum >= 70 ? "good" : (todayPctNum >= 50 ? "mid" : "bad"))}">
+            ${todayPctNum == null ? "今天还没有答题记录" : "今日 <b>" + dayAcc.total.right + "</b>/<b>" + dayAcc.total.done + "</b> 题 · 正确率 <b>" + todayPctNum + "%</b>"}
+          </span>
+        </div>
+        <div>${SUBJECTS.map(tRow).join("")}</div>
+      </div>`;
+
+
 
       // ===== 图表区 =====
       html += `<div class="grid g2">
@@ -261,6 +263,11 @@
       </div>`;
 
       body.innerHTML = html;
+
+      // ★v20261031e 渲染后把滚动容器复位到顶部：避免录入保存/从其它模块返回后
+      // #content 的 scrollTop 被保留在底部，导致顶部统计卡片/预估分数等板块看不见
+      try { const __c = document.getElementById("content"); if (__c) __c.scrollTop = 0; } catch (e) {}
+      try { if (window.scrollTo) window.scrollTo(0, 0); } catch (e) {}
 
       // ===== 各科累计正确率 明细表 =====
       const accTable = body.querySelector("#accTable");
