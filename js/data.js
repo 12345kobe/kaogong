@@ -640,23 +640,31 @@
     recordModuleScore(module, correct, total, opts) {
       const EM = window.KGExam;
       const mod = this._scoreModuleName(module);
-      const cor = Math.max(0, +correct || 0);
-      const tot = Math.max(0, +total || 0);
+      let cor = Math.max(0, +correct || 0);
+      let tot = Math.max(0, +total || 0);
       const o = opts || {};
+      // ★v20261031f 带了细分题型(subs)时，正确率/总题数一律以「细分题型汇总」为准，
+      // 不再依赖模块级 对X/总Y 输入框——用户往往只填了细分题型，模块级是 0/空，
+      // 会导致「预估分数」卡里正确率算成 0/未练（或模块级被预填错数显示成 15% 之类）。
+      // 这样正确率 = Σ各题型答对 / Σ各题型总题 = 真实的「答对多少题」。
+      const subs = (o.subs && o.subs.length) ? o.subs.slice() : null;
+      if (subs) {
+        const sTot = subs.reduce((a, b) => a + (Math.max(0, +b.total || 0)), 0);
+        const sCor = subs.reduce((a, b) => a + (Math.max(0, +b.correct || 0)), 0);
+        tot = sTot; cor = sCor;
+      }
       let score = 0, full = 0, mode = "shengkao";
       if (EM && EM.scoreCfg && EM.scoreCfg(mod)) {
         mode = EM.mode();
         full = EM.moduleFull(mod);
         // 判断推理给了细分题型就用细分赋分（更准），否则按模块每题分值
-        score = (o.subs && o.subs.length)
-          ? EM.scoreOfSubs(mod, o.subs)
-          : EM.scoreOf(mod, cor);
+        score = subs ? EM.scoreOfSubs(mod, subs) : EM.scoreOf(mod, cor);
       }
       state.examScores = state.examScores || [];
       state.examScores.push({
         date: this.today(), mode: mode, module: mod,
         correct: cor, total: tot, score: score, full: full,
-        subs: (o.subs && o.subs.length) ? o.subs.slice() : null,
+        subs: subs,
         mins: Math.max(0, +o.mins || 0), source: o.source || ""
       });
       if (state.examScores.length > 600) state.examScores = state.examScores.slice(-600);

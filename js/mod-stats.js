@@ -107,8 +107,17 @@
         ORDER.forEach(m => {
           const cfg = EM.scoreCfg(m); if (!cfg) return;
           const recs = (r7.exam || []).filter(x => x.module === m);
-          const tot = recs.reduce((a, b) => a + (b.total || 0), 0);
-          const cor = recs.reduce((a, b) => a + (b.correct || 0), 0);
+          let tot = recs.reduce((a, b) => a + (b.total || 0), 0);
+          let cor = recs.reduce((a, b) => a + (b.correct || 0), 0);
+          // ★v20261031f 模块级 total/correct 缺失（只填了细分题型）时，用细分题型汇总兜底，
+          // 避免正确率变 未练/0（老数据里 examScores 存的是 0/0 但 subs 有值）
+          if (tot <= 0) {
+            const s = recs.reduce((a, b) => {
+              (b.subs || []).forEach(s2 => { a.t += (s2.total || 0); a.c += (s2.correct || 0); });
+              return a;
+            }, { t: 0, c: 0 });
+            if (s.t > 0) { tot = s.t; cor = s.c; }
+          }
           if (tot <= 0) { rows.push({ m: m, tot: 0, cor: 0, rate: null, est: null, full: cfg.full }); return; }
           const rate = cor / tot, est = rate * cfg.full;
           rows.push({ m: m, tot: tot, cor: cor, rate: rate, est: est, full: cfg.full });

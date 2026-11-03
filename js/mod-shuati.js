@@ -746,7 +746,16 @@
               lastScoreTxt = " · 赋分 " + r.score.toFixed(1) + "/" + r.full.toFixed(1) + " 分";
               if (planId) {
                 const it = DB.getPlan(DB.today()).items.find(x => x.id === planId);
-                if (it) { it.score = r.score; it.scoreFull = r.full; if (subs.length) it.subs = subs; DB.save(); }
+                if (it) {
+                  it.score = r.score; it.scoreFull = r.full;
+                  // ★v20261031f 带细分题型时，计划项的「对X道/总Y道」也用细分汇总，避免显示 对0道
+                  if (subs.length) {
+                    it.subs = subs;
+                    it.count = subs.reduce((a, b) => a + (Math.max(0, +b.total || 0)), 0);
+                    it.correct = subs.reduce((a, b) => a + (Math.max(0, +b.correct || 0)), 0);
+                  }
+                  DB.save();
+                }
               }
             }
           } catch (e) {}
