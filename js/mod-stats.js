@@ -42,6 +42,88 @@
     if (DB.state.mockScores.length > 200) DB.state.mockScores = DB.state.mockScores.slice(-200);
   }
 
+  /* 读取图片并按最大边缩放为 JPEG（降低视觉模型请求体积，提升识别成功率/速度） */
+  function fileToScaledDataURL(f, maxDim) {
+    return new Promise((res, rej) => {
+      try {
+        const fr = new FileReader();
+        fr.onload = () => {
+          const img = new Image();
+          img.onload = () => {
+            const md = maxDim || 1280;
+            let w = img.width, h = img.height;
+            if (w > md || h > md) {
+              if (w >= h) { h = Math.round(h * md / w); w = md; }
+              else { w = Math.round(w * md / h); h = md; }
+            }
+            try {
+              const cv = document.createElement("canvas");
+              cv.width = w; cv.height = h;
+              cv.getContext("2d").drawImage(img, 0, 0, w, h);
+              res(cv.toDataURL("image/jpeg", 0.85));
+            } catch (e) { res(String(fr.result || "")); }
+          };
+          img.onerror = () => rej(new Error("图片解码失败"));
+          img.src = String(fr.result || "");
+        };
+        fr.onerror = () => rej(new Error("读取图片失败"));
+        fr.readAsDataURL(f);
+      } catch (e) { rej(e); }
+    });
+  }
+
+  /* 申论题型归一（粉笔截图里各种叫法归到四类） */
+  function normalizeShenlunType(t) {
+    if (!t) return "单一题";
+    const s = String(t).replace(/\s/g, "");
+    if (s.indexOf("综合") >= 0) return "综合题";
+    if (s.indexOf("公文") >= 0 || s.indexOf("应用文") >= 0 || s.indexOf("公开信") >= 0 || s.indexOf("提纲") >= 0) return "公文题";
+    if (s.indexOf("作文") >= 0 || s.indexOf("文章") >= 0 || s.indexOf("议论") >= 0 || s.indexOf("大作文") >= 0) return "大作文";
+    if (s.indexOf("单一") >= 0 || s.indexOf("概括") >= 0 || s.indexOf("归纳") >= 0 || s.indexOf("解释") >= 0 || s.indexOf("语句") >= 0) return "单一题";
+    return "单一题";
+  }
+
+  /* 视觉 OCR：自动尝试多个已配置的识图模型，任一成功即返回文本（避免单一模型失败就整体报错） */
+  async function visionOcr(sys, images) {
+    const AI = window.KGAI;
+    if (!AI) throw new Error("未找到 AI 组件");
+    if (!images || !images.length) throw new Error("没有可识别的图片");
+    const cands = [];
+    const seen = {};
+    const addCand = (pid, mid) => {
+      if (!pid || !mid) return;
+      const key = pid + ":" + mid;
+      if (seen[key]) return; seen[key] = 1;
+      const p = AI.providerById(pid);
+      const m = p && p.models && p.models.find(x => x.id === mid);
+      if (!m || !m.vision) return;
+      const k = AI.getKey(pid);
+      if (!k && !p.noKey) return;   // 需要密钥但未配置 → 跳过
+      cands.push({ pid: pid, model: mid, key: k });
+    };
+    const curPid = AI.getProvider();
+    const curProv = AI.providerById(curPid);
+    if (curProv && curProv.models) curProv.models.filter(m => m.vision).forEach(m => addCand(curPid, m.id));
+    (AI.PROVIDERS || []).forEach(p => {
+      const vm = p.models && p.models.find(m => m.vision);
+      if (vm) addCand(p.id, vm.id);
+    });
+    if (!cands.length) throw new Error("当前没有任何可用的识图模型，请在「设置」配置 Gemini / 智谱 / OpenAI 等支持识图的密钥");
+    const content = [{ type: "text", text: "请从图片中提取数据，严格只输出 JSON。" }]
+      .concat(images.map(u => ({ type: "image_url", image_url: { url: u } })));
+    let lastErr = "";
+    for (const c of cands) {
+      try {
+        const txt = await AI.chat(
+          [{ role: "system", content: sys }, { role: "user", content: content }],
+          { providerId: c.pid, model: c.model, key: c.key, temp: 0, maxTok: 1500 }
+        );
+        if (txt && txt.trim()) return txt;
+      } catch (e) { lastErr = (e && e.message) ? e.message : String(e); }
+    }
+    throw new Error("所有识图模型均失败：" + lastErr);
+  }
+
   window.MODULES.stats = {
     title: "学习统计", icon: "stats",
     render(body) {
@@ -126,7 +208,11 @@
         const avgRate = rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : 0;
 
         /* 申论：近7天各题型「得分 ÷ 总分值」= 得分率 → 预估分 = 得分率 × 该题型的总分值 */
-        const blocks = EM.shenlunBlocks();
+        const blocksDef = EM.shenlunBlocks();
+        const blocks = blocksDef.slice();
+        const seenB = {};
+        blocksDef.forEach(b => seenB[b.n] = 1);
+        (DB.state.shenlun || []).forEach(x => { if (x.block && !seenB[x.block]) { blocks.push({ n: x.block, min: 30 }); seenB[x.block] = 1; } });
         const slRows = [];
         let slEst = 0, slFull = 0;
         blocks.forEach(b => {
@@ -267,6 +353,7 @@
           <div><label class="fld" style="margin:0">时长(分)</label><input id="recMin" type="number" min="0" inputmode="numeric" style="width:88px" placeholder="可留空"/></div>
           <button class="btn primary" id="recSave">💾 保存录入</button>
           <button class="btn" id="setBtn">📋 套卷录入(粉笔模考)</button>
+          <button class="btn" id="slBtn">📝 申论套卷录入(粉笔)</button>
         </div>
         <div id="todayRec" style="margin-top:14px"></div>
       </div>`;
@@ -384,6 +471,8 @@
       // ===== 套卷录入（粉笔模考）：上传两张截图 → 视觉模型识别 → 可改 → 导入 =====
       const setBtn = body.querySelector("#setBtn");
       if (setBtn) setBtn.onclick = () => openSetModal();
+      const slBtn = body.querySelector("#slBtn");
+      if (slBtn) slBtn.onclick = () => openShenlunModal();
 
       // ===== 今日录入（分模块，仅显示今天，保存后即时刷新）=====
       const fillToday = () => {
@@ -491,7 +580,7 @@
           input.onchange = async () => {
             const f = input.files && input.files[0];
             if (!f) return;
-            try { prevs[idx] = await fileToDataURL(f); } catch (e) { UI.toast("图片读取失败"); return; }
+            try { prevs[idx] = await fileToScaledDataURL(f); } catch (e) { UI.toast("图片读取失败"); return; }
             const p = mask.querySelector("#setPrev" + (idx + 1));
             if (p) p.innerHTML = `<img src="${prevs[idx]}" style="max-width:100%;max-height:160px;border-radius:8px;margin-top:6px"/>`;
           };
@@ -500,22 +589,13 @@
         bindPrev(1, mask.querySelector("#setImg2"));
 
         mask.querySelector("#setOcr").onclick = async () => {
-          const AI = window.KGAI;
           const msg = mask.querySelector("#setMsg");
-          if (!AI) { msg.textContent = "未找到 AI 组件"; return; }
           if (!prevs[0] || !prevs[1]) { msg.textContent = "请先上传两张截图"; return; }
-          const pid = AI.getProvider();
-          const p = AI.providerById(pid);
-          const vm = (p && p.models || []).find(m => m.vision);
-          if (!vm) { msg.textContent = "当前 AI 服务商无识图模型，请在「设置」切换支持识图的模型（如 智谱 GLM-4V / Gemini / GPT-4.1）"; return; }
           const btn = mask.querySelector("#setOcr");
-          btn.disabled = true; msg.textContent = "识别中…";
+          btn.disabled = true; msg.textContent = "识别中…（多模型自动重试）";
           try {
             const sys = "你是数据提取助手。用户上传两张公务员考试粉笔模考报告截图。图1是总分报告页（含得分/满分）。图2是各模块正确率页（含模块名、共X道、答对Y道、正确率、用时M分N秒）。请严格只输出JSON，不要任何解释或markdown围栏。格式：{\"total\":实际得分数字,\"full\":满分数字,\"modules\":[{\"name\":\"标准模块名\",\"q\":总题数,\"correct\":正确题数,\"mins\":用时分钟小数}]}。name必须用标准名：政治理论 / 常识判断 / 言语理解与表达 / 数量关系 / 判断推理 / 资料分析。mins=分钟+秒/60（小数）。";
-            const user = [{ type: "text", text: "请提取这两张截图的数据为JSON。" },
-              { type: "image_url", image_url: { url: prevs[0] } },
-              { type: "image_url", image_url: { url: prevs[1] } }];
-            const txt = await AI.chat([{ role: "system", content: sys }, { role: "user", content: user }], { providerId: pid, model: vm.id, temp: 0 });
+            const txt = await visionOcr(sys, [prevs[0], prevs[1]]);
             const json = parseJSON(txt);
             if (!json || !json.modules) { msg.textContent = "识别失败：未返回有效JSON，请手动填写或重试"; }
             else {
@@ -554,6 +634,152 @@
           UI.toast("已导入套卷：" + totalQ + " 题 · 对 " + totalRight + " 题" + (score !== "" ? (" · 得分 " + score + "/" + full) : ""));
           close(); rerender(); refreshBrand();
         };
+      }
+
+      // ===== 申论套卷录入（粉笔）：按 综合题/单一题/公文题/大作文 归类识别，取平均赋分预测 =====
+      function openShenlunModal() {
+        const root = document.getElementById("modalRoot") || document.body;
+        const TYPES = ["单一题", "综合题", "公文题", "大作文"];
+        let rows = [];                       // { type, full, score }
+        const prevs = [null, null];         // 最多两张截图
+
+        const mask = UI.el(`<div class="modal-mask" id="slMask">
+          <div class="modal" style="width:min(780px,96vw);max-height:92vh;overflow:auto">
+            <div class="spread" style="align-items:center;gap:10px"><h3 style="margin:0">📝 申论套卷录入 · 粉笔</h3><button class="btn ghost sm" id="slClose">✕</button></div>
+            <div class="muted small" style="margin:8px 0">上传 <b>1~2 张</b> 粉笔申论成绩截图（每题含 题型 / 得分 / 满分），点「识别」自动按 <b>综合题 · 单一题 · 公文题 · 大作文</b> 归类并提取分数；可改、可加行后再导入。导入后计入「近7天预估分 · 申论」。</div>
+            <div class="row" style="gap:14px;flex-wrap:wrap">
+              <div style="flex:1;min-width:220px"><div class="muted small">① 申论成绩截图</div><input type="file" id="slImg1" accept="image/*"/><div id="slPrev1"></div></div>
+              <div style="flex:1;min-width:220px"><div class="muted small">② 追加截图（可选）</div><input type="file" id="slImg2" accept="image/*"/><div id="slPrev2"></div></div>
+            </div>
+            <div class="row" style="gap:10px;margin-top:12px;flex-wrap:wrap;align-items:center">
+              <button class="btn primary" id="slOcr">🔍 识别并填入</button>
+              <button class="btn" id="slAdd">➕ 加一行</button>
+              <button class="btn" id="slFill">✍️ 手动清空</button>
+              <button class="btn primary" id="slImport">⬇️ 导入到统计</button>
+              <span id="slMsg" class="muted small"></span>
+            </div>
+            <div id="slPred" class="card" style="margin-top:12px;display:none;border-left:5px solid #ffd166"></div>
+            <div style="margin-top:14px"><div id="slTable"></div></div>
+          </div></div>`);
+        root.appendChild(mask);
+        const close = () => mask.remove();
+        mask.querySelector("#slClose").onclick = close;
+        mask.onclick = e => { if (e.target === mask) close(); };
+
+        const updateRate = (i) => {
+          const rt = mask.querySelector('[data-rate="' + i + '"]');
+          if (!rt) return;
+          const f = +rows[i].full || 0, s = +rows[i].score || 0;
+          rt.textContent = (f > 0) ? ("得分率 " + Math.round(s / f * 100) + "%") : "";
+        };
+        const updatePred = () => {
+          const pred = mask.querySelector("#slPred");
+          const valid = rows.filter(r => (+r.full > 0));
+          if (!valid.length) { pred.style.display = "none"; return; }
+          const types = {};
+          let sumRate = 0, cnt = 0, sumScore = 0, sumFull = 0;
+          valid.forEach(r => {
+            const f = +r.full, s = +r.score || 0, rate = s / f;
+            sumRate += rate; cnt++; sumScore += s; sumFull += f;
+            types[r.type] = types[r.type] || { s: 0, f: 0 };
+            types[r.type].s += s; types[r.type].f += f;
+          });
+          const avgRate = sumRate / cnt;
+          const predByAvg = avgRate * 100;     // 取平均：各题得分率平均 × 100
+          let typeHtml = "";
+          TYPES.forEach(tp => {
+            const d = types[tp];
+            if (!d || d.f <= 0) return;
+            const rate = d.s / d.f;
+            typeHtml += `<div class="acc-row"><div class="acc-name">${tp}</div><div class="acc-bar"><i style="width:${Math.round(rate * 100)}%;background:#ffd166"></i></div><div class="acc-pct">${Math.round(rate * 100)}%</div><div class="acc-vol muted small">${(rate * d.f).toFixed(1)}/${d.f.toFixed(1)} 分</div></div>`;
+          });
+          pred.style.display = "block";
+          pred.innerHTML = `<div class="muted small" style="margin-bottom:6px">申论预测（按题型赋分 · 取平均）：</div>
+            <div><span class="muted small">整体预测申论分</span> <b style="font-size:24px;color:#ffd166">${predByAvg.toFixed(1)}</b> <span class="muted small">/ 100（各题得分率平均 ${Math.round(avgRate * 100)}%）</span></div>
+            <div class="muted small" style="margin:6px 0">本卷实际：${sumScore.toFixed(1)} / ${sumFull.toFixed(1)} 分（得分率 ${Math.round(sumScore / sumFull * 100)}%）</div>
+            ${typeHtml ? '<div style="margin-top:8px">' + typeHtml + '</div>' : ''}`;
+        };
+        const renderTable = () => {
+          const t = mask.querySelector("#slTable");
+          t.innerHTML = `<div class="muted small" style="margin-bottom:6px">各题（题型 / 满分 / 得分，可改、可加行、可删）：</div>` + rows.map((r, i) => `
+            <div class="combo-row" style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+              <select data-i="${i}" data-k="type" style="min-width:120px">
+                ${TYPES.map(tp => `<option value="${tp}" ${r.type === tp ? "selected" : ""}>${tp}</option>`).join("")}
+              </select>
+              <label class="muted small">满分<input data-i="${i}" data-k="full" type="number" value="${r.full}" style="width:62px;display:inline-block;margin:0 4px"/></label>
+              <label class="muted small">得分<input data-i="${i}" data-k="score" type="number" value="${r.score}" style="width:62px;display:inline-block;margin:0 4px"/></label>
+              <span class="muted small" data-rate="${i}" style="color:var(--cyan)"></span>
+              <button class="btn ghost sm" data-del="${i}">🗑</button>
+            </div>`).join("");
+          t.querySelectorAll("input[data-i]").forEach(inp => {
+            inp.oninput = () => { const i = +inp.dataset.i, k = inp.dataset.k; rows[i][k] = inp.value; updateRate(i); updatePred(); };
+          });
+          t.querySelectorAll("select[data-i]").forEach(sel => {
+            sel.onchange = () => { rows[+sel.dataset.i].type = sel.value; updatePred(); };
+          });
+          t.querySelectorAll("[data-del]").forEach(b => {
+            b.onclick = () => { rows.splice(+b.dataset.del, 1); renderTable(); updatePred(); };
+          });
+          rows.forEach((r, i) => updateRate(i));
+          updatePred();
+        };
+
+        const bindPrev = (idx, input) => {
+          input.onchange = async () => {
+            const f = input.files && input.files[0]; if (!f) return;
+            try { prevs[idx] = await fileToScaledDataURL(f); } catch (e) { UI.toast("图片读取失败"); return; }
+            const p = mask.querySelector("#slPrev" + (idx + 1));
+            if (p) p.innerHTML = `<img src="${prevs[idx]}" style="max-width:100%;max-height:160px;border-radius:8px;margin-top:6px"/>`;
+          };
+        };
+        bindPrev(0, mask.querySelector("#slImg1"));
+        bindPrev(1, mask.querySelector("#slImg2"));
+
+        mask.querySelector("#slAdd").onclick = () => { rows.push({ type: "单一题", full: "", score: "" }); renderTable(); };
+        mask.querySelector("#slFill").onclick = () => { rows = []; renderTable(); mask.querySelector("#slMsg").textContent = "已清空，可手动添加"; };
+
+        mask.querySelector("#slOcr").onclick = async () => {
+          const msg = mask.querySelector("#slMsg");
+          const imgs = prevs.filter(Boolean);
+          if (!imgs.length) { msg.textContent = "请先上传至少一张截图"; return; }
+          const btn = mask.querySelector("#slOcr");
+          btn.disabled = true; msg.textContent = "识别中…（多模型自动重试）";
+          try {
+            const sys = "你是申论成绩提取助手。用户上传公务员考试（粉笔）申论成绩截图，可能是一整卷含多道题，也可能是单题批改页。请识别每一道题的【题型】和【得分】与【满分】。题型只归为四类之一：综合题 / 单一题 / 公文题 / 大作文（若看到“概括题/归纳题/语句解释/词句解释”归入单一题；看到“分析题/评析题/理解题/看法”归入综合题；看到“公开信/通知/汇报/建议/提纲/讲话稿/倡议书”等应用文归入公文题；看到“大作文/文章写作/议论文”归入大作文）。严格只输出JSON，不要任何解释或markdown围栏。格式：{\"items\":[{\"type\":\"综合题|单一题|公文题|大作文\",\"score\":得分数字,\"full\":满分数字}]}。";
+            const txt = await visionOcr(sys, imgs);
+            const json = parseJSON(txt);
+            if (!json || !json.items || !json.items.length) { msg.textContent = "识别失败：未返回有效JSON，请手动加行"; }
+            else {
+              const map = {};
+              json.items.forEach(it => {
+                const tp = normalizeShenlunType(it.type);
+                const full = +it.full || 0, score = +it.score || 0;
+                if (!map[tp]) map[tp] = { type: tp, full: 0, score: 0 };
+                map[tp].full += full; map[tp].score += score;
+              });
+              rows = Object.keys(map).map(k => ({ type: map[k].type, full: map[k].full || "", score: map[k].score || "" }));
+              if (!rows.length) rows = [{ type: "单一题", full: "", score: "" }];
+              renderTable();
+              mask.querySelector("#slImport").disabled = false;
+              msg.textContent = "识别完成 " + json.items.length + " 题，请核对后导入";
+            }
+          } catch (e) { msg.textContent = "识别出错：" + (e && e.message ? e.message : e) + "（可手动加行）"; }
+          finally { btn.disabled = false; }
+        };
+
+        mask.querySelector("#slImport").onclick = () => {
+          const valid = rows.filter(r => (+r.full > 0));
+          if (!valid.length) { UI.toast("请先填写至少一题的满分与得分"); return; }
+          valid.forEach(r => {
+            const full = +r.full, score = +r.score || 0;
+            DB.recordShenlun(r.type, full, score, 0);
+          });
+          DB.save(true);
+          UI.toast("已导入申论 " + valid.length + " 题（" + valid.map(r => r.type).join("、") + "）");
+          close(); rerender(); refreshBrand();
+        };
+
+        renderTable();
       }
 
     }

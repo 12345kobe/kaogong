@@ -268,10 +268,28 @@
     return /访问量过大|稍后再试|系统繁忙|服务器繁忙|overload|internal error|server error|bad gateway|service unavailable|network|failed to fetch|\b429\b|\b500\b|\b502\b|\b503\b|\b504\b|rate.?limit|too many requests/i.test(String(msg || ""));
   }
   function aiSleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+  /* 判断消息体是否含图片（用于视觉请求避免回退到纯文本模型） */
+  function hasImageContent(msgs) {
+    return (msgs || []).some(m => {
+      const c = m && m.content;
+      if (Array.isArray(c)) return c.some(x => x && (x.type === "image_url" || x.type === "image"));
+      if (typeof c === "string") return /image_url|data:image/.test(c);
+      return false;
+    });
+  }
+
   async function chatFetch(payload, pid, model, headers, o) {
     const p = providerById(pid);
     const candidates = [model];
-    if (pid === "zhipu" && model !== "glm-4-flash" && !o.baseUrl) candidates.push("glm-4-flash");   // 免费备胎（自定义网关不加）
+    const _hasImg = hasImageContent(payload.messages);
+    if (pid === "zhipu" && model !== "glm-4-flash" && !o.baseUrl) {
+      if (_hasImg) {
+        // 视觉请求：只回退到视觉模型，绝不回退到纯文本模型（否则 image_url 内容被文本模型拒 → “content.type 参数非法”）
+        if (model !== "glm-4v-flash") candidates.push("glm-4v-flash");
+      } else {
+        candidates.push("glm-4-flash");   // 免费备胎（自定义网关不加）
+      }
+    }
     let lastMsg = "";
     for (let ci = 0; ci < candidates.length; ci++) {
       const mid = candidates[ci];
