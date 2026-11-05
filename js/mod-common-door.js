@@ -171,7 +171,7 @@
       <div class="cd-lvtitle">${esc(node.name)}</div>
       <div class="cd-sub">${isLeaf ? "共 " + bankItems(node.bank).length + " 题 · 点击下方开始" : "选择下一级，或整段抽题"}</div>
       <div class="cd-btns"></div>`;
-    content.innerHTML = ""; content.appendChild(el(html));
+    content.innerHTML = html;
     const btns = content.querySelector(".cd-btns");
     if (isLeaf) {
       const b = el(`<button class="cd-btn rand">开始练习（10 题）<span class="sm">本模块随机抽 10 道</span></button>`);

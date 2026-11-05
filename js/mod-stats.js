@@ -17,9 +17,27 @@
   function parseJSON(t) {
     if (t == null) return null;
     let s = String(t).trim();
+    // 去掉 markdown 代码围栏（```json ... ```）
+    s = s.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+    // 取最后一个 { 到最后一个 } 之间的内容（兼容前后夹杂解释文字）
     const i = s.indexOf("{"), j = s.lastIndexOf("}");
-    if (i >= 0 && j > i) s = s.slice(i, j + 1);
-    try { return JSON.parse(s); } catch (e) { return null; }
+    if (i < 0 || j <= i) return null;
+    s = s.slice(i, j + 1);
+    // 去除尾部逗号（大模型常见：{... ,} / [...] ,]）
+    s = s.replace(/,(\s*[}\]])/g, "$1");
+    try { return JSON.parse(s); } catch (e) {}
+    // 容错：单引号当双引号（粗略）
+    try { return JSON.parse(s.replace(/'/g, '"')); } catch (e) {}
+    // 终极兜底：从首个 { 起做括号配平截取，再试一次
+    try {
+      let depth = 0, end = -1;
+      for (let k = 0; k < s.length; k++) {
+        if (s[k] === "{") depth++;
+        else if (s[k] === "}") { depth--; if (depth === 0) { end = k; break; } }
+      }
+      if (end > 0) return JSON.parse(s.slice(0, end + 1).replace(/,(\s*[}\]])/g, "$1"));
+    } catch (e) {}
+    return null;
   }
   function normalizeName(n) {
     if (!n) return "";
@@ -109,14 +127,14 @@
       if (vm) addCand(p.id, vm.id);
     });
     if (!cands.length) throw new Error("当前没有任何可用的识图模型，请在「设置」配置 Gemini / 智谱 / OpenAI 等支持识图的密钥");
-    const content = [{ type: "text", text: "请从图片中提取数据，严格只输出 JSON。" }]
+    const content = [{ type: "text", text: "请从图片中提取数据，直接输出 JSON 文本，不要任何 markdown 代码块、不要解释、不要前后缀文字。" }]
       .concat(images.map(u => ({ type: "image_url", image_url: { url: u } })));
     let lastErr = "";
     for (const c of cands) {
       try {
         const txt = await AI.chat(
           [{ role: "system", content: sys }, { role: "user", content: content }],
-          { providerId: c.pid, model: c.model, key: c.key, temp: 0, maxTok: 1500 }
+          { providerId: c.pid, model: c.model, key: c.key, temp: 0, maxTok: 2500 }
         );
         if (txt && txt.trim()) return txt;
       } catch (e) { lastErr = (e && e.message) ? e.message : String(e); }
