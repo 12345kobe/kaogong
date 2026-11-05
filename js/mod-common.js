@@ -272,6 +272,16 @@
         </div>
         <div id="quiz" style="margin-top:14px"></div></div>`);
       body.appendChild(predCard);
+
+      // ========== 常识开门刷题（沉浸式） ==========
+      const doorCard = UI.el(`<div class="card" style="margin-top:16px">
+        <h3>🚪 常识开门刷题（沉浸式）</h3>
+        <div class="muted small">点击模块方块 → 推门进入全屏古风场景答题。历史可下钻到朝代；任意层级都能整段抽题。每次 10 题，点选即显解析，旁边「下一题」继续。</div>
+        <div id="doorGrid" class="cd-grid"></div>
+      </div>`);
+      body.appendChild(doorCard);
+      try { if (window.CommonDoor) { window.CommonDoor.renderGrid(doorCard.querySelector("#doorGrid")); window.CommonDoor.onExit = () => { try { window.MODULES.common.render(body); } catch (e) {} }; } } catch (e) { console.error("开门刷题渲染失败", e); }
+
       predCard.querySelector("#start").onclick = () => {
         const cnt = +predCard.querySelector("#cnt").value || 10;
         const all = allItems();
