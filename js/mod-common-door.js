@@ -137,14 +137,23 @@
   function closeDoors() { doors.classList.remove("open"); }
 
   /* 背景图：先瞬间显示渐变底色，照片异步加载完成后淡入，避免大图加载空白等待 */
-  const _bgLoaded = {};
+  const _bgState = {}; // 0/undefined=未加载 1=加载中 2=已加载
   function applySceneBg(bg) {
+    if (_bgState[bg] === 2) {
+      scene.style.backgroundColor = "#1a1208";
+      scene.style.backgroundImage = `url("${bg}")`;
+      return;
+    }
     scene.style.backgroundColor = "#1a1208";
     scene.style.backgroundImage = "linear-gradient(135deg,#241608,#3d2a18 45%,#1a1208)";
-    if (_bgLoaded[bg]) { applySceneBg(bg); return; }
+    if (_bgState[bg] === 1) return; // 已在加载，避免重复请求
+    _bgState[bg] = 1;
     const im = new Image();
-    im.onload = function () { _bgLoaded[bg] = 1; applySceneBg(bg); };
-    im.onerror = function () {};
+    im.onload = function () {
+      _bgState[bg] = 2;
+      if (scene) { scene.style.backgroundColor = "#1a1208"; scene.style.backgroundImage = `url("${bg}")`; }
+    };
+    im.onerror = function () { _bgState[bg] = 0; };
     im.src = bg;
   }
 
