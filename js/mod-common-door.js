@@ -136,6 +136,18 @@
   function openDoors() { requestAnimationFrame(() => doors.classList.add("open")); }
   function closeDoors() { doors.classList.remove("open"); }
 
+  /* 背景图：先瞬间显示渐变底色，照片异步加载完成后淡入，避免大图加载空白等待 */
+  const _bgLoaded = {};
+  function applySceneBg(bg) {
+    scene.style.backgroundColor = "#1a1208";
+    scene.style.backgroundImage = "linear-gradient(135deg,#241608,#3d2a18 45%,#1a1208)";
+    if (_bgLoaded[bg]) { applySceneBg(bg); return; }
+    const im = new Image();
+    im.onload = function () { _bgLoaded[bg] = 1; applySceneBg(bg); };
+    im.onerror = function () {};
+    im.src = bg;
+  }
+
   /* 从方块放大进入全屏，再推门 */
   function enterFromTile(tileEl, bg) {
     if (!overlay) buildOverlay();
@@ -145,7 +157,7 @@
     overlay.style.transformOrigin = "top left";
     overlay.style.transform = `translate(${r.left}px,${r.top}px) scale(${sx},${sy})`;
     overlay.style.opacity = "0.5";
-    scene.style.backgroundImage = `url("${bg}")`;
+    applySceneBg(bg);
     overlay.style.display = "block";
     requestAnimationFrame(() => requestAnimationFrame(() => {
       overlay.style.transition = "transform .42s cubic-bezier(.2,.7,.2,1), opacity .42s";
@@ -158,7 +170,7 @@
   /* ===== 层级视图 ===== */
   function levelView(node) {
     const bg = bgOf(node);
-    scene.style.backgroundImage = `url("${bg}")`;
+    applySceneBg(bg);
     const path = node._path || [];
     const crumb = path.length
       ? path.map((p, i) => i === path.length - 1 ? `<b>${esc(p.name)}</b>` : `<span data-go="${i}">${esc(p.name)}</span>`).join(" › ")
@@ -242,7 +254,7 @@
     function render() {
       const q = qs[idx];
       const total = qs.length;
-      scene.style.backgroundImage = `url("${bg}")`;
+      applySceneBg(bg);
       const opts = q.options.map((o, i) => `<button class="cd-opt" data-i="${i}"><span class="lab">${String.fromCharCode(65 + i)}</span>${esc(o)}</button>`).join("");
       const imgHtml = q.img ? `<img class="cd-img" src="${esc(q.img)}" alt="">` : "";
       content.innerHTML = `<div class="cd-top"><button class="x">✕</button></div>
@@ -288,7 +300,7 @@
     function finish() {
       const total = qs.length;
       const pct = total ? Math.round(correct / total * 100) : 0;
-      scene.style.backgroundImage = `url("${bg}")`;
+      applySceneBg(bg);
       const anno = buildAnno();
       content.innerHTML = `<div class="cd-top"><button class="x">✕</button></div>
         <div class="cd-quizwrap"><div class="cd-panel cd-summary">
@@ -341,10 +353,15 @@
       const tile = el(`<div class="cd-tile" style="background:linear-gradient(135deg,#3a2c1c,#5b4326)">
         <div class="em">${cat.icon || "📚"}</div>
         <div class="ct">${esc(cat.name)}</div></div>`);
-      // 用主题背景图做方块底
-      tile.style.backgroundImage = `url("${cat.bg}")`;
+      // 先显示渐变底色（即时），主题照片异步加载完成后叠加淡入
+      tile.style.backgroundImage = "linear-gradient(135deg,#3a2c1c,#5b4326)";
       tile.style.backgroundSize = "cover";
       tile.style.backgroundPosition = "center";
+      (function (t, b) {
+        const im = new Image();
+        im.onload = function () { t.style.backgroundImage = `url("${b}"), linear-gradient(135deg,#3a2c1c,#5b4326)`; };
+        im.src = b;
+      })(tile, cat.bg);
       tile.onclick = () => {
         stack.length = 0;
         stack.push({ node: cat });
