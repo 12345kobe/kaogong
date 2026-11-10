@@ -58,6 +58,11 @@
 .cd-exp{margin-top:12px;font-size:14px;line-height:1.6;color:#444;background:#fbf6ea;border-left:4px solid #d9b25a;border-radius:8px;padding:10px 12px;display:none}
 .cd-exp.show{display:block}
 .cd-exp .ans{color:#c0392b;font-weight:700}
+.cd-why{font-size:12.5px;line-height:1.5;color:#7a6a3a;background:#fffaf0;border:1px dashed #e6d3a3;
+  border-radius:0 0 10px 10px;padding:5px 14px 7px 44px;margin:-4px 0 9px;display:none}
+.cd-why.show{display:block}
+.cd-why.ok{color:#0a7a31;background:#f0fbf3;border-color:#bfe6c9}
+.cd-why .wk{font-weight:700;margin-right:4px}
 .cd-foot{display:flex;align-items:center;gap:12px;margin-top:14px}
 .cd-next{background:linear-gradient(135deg,#ffd98a,#f0a93a);color:#3a2400;border:none;border-radius:12px;padding:11px 22px;font-size:15px;font-weight:800;cursor:pointer;display:none}
 .cd-next.show{display:block}
@@ -75,6 +80,7 @@
 
   let overlay = null, scene = null, content = null, doors = null, noteEl = null;
   const stack = []; // 浏览栈：{node, bg, path}
+  let studyModeFlag = false; // true=学习常识模式（浏览知识点，不立即抽题）
 
   function injectCSS() {
     if (document.getElementById("cd-css")) return;
@@ -109,12 +115,27 @@
     return "assets/img/door/hist.png";
   }
   function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[a[i], a[j]] = [a[j], a[i]]; } return a; }
+  function enrich(it) {
+    const ex = (window.COMMON_WHYKP && window.COMMON_WHYKP[it.id]) || null;
+    const kp = it.kp || (ex && ex.kp) || "";
+    const why = it.why || (ex && ex.why) || null;
+    return { kp: kp, why: why };
+  }
   function prep(it) {
     const opts = (it.options || []).slice();
     let a = it.a;
     const sh = shuffle(opts);
     a = sh.indexOf(it.options[it.a]);
-    return { q: it.q, options: sh, a: a, e: it.e || "", tag: it.tag || "", img: it.img || "", _bank: it._bank, id: it.id };
+    const en = enrich(it);
+    return { q: it.q, options: sh, a: a, e: it.e || "", tag: it.tag || "", kp: en.kp, why: en.why, img: it.img || "", _bank: it._bank, id: it.id };
+  }
+  // 学习模式：保持原顺序与选项顺序，仅附加知识点
+  function prepKeep(it) {
+    const en = enrich(it);
+    return {
+      q: it.q, options: (it.options || []).slice(), a: it.a, e: it.e || "",
+      tag: it.tag || "", kp: en.kp, why: en.why, img: it.img || "", _bank: it._bank, id: it.id
+    };
   }
   function toast(msg) { noteEl.textContent = msg; noteEl.classList.add("show"); clearTimeout(toast._t); toast._t = setTimeout(() => noteEl.classList.remove("show"), 1600); }
 
@@ -195,9 +216,15 @@
     content.innerHTML = html;
     const btns = content.querySelector(".cd-btns");
     if (isLeaf) {
-      const b = el(`<button class="cd-btn rand">开始练习（10 题）<span class="sm">本模块随机抽 10 道</span></button>`);
-      b.onclick = () => { stack.push({ node }); startQuiz(node); };
-      btns.appendChild(b);
+      if (studyModeFlag) {
+        const b = el(`<button class="cd-btn rand">📖 开始学习（浏览知识点）<span class="sm">逐题查看知识点与解析</span></button>`);
+        b.onclick = () => { stack.push({ node }); studyMode(node); };
+        btns.appendChild(b);
+      } else {
+        const b = el(`<button class="cd-btn rand">开始练习（10 题）<span class="sm">本模块随机抽 10 道</span></button>`);
+        b.onclick = () => { stack.push({ node }); startQuiz(node); };
+        btns.appendChild(b);
+      }
     } else {
       node.children.forEach(ch => {
         ch._parent = node;
@@ -335,6 +362,7 @@
   function exitAll() {
     closeDoors();
     stack.length = 0;
+    studyModeFlag = false;
     setTimeout(() => {
       if (overlay) { overlay.remove(); overlay = null; }
       if (noteEl) { noteEl.remove(); noteEl = null; }
@@ -345,6 +373,7 @@
   function exitToCommon() {
     closeDoors();
     stack.length = 0;
+    studyModeFlag = false;
     setTimeout(() => {
       if (overlay) { overlay.remove(); overlay = null; }
       if (noteEl) { noteEl.remove(); noteEl = null; }
@@ -352,8 +381,8 @@
     }, 500);
   }
 
-  /* ===== 入口：渲染顶层方块网格 ===== */
-  function renderGrid(host) {
+  /* ===== 顶层方块网格（开门刷题 / 学习常识 共用） ===== */
+  function buildGrid(host) {
     if (!TREE) { host.innerHTML = `<div class="empty">分类树未加载</div>`; return; }
     injectCSS();
     host.innerHTML = "";
@@ -362,7 +391,6 @@
       const tile = el(`<div class="cd-tile" style="background:linear-gradient(135deg,#3a2c1c,#5b4326)">
         <div class="em">${cat.icon || "📚"}</div>
         <div class="ct">${esc(cat.name)}</div></div>`);
-      // 先显示渐变底色（即时），主题照片异步加载完成后叠加淡入
       tile.style.backgroundImage = "linear-gradient(135deg,#3a2c1c,#5b4326)";
       tile.style.backgroundSize = "cover";
       tile.style.backgroundPosition = "center";
@@ -375,12 +403,71 @@
         stack.length = 0;
         stack.push({ node: cat });
         cat._path = [{ name: cat.name }];
-        enterFromTile(tile, cat.bg);
-        setTimeout(() => { levelView(cat); }, 480);
+        if (studyModeFlag) { levelView(cat); }
+        else { enterFromTile(tile, cat.bg); setTimeout(() => { levelView(cat); }, 480); }
       };
       host.appendChild(tile);
     });
   }
+  function renderGrid(host) { buildGrid(host); }
 
-  window.CommonDoor = { renderGrid };
+  /* ===== 学习常识：从模块入口进入，全屏浏览知识点 ===== */
+  function openStudy() {
+    studyModeFlag = true;
+    if (!overlay) buildOverlay();
+    overlay.style.transition = "none";
+    overlay.style.transform = "none";
+    overlay.style.opacity = "1";
+    overlay.style.display = "block";
+    applySceneBg("assets/img/door/hist.png");
+    openDoors();
+    content.innerHTML = `<div class="cd-top"><button class="x">✕</button></div>
+      <div class="cd-lvtitle">📖 学习常识</div>
+      <div class="cd-sub">选择主题（朝代 / 模块），点进去逐题学习对应知识点，学完可「直接练」巩固</div>
+      <div class="cd-grid" id="sgrid"></div>`;
+    content.querySelector(".x").onclick = exitToCommon;
+    buildGrid(content.querySelector("#sgrid"));
+  }
+
+  /* ===== 学习模式：逐题浏览知识点 + 直接练 / 练习 ===== */
+  function studyMode(node) {
+    const items = collectItems(node);
+    if (!items.length) { toast("该模块暂无题目"); return; }
+    const qs = items.map(prepKeep);
+    let idx = 0;
+    function renderStudy() {
+      const q = qs[idx], total = qs.length;
+      const kp = q.kp || q.tag || node.name;
+      const opts = q.options.map((o, i) => {
+        const w = (q.why && q.why[i]) ? `<div class="cd-why show ${i === q.a ? "ok" : ""}"><span class="wk">${i === q.a ? "✓ 正确" : "✗ 不选"}：</span>${esc(q.why[i])}</div>` : "";
+        return `<button class="cd-opt ${i === q.a ? "right" : "dim"}" disabled><span class="lab">${String.fromCharCode(65 + i)}</span>${esc(o)}</button>${w}`;
+      }).join("");
+      content.innerHTML = `<div class="cd-top"><button class="x">✕</button></div>
+        <div class="cd-quizwrap"><div class="cd-panel">
+          <span class="cd-tag">📌 知识点：${esc(kp)}</span>
+          <div class="cd-q">${idx + 1}. ${esc(q.q)}</div>
+          ${opts}
+          <div class="cd-exp show">正确答案 <span class="ans">${String.fromCharCode(65 + q.a)}. ${esc(q.options[q.a])}</span><br>${esc(q.e)}</div>
+          <div class="cd-foot">
+            <button class="cd-btn" id="prev" ${idx === 0 ? "disabled" : ""}>← 上一题</button>
+            <span class="cd-prog">${idx + 1} / ${total}</span>
+            <button class="cd-btn" id="nxt" ${idx + 1 === total ? "disabled" : ""}>下一题 →</button>
+          </div>
+          <div class="cd-btns" style="margin-top:14px">
+            <button class="cd-btn rand" id="direct">🚀 直接练（本主题）</button>
+            <button class="cd-btn" id="practice">✏️ 练习（整段随机）</button>
+          </div>
+        </div></div>`;
+      content.querySelector(".x").onclick = exitToCommon;
+      const prev = content.querySelector("#prev"), nxt = content.querySelector("#nxt");
+      if (prev) prev.onclick = () => { if (idx > 0) { idx--; renderStudy(); } };
+      if (nxt) nxt.onclick = () => { if (idx + 1 < total) { idx++; renderStudy(); } };
+      content.querySelector("#direct").onclick = () => { stack.push({ node }); startQuiz(node); };
+      content.querySelector("#practice").onclick = () => { stack.push({ node }); startQuiz(node, true); };
+    }
+    renderStudy();
+    openDoors();
+  }
+
+  window.CommonDoor = { renderGrid, openStudy };
 })();
