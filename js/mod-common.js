@@ -291,6 +291,15 @@
       body.appendChild(studyCard);
       studyCard.querySelector("#studyEnter").onclick = () => { if (window.CommonDoor && window.CommonDoor.openStudy) window.CommonDoor.openStudy(); };
 
+      // ========== 长征专题（历史板块 · 90 周年） ==========
+      const lmCard = UI.el(`<div class="card" style="margin-top:16px">
+        <h3>🏔️ 长征专题（90 周年）</h3>
+        <div class="muted small">2026 年是红军长征胜利 90 周年。在这里可以学习长征历史（100 题），以及长征 90 周年习主席讲话精神（100 题）。两种都是「逐题学知识点 + 学完直接练」。</div>
+        <button class="btn primary" id="lmEnter" style="margin-top:10px">进入长征专题 →</button>
+      </div>`);
+      body.appendChild(lmCard);
+      lmCard.querySelector("#lmEnter").onclick = () => { if (window.LongMarch && window.LongMarch.open) window.LongMarch.open(); };
+
       predCard.querySelector("#start").onclick = () => {
         const cnt = +predCard.querySelector("#cnt").value || 10;
         const all = allItems();

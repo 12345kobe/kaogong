@@ -429,6 +429,29 @@
     buildGrid(content.querySelector("#sgrid"));
   }
 
+  /* 专题专用：直接以某个带 bank 的节点进入学习模式（跳过方块网格）。
+     node 形如 {name, bank:"lm_history", bg:"assets/img/door/hist.png"} */
+  function openStudyNode(node) {
+    if (!node || !node.bank) { toast("该专题暂无题目"); return; }
+    if (!window.COMMON_BANK || !window.COMMON_BANK[node.bank] || !window.COMMON_BANK[node.bank].items || !window.COMMON_BANK[node.bank].items.length) {
+      toast("该专题题库尚未加载"); return;
+    }
+    studyModeFlag = true;
+    if (!overlay) buildOverlay();
+    overlay.style.transition = "none";
+    overlay.style.transform = "none";
+    overlay.style.opacity = "1";
+    overlay.style.display = "block";
+    const bg = node.bg || "assets/img/door/hist.png";
+    applySceneBg(bg);
+    openDoors();
+    node._parent = { name: "长征专题" };
+    node._path = [{ name: "长征专题" }, { name: node.name }];
+    stack.length = 0;
+    stack.push({ node });
+    studyMode(node);
+  }
+
   /* ===== 学习模式：逐题浏览知识点 + 直接练 / 练习 ===== */
   function studyMode(node) {
     const items = collectItems(node);
@@ -469,5 +492,5 @@
     openDoors();
   }
 
-  window.CommonDoor = { renderGrid, openStudy };
+  window.CommonDoor = { renderGrid, openStudy, openStudyNode };
 })();
