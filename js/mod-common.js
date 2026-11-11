@@ -282,6 +282,15 @@
       body.appendChild(doorCard);
       try { if (window.CommonDoor) { window.CommonDoor.renderGrid(doorCard.querySelector("#doorGrid")); window.CommonDoor.onExit = () => { try { window.MODULES.common.render(body); } catch (e) {} }; } } catch (e) { console.error("开门刷题渲染失败", e); }
 
+      // ========== 学习常识（按主题学知识点，可「直接练」/「练习」） ==========
+      const studyCard = UI.el(`<div class="card" style="margin-top:16px">
+        <h3>📖 学习常识（按主题学知识点）</h3>
+        <div class="muted small">按朝代 / 模块分类浏览题目与对应知识点，学完可「直接练」巩固，也可像以往一样「练习」写题。每个题目都带知识点（kp），按主题（如明朝、清朝…）排好。</div>
+        <button class="btn primary" id="studyEnter" style="margin-top:10px">进入学习常识 →</button>
+      </div>`);
+      body.appendChild(studyCard);
+      studyCard.querySelector("#studyEnter").onclick = () => { if (window.CommonDoor && window.CommonDoor.openStudy) window.CommonDoor.openStudy(); };
+
       predCard.querySelector("#start").onclick = () => {
         const cnt = +predCard.querySelector("#cnt").value || 10;
         const all = allItems();

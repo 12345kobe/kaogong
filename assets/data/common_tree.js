@@ -44,6 +44,14 @@ window.COMMON_TREE = {
     { id: "culture", name: "文化", icon: "🏮", bg: "assets/img/door/culture.png", bank: "culture" },
     { id: "law", name: "法律", icon: "⚖️", bg: "assets/img/door/law.png", bank: "law" },
     { id: "eco", name: "经济", icon: "💰", bg: "assets/img/door/eco.png", bank: "eco" },
-    { id: "tech", name: "科技", icon: "🔬", bg: "assets/img/door/tech.png", bank: "tech" }
+    {
+      id: "tech", name: "科技（按年代）", icon: "🔬", bg: "assets/img/door/tech.png", children: [
+        { id: "tech_pre2000", name: "2000年前（古代与20世纪科技）", bank: "tech_pre2000" },
+        { id: "tech_2000_2010", name: "2000—2010", bank: "tech_2000_2010" },
+        { id: "tech_2011_2020", name: "2011—2020", bank: "tech_2011_2020" },
+        { id: "tech_2020_2025", name: "2020—2025", bank: "tech_2020_2025" },
+        { id: "tech_2025_now", name: "2025年至今", bank: "tech_2025_now" }
+      ]
+    }
   ]
 };
